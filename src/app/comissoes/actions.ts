@@ -15,6 +15,18 @@ const percentualDigitado = z.preprocess((entrada) => {
   return Number.isFinite(n) ? n : Number.NaN;
 }, z.number({ invalid_type_error: "Informe um percentual" }).min(0, "Nao pode ser negativo").max(100, "Nao pode passar de 100%"));
 
+/** Receita de 12 meses digitada a mao. Vazio = calcular do historico. */
+const rbt12Digitado = z.preprocess((entrada) => {
+  if (typeof entrada !== "string") return entrada;
+  const limpo = entrada
+    .replace(/[R$\s]/g, "")
+    .replace(/\.(?=\d{3}(\D|$))/g, "")
+    .replace(",", ".");
+  if (limpo === "") return null;
+  const n = Number(limpo);
+  return Number.isFinite(n) ? n : Number.NaN;
+}, z.number({ invalid_type_error: "Receita de 12 meses invalida" }).min(0).nullable());
+
 const esquemaInfluencer = z.object({
   id: z.string().optional(),
   nome: z.string().trim().min(1, "Informe o nome do influencer").max(120),
@@ -23,6 +35,14 @@ const esquemaInfluencer = z.object({
   baseComissao: z.enum(["bruto", "recebido", "receitaReal"], {
     errorMap: () => ({ message: "Base de calculo invalida" }),
   }),
+  // O regime mora no influencer: cada marca e uma operacao separada, com o
+  // seu proprio enquadramento. E dele que sai o imposto de cada produto.
+  regime: z.enum(["simples_nacional", "lucro_presumido", "lucro_real"], {
+    errorMap: () => ({ message: "Regime tributario invalido" }),
+  }),
+  anexoSimples: z.enum(["I", "II", "III", "IV", "V"]),
+  uf: z.string().trim().length(2, "UF tem 2 letras").toUpperCase(),
+  rbt12Manual: rbt12Digitado,
   ativo: z.preprocess((v) => v === "on" || v === "true" || v === true, z.boolean()),
   observacao: z.string().trim().max(400).nullable().optional(),
 });
@@ -40,6 +60,10 @@ export async function salvarInfluencer(
     marca: formData.get("marca"),
     percentual: formData.get("percentual"),
     baseComissao: formData.get("baseComissao"),
+    regime: formData.get("regime") ?? "simples_nacional",
+    anexoSimples: formData.get("anexoSimples") ?? "II",
+    uf: formData.get("uf") ?? "GO",
+    rbt12Manual: formData.get("rbt12Manual") ?? "",
     ativo: formData.get("ativo") ?? "false",
     observacao: formData.get("observacao") || null,
   });
@@ -70,7 +94,10 @@ export async function salvarInfluencer(
   }
 
   // A comissao entra na DRE: o painel principal muda junto.
+  // Mudar o regime muda o imposto de todos os produtos deste influencer.
   revalidatePath("/comissoes");
+  revalidatePath("/impostos");
+  revalidatePath("/produtos");
   revalidatePath("/");
 
   return { ok: true, mensagem: `Contrato de "${entrada.nome}" salvo.` };

@@ -7,9 +7,16 @@ import {
   monitorarTeto,
   tetoEmAlerta,
 } from "@/lib/simplesNacional";
-import { apurarImpostos, calcularRBT12, linhasQueSomam } from "@/lib/impostos";
+import {
+  apurarImpostos,
+  calcularRBT12,
+  idsSugeridosPorRegime,
+  impostosDoRegime,
+  linhasConsolidadas,
+} from "@/lib/impostos";
 import { SUBLIMITE_ICMS_SIMPLES, TETO_SIMPLES_NACIONAL } from "@/types/fiscal";
 import type { ConfiguracaoFiscal, Imposto } from "@/types/fiscal";
+import type { Influencer } from "@/types/dominio";
 import { chaveProduto, type Produto } from "@/types/produto";
 import type { Pedido } from "@/types/nuvemshop";
 
@@ -69,6 +76,9 @@ function imposto(parcial: Partial<Imposto> = {}): Imposto {
     esfera: "estadual",
     baseIncidencia: "receita",
     aliquota: 10,
+    regimes: ["simples_nacional", "lucro_presumido", "lucro_real"],
+    percentualPresuncao: null,
+    deducaoMensal: null,
     dentroDoDAS: false,
     aplicacaoPorProduto: false,
     ativo: true,
@@ -91,9 +101,28 @@ function produto(parcial: Partial<Produto> = {}): Produto {
     sku: "A",
     ncm: "3305.10.00",
     origem: "nuvemshop",
+    influencerId: null,
     impostosIds: [],
     ehKit: false,
     componentes: [],
+    ativo: true,
+    observacao: null,
+    atualizadoEm: "2026-09-01T00:00:00.000Z",
+    ...parcial,
+  };
+}
+
+function influencer(parcial: Partial<Influencer> = {}): Influencer {
+  return {
+    id: "inf-1",
+    nome: "Influencer Teste",
+    marca: "Marca",
+    percentual: 30,
+    baseComissao: "bruto",
+    regime: "simples_nacional",
+    anexoSimples: "II",
+    uf: "GO",
+    rbt12Manual: null,
     ativo: true,
     observacao: null,
     atualizadoEm: "2026-09-01T00:00:00.000Z",
@@ -192,12 +221,37 @@ describe("monitorarTeto", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Impostos por regime
+// ---------------------------------------------------------------------------
+
+describe("impostosDoRegime", () => {
+  const pis = imposto({ id: "pis", sigla: "PIS", regimes: ["lucro_presumido"] });
+  const st = imposto({ id: "st", sigla: "ICMS-ST", regimes: ["simples_nacional"] });
+  const nenhum = imposto({ id: "orfao", sigla: "ORF", regimes: [] });
+
+  it("filtra pelo regime, que e o que preenche o cadastro do produto", () => {
+    expect(impostosDoRegime([pis, st, nenhum], "lucro_presumido")).toEqual([pis]);
+    expect(impostosDoRegime([pis, st, nenhum], "simples_nacional")).toEqual([st]);
+  });
+
+  it("imposto sem regime nenhum nunca e sugerido", () => {
+    for (const regime of ["simples_nacional", "lucro_presumido", "lucro_real"] as const) {
+      expect(impostosDoRegime([nenhum], regime)).toEqual([]);
+    }
+  });
+
+  it("idsSugeridosPorRegime devolve so os ids", () => {
+    expect(idsSugeridosPorRegime([pis, st], "lucro_presumido")).toEqual(["pis"]);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // RBT12
 // ---------------------------------------------------------------------------
 
 describe("calcularRBT12", () => {
   it("usa o valor informado quando existe", () => {
-    const r = calcularRBT12([], { ...CONFIG, rbt12Manual: 2_000_000 });
+    const r = calcularRBT12([], 2_000_000);
     expect(r.valor).toBe(2_000_000);
     expect(r.origem).toBe("informado");
   });
@@ -207,7 +261,7 @@ describe("calcularRBT12", () => {
       pedido({ created_at: "2026-08-10T12:00:00.000Z", total: "100.00" }),
       pedido({ created_at: "2026-09-10T12:00:00.000Z", total: "100.00" }),
     ];
-    const r = calcularRBT12(pedidos, CONFIG);
+    const r = calcularRBT12(pedidos, null);
 
     expect(r.mesesConsiderados).toBe(2);
     expect(r.projetado).toBe(true);
@@ -223,12 +277,12 @@ describe("calcularRBT12", () => {
         payment_status: "pending",
       }),
     ];
-    expect(calcularRBT12(pedidos, CONFIG).valor).toBeCloseTo(1_200, 6);
+    expect(calcularRBT12(pedidos, null).valor).toBeCloseTo(1_200, 6);
   });
 });
 
 // ---------------------------------------------------------------------------
-// Apuracao
+// Apuracao por influencer
 // ---------------------------------------------------------------------------
 
 describe("apurarImpostos", () => {
@@ -238,17 +292,122 @@ describe("apurarImpostos", () => {
       pedido({ total: "1000.00", payment_status: "pending" }),
     ];
 
-    const r = apurarImpostos(pedidos, pedidos, [], [], {
-      ...CONFIG,
-      rbt12Manual: 1_000_000,
+    const r = apurarImpostos(
+      pedidos,
+      pedidos,
+      [],
+      [],
+      [influencer({ rbt12Manual: 1_000_000 })],
+      CONFIG,
+    );
+
+    const marca = r.porInfluencer[0]!;
+    expect(marca.baseReceita).toBe(1000);
+    expect(marca.simples?.valorDAS).toBeCloseTo(89.5, 6); // 8,95% de 1000
+  });
+
+  it("apura cada marca no SEU regime, nao num regime consolidado", () => {
+    // E o ponto central: uma marca no Simples e outra no Presumido convivem,
+    // e apurar as duas juntas daria um numero que nao serve para nenhuma.
+    const pedidos = [
+      pedido({ marca: "Pequena", total: "1000.00" }),
+      pedido({ marca: "Grande", total: "1000.00" }),
+    ];
+
+    const pis = imposto({
+      id: "pis",
+      sigla: "PIS",
+      aliquota: 0.65,
+      regimes: ["lucro_presumido"],
+      ativo: true,
     });
 
-    expect(r.baseReceita).toBe(1000);
-    expect(r.simples?.valorDAS).toBeCloseTo(89.5, 6); // 8,95% de 1000
+    const r = apurarImpostos(
+      pedidos,
+      pedidos,
+      [],
+      [pis],
+      [
+        influencer({ id: "a", marca: "Pequena", regime: "simples_nacional", rbt12Manual: 1_000_000 }),
+        influencer({ id: "b", marca: "Grande", regime: "lucro_presumido" }),
+      ],
+      CONFIG,
+    );
+
+    const pequena = r.porInfluencer.find((a) => a.marca === "Pequena")!;
+    const grande = r.porInfluencer.find((a) => a.marca === "Grande")!;
+
+    expect(pequena.regime).toBe("simples_nacional");
+    expect(pequena.simples).not.toBeNull();
+    expect(pequena.linhas.map((l) => l.sigla)).toEqual(["DAS"]);
+
+    expect(grande.regime).toBe("lucro_presumido");
+    expect(grande.simples).toBeNull();
+    expect(grande.linhas.map((l) => l.sigla)).toEqual(["PIS"]);
+    expect(grande.total).toBeCloseTo(6.5, 6);
+  });
+
+  it("o RBT12 e por marca, nao no consolidado", () => {
+    // Somar as marcas jogaria uma empresa pequena numa faixa que nao e a dela.
+    const pedidos = [
+      pedido({ marca: "A", total: "1000.00" }),
+      pedido({ marca: "B", total: "1000.00" }),
+    ];
+
+    const r = apurarImpostos(
+      pedidos,
+      pedidos,
+      [],
+      [],
+      [
+        influencer({ id: "a", marca: "A" }),
+        influencer({ id: "b", marca: "B" }),
+      ],
+      CONFIG,
+    );
+
+    for (const apuracao of r.porInfluencer) {
+      // Cada marca faturou 1000 no mes -> projeta 12.000, nao 24.000.
+      expect(apuracao.rbt12.valor).toBeCloseTo(12_000, 6);
+    }
+  });
+
+  it("tributo sobre lucro usa a base presumida, e desconta a deducao mensal", () => {
+    const pedidos = [pedido({ total: "1000000.00" })];
+
+    const irpjAdicional = imposto({
+      id: "irpj-ad",
+      sigla: "IRPJ ad.",
+      baseIncidencia: "lucro",
+      aliquota: 10,
+      percentualPresuncao: 8,
+      deducaoMensal: 20_000,
+      regimes: ["lucro_presumido"],
+      ativo: true,
+    });
+
+    const r = apurarImpostos(
+      pedidos,
+      pedidos,
+      [],
+      [irpjAdicional],
+      [influencer({ regime: "lucro_presumido" })],
+      CONFIG,
+    );
+
+    // base = 8% de 1.000.000 = 80.000; menos 20.000 = 60.000; 10% = 6.000
+    const linha = r.porInfluencer[0]!.linhas.find((l) => l.sigla === "IRPJ ad.")!;
+    expect(linha.base).toBeCloseTo(60_000, 6);
+    expect(linha.valor).toBeCloseTo(6_000, 6);
   });
 
   it("imposto por produto so incide sobre quem esta marcado", () => {
-    const icmsSt = imposto({ id: "st", sigla: "ICMS-ST", aplicacaoPorProduto: true });
+    const icmsSt = imposto({
+      id: "st",
+      sigla: "ICMS-ST",
+      aplicacaoPorProduto: true,
+      regimes: ["lucro_presumido"],
+    });
 
     const marcado = pedido({
       products: [
@@ -271,78 +430,133 @@ describe("apurarImpostos", () => {
       [marcado, naoMarcado],
       produtos,
       [icmsSt],
-      { ...CONFIG, regime: "lucro_presumido" },
+      [influencer({ regime: "lucro_presumido" })],
+      CONFIG,
     );
 
-    const linha = r.foraDoDAS.find((l) => l.sigla === "ICMS-ST")!;
+    const linha = r.porInfluencer[0]!.linhas.find((l) => l.sigla === "ICMS-ST")!;
     expect(linha.base).toBe(1000);
     expect(linha.valor).toBeCloseTo(100, 6);
   });
 
-  it("imposto inativo nao entra no calculo", () => {
+  it("imposto de outro regime nao entra, mesmo marcado no produto", () => {
+    const soNoSimples = imposto({ id: "s", sigla: "SIMP", regimes: ["simples_nacional"] });
+
     const r = apurarImpostos(
       [pedido()],
       [pedido()],
-      [produto({ impostosIds: ["imp-1"] })],
-      [imposto({ ativo: false })],
-      { ...CONFIG, regime: "lucro_presumido" },
+      [produto({ impostosIds: ["s"] })],
+      [soNoSimples],
+      [influencer({ regime: "lucro_presumido" })],
+      CONFIG,
     );
-    expect(r.foraDoDAS).toHaveLength(0);
-    expect(r.totalSobreVenda).toBe(0);
+
+    expect(r.porInfluencer[0]!.linhas.find((l) => l.sigla === "SIMP")).toBeUndefined();
+  });
+
+  it("tributo inativo do regime volta em inativosDoRegime, e nao some", () => {
+    // A tela precisa poder dizer "o ICMS nao esta nesta conta" em vez de
+    // exibir um total menor sem explicar por que.
+    const icms = imposto({
+      id: "icms",
+      sigla: "ICMS",
+      aliquota: 0,
+      ativo: false,
+      regimes: ["lucro_presumido"],
+    });
+
+    const r = apurarImpostos(
+      [pedido()],
+      [pedido()],
+      [],
+      [icms],
+      [influencer({ regime: "lucro_presumido" })],
+      CONFIG,
+    );
+
+    expect(r.porInfluencer[0]!.linhas).toHaveLength(0);
+    expect(r.porInfluencer[0]!.inativosDoRegime.map((i) => i.sigla)).toEqual(["ICMS"]);
+    expect(r.temTributoDoRegimeInativo).toBe(true);
   });
 
   it("o que esta dentro do DAS nao soma no total", () => {
     const pedidos = [pedido({ total: "1000.00" })];
-    const r = apurarImpostos(pedidos, pedidos, [], [], {
-      ...CONFIG,
-      rbt12Manual: 1_000_000,
-    });
+    const r = apurarImpostos(
+      pedidos,
+      pedidos,
+      [],
+      [],
+      [influencer({ rbt12Manual: 1_000_000 })],
+      CONFIG,
+    );
 
-    // A quebra existe para leitura, mas o total e so a guia.
-    expect(r.detalheDoDAS.length).toBeGreaterThan(0);
-    expect(r.totalSobreVenda).toBeCloseTo(r.simples!.valorDAS, 6);
+    const marca = r.porInfluencer[0]!;
+    expect(marca.detalheDoDAS.length).toBeGreaterThan(0);
+    expect(marca.total).toBeCloseTo(marca.simples!.valorDAS, 6);
+  });
+
+  it("marca sem influencer cadastrado cai na configuracao padrao", () => {
+    const r = apurarImpostos([pedido()], [pedido()], [], [], [], CONFIG);
+
+    expect(r.porInfluencer[0]!.influencerId).toBeNull();
+    expect(r.porInfluencer[0]!.regime).toBe(CONFIG.regime);
+  });
+
+  it("influencer inativo nao assume a marca", () => {
+    const r = apurarImpostos(
+      [pedido()],
+      [pedido()],
+      [],
+      [],
+      [influencer({ ativo: false, regime: "lucro_real" })],
+      CONFIG,
+    );
+    expect(r.porInfluencer[0]!.regime).toBe(CONFIG.regime);
   });
 
   it("declara a receita de produto sem cadastro fiscal", () => {
-    const pedidos = [pedido({ total: "1000.00" })];
-    const r = apurarImpostos(pedidos, pedidos, [], [], CONFIG);
+    const r = apurarImpostos([pedido()], [pedido()], [], [], [influencer()], CONFIG);
 
     expect(r.produtosSemCadastro).toBe(1);
     expect(r.receitaSemCadastro).toBe(1000);
     expect(r.cobertura).toBe(0);
   });
 
-  it("marca quando ha aliquota nao confirmada pelo contador", () => {
-    const r = apurarImpostos(
-      [pedido()],
-      [pedido()],
-      [],
-      [imposto({ confirmadoPeloContador: false })],
-      { ...CONFIG, regime: "lucro_presumido" },
-    );
-    expect(r.temImpostoNaoConfirmado).toBe(true);
-  });
+  it("consolida as linhas somando por sigla", () => {
+    const pis = imposto({
+      id: "pis",
+      sigla: "PIS",
+      aliquota: 1,
+      regimes: ["lucro_presumido"],
+    });
 
-  it("linhasQueSomam junta a guia unica e os tributos de fora", () => {
-    const pedidos = [pedido({ total: "1000.00" })];
+    const pedidos = [
+      pedido({ marca: "A", total: "1000.00" }),
+      pedido({ marca: "B", total: "1000.00" }),
+    ];
+
     const r = apurarImpostos(
       pedidos,
       pedidos,
       [],
-      [imposto({ aliquota: 5 })],
-      { ...CONFIG, rbt12Manual: 1_000_000 },
+      [pis],
+      [
+        influencer({ id: "a", marca: "A", regime: "lucro_presumido" }),
+        influencer({ id: "b", marca: "B", regime: "lucro_presumido" }),
+      ],
+      CONFIG,
     );
 
-    const linhas = linhasQueSomam(r);
-    const soma = linhas.reduce((s, l) => s + l.valor, 0);
-
-    expect(linhas.map((l) => l.sigla)).toContain("DAS");
-    expect(soma).toBeCloseTo(r.totalSobreVenda, 6);
+    const linhas = linhasConsolidadas(r);
+    expect(linhas).toHaveLength(1);
+    expect(linhas[0]!.valor).toBeCloseTo(20, 6); // 1% de 1000, duas vezes
+    expect(r.totalSobreVenda).toBeCloseTo(20, 6);
   });
 
   it("nao produz NaN sem nenhum pedido", () => {
-    const r = apurarImpostos([], [], [], [], CONFIG);
+    const r = apurarImpostos([], [], [], [], [], CONFIG);
     expect(Number.isNaN(r.totalSobreVenda)).toBe(false);
     expect(r.cargaSobreReceita).toBe(0);
+    expect(r.porInfluencer).toHaveLength(0);
   });
 });

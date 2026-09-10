@@ -26,10 +26,11 @@ export default async function PaginaProdutos({
   const fonte = obterFonteDePedidos();
   const repositorio = await obterRepositorioCadastros();
 
-  const [todosOsPedidos, produtos, impostos] = await Promise.all([
+  const [todosOsPedidos, produtos, impostos, influencers] = await Promise.all([
     fonte.listarPedidos(),
     repositorio.listarProdutos(),
     repositorio.listarImpostos(),
+    repositorio.listarInfluencers(),
   ]);
 
   const meses = mesesDisponiveis(todosOsPedidos);
@@ -60,7 +61,12 @@ export default async function PaginaProdutos({
   );
 
   const kits = produtos.filter((p) => p.ehKit);
-  const semNcm = produtos.filter((p) => !p.ncm);
+  const semDono = produtos.filter((p) => !p.influencerId);
+
+  // So o que a tela precisa saber de cada influencer -- nao o contrato inteiro.
+  const opcoesInfluencer = influencers
+    .filter((i) => i.ativo)
+    .map((i) => ({ id: i.id, nome: i.nome, marca: i.marca, regime: i.regime }));
   const podeVerFinanceiro = podeAcessar(usuario.perfil, "financeiro");
 
   return (
@@ -79,8 +85,9 @@ export default async function PaginaProdutos({
           </h1>
           <p className="mt-1 max-w-3xl text-sm text-tinta-media">
             A lista chega da Nuvemshop. O que se cadastra aqui e o que ela nao
-            sabe: o NCM, quais impostos incidem sobre cada item e de que
-            componentes um kit e feito. Referencia: {mesAnoLongo(mesSelecionado)}.
+            sabe: de qual influencer o produto e, o NCM, e de que componentes um
+            kit e feito. Os impostos vem sozinhos, do regime tributario do
+            influencer dono. Referencia: {mesAnoLongo(mesSelecionado)}.
           </p>
         </div>
 
@@ -96,25 +103,26 @@ export default async function PaginaProdutos({
             apoio="Baixam o estoque dos componentes"
           />
           <NumeroDestaque
-            rotulo="Sem NCM informado"
-            valor={inteiro(semNcm.length)}
-            apoio="NCM define IPI e ICMS-ST"
-            cor={semNcm.length > 0 ? "var(--color-naopago)" : "var(--color-tinta)"}
+            rotulo="Sem influencer vinculado"
+            valor={inteiro(semDono.length)}
+            apoio="Sem dono nao ha regime, e sem regime nao ha imposto"
+            cor={semDono.length > 0 ? "var(--color-naopago)" : "var(--color-real)"}
           />
           <NumeroDestaque
-            rotulo="Impostos por produto"
-            valor={inteiro(impostos.filter((i) => i.aplicacaoPorProduto).length)}
-            apoio={`${impostos.filter((i) => i.aplicacaoPorProduto && i.ativo).length} ativo(s) no calculo`}
+            rotulo="Regimes em uso"
+            valor={inteiro(new Set(opcoesInfluencer.map((i) => i.regime)).size)}
+            apoio={`${opcoesInfluencer.length} influencer(s) ativo(s)`}
           />
         </div>
 
         <Cartao
           titulo="Cadastro de produtos"
-          descricao="Marque os impostos de cada item e informe a composicao dos kits."
+          descricao="Vincule cada produto ao seu influencer: os impostos do regime dele entram automaticamente."
         >
           <GestaoProdutos
             produtos={produtos}
             impostos={impostos}
+            influencers={opcoesInfluencer}
             vendasPorChave={vendasPorChave}
             podeVerFinanceiro={podeVerFinanceiro}
           />

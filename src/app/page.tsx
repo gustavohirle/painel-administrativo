@@ -81,6 +81,7 @@ export default async function PaginaPainel({
     todosOsPedidos,
     produtos,
     impostosCadastrados,
+    influencers,
     configFiscal,
   );
 

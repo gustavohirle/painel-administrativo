@@ -42,8 +42,24 @@ async function main() {
   await repositorio.salvarConfiguracaoFiscal(config);
   console.log("configuracao fiscal: ok");
 
+  // --- Influencers ---------------------------------------------------------
+  // Antes dos produtos: o produto herda os impostos do regime do influencer.
+  const influencers = influencersIniciais();
+  const jaCadastrados = await repositorio.listarInfluencers();
+  const influencersSalvos = [];
+  for (const influencer of influencers) {
+    const existente = jaCadastrados.find(
+      (i) => i.nome === influencer.nome && i.marca === influencer.marca,
+    );
+    const { id: _id, atualizadoEm: _em, ...entrada } = influencer;
+    influencersSalvos.push(
+      await repositorio.salvarInfluencer(entrada, existente?.id),
+    );
+  }
+  console.log(`contratos de comissao: ${influencersSalvos.length}`);
+
   // --- Produtos ------------------------------------------------------------
-  const produtos = produtosIniciais(impostosSalvos);
+  const produtos = produtosIniciais(impostosSalvos, influencersSalvos);
   for (const produto of produtos) {
     const { id: _id, atualizadoEm: _em, ...entrada } = produto;
     await repositorio.salvarProduto(entrada);
@@ -57,18 +73,6 @@ async function main() {
     await repositorio.salvarCusto(entrada);
   }
   console.log(`fichas de custo: ${custos.length}`);
-
-  // --- Influencers ---------------------------------------------------------
-  const influencers = influencersIniciais();
-  const jaCadastrados = await repositorio.listarInfluencers();
-  for (const influencer of influencers) {
-    const existente = jaCadastrados.find(
-      (i) => i.nome === influencer.nome && i.marca === influencer.marca,
-    );
-    const { id: _id, atualizadoEm: _em, ...entrada } = influencer;
-    await repositorio.salvarInfluencer(entrada, existente?.id);
-  }
-  console.log(`contratos de comissao: ${influencers.length}`);
 
   // --- Usuarios ------------------------------------------------------------
   for (const usuario of await usuariosIniciais()) {

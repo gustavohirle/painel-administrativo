@@ -79,6 +79,11 @@ function mapearInfluencer(linha: Linha<typeof prisma.influencer>): Influencer {
     marca: linha.marca,
     percentual: decimalParaNumero(linha.percentual),
     baseComissao: linha.baseComissao as BaseComissao,
+    regime: linha.regime as RegimeTributario,
+    anexoSimples: linha.anexoSimples as AnexoSimples,
+    uf: linha.uf,
+    rbt12Manual:
+      linha.rbt12Manual === null ? null : decimalParaNumero(linha.rbt12Manual),
     ativo: linha.ativo,
     observacao: linha.observacao,
     atualizadoEm: linha.atualizadoEm.toISOString(),
@@ -93,6 +98,13 @@ function mapearImposto(linha: Linha<typeof prisma.imposto>): Imposto {
     esfera: linha.esfera as EsferaImposto,
     baseIncidencia: linha.baseIncidencia as BaseIncidencia,
     aliquota: decimalParaNumero(linha.aliquota),
+    regimes: linha.regimes as RegimeTributario[],
+    percentualPresuncao:
+      linha.percentualPresuncao === null
+        ? null
+        : decimalParaNumero(linha.percentualPresuncao),
+    deducaoMensal:
+      linha.deducaoMensal === null ? null : decimalParaNumero(linha.deducaoMensal),
     dentroDoDAS: linha.dentroDoDAS,
     aplicacaoPorProduto: linha.aplicacaoPorProduto,
     ativo: linha.ativo,
@@ -112,6 +124,7 @@ function mapearProduto(linha: Linha<typeof prisma.produto>): Produto {
     sku: linha.sku,
     ncm: linha.ncm,
     origem: linha.origem as OrigemProduto,
+    influencerId: linha.influencerId,
     impostosIds: linha.impostosIds,
     ehKit: linha.ehKit,
     // `componentes` e Json no banco: valida a forma em vez de confiar no cast.
@@ -220,6 +233,10 @@ export class RepositorioPostgres implements RepositorioCadastros {
       marca: entrada.marca,
       percentual: entrada.percentual,
       baseComissao: entrada.baseComissao,
+      regime: entrada.regime,
+      anexoSimples: entrada.anexoSimples,
+      uf: entrada.uf,
+      rbt12Manual: entrada.rbt12Manual,
       ativo: entrada.ativo,
       observacao: entrada.observacao,
     };
@@ -251,6 +268,9 @@ export class RepositorioPostgres implements RepositorioCadastros {
       esfera: entrada.esfera,
       baseIncidencia: entrada.baseIncidencia,
       aliquota: entrada.aliquota,
+      regimes: entrada.regimes,
+      percentualPresuncao: entrada.percentualPresuncao,
+      deducaoMensal: entrada.deducaoMensal,
       dentroDoDAS: entrada.dentroDoDAS,
       aplicacaoPorProduto: entrada.aplicacaoPorProduto,
       ativo: entrada.ativo,
@@ -343,6 +363,7 @@ export class RepositorioPostgres implements RepositorioCadastros {
       sku: entrada.sku,
       ncm: entrada.ncm,
       origem: entrada.origem,
+      influencerId: entrada.influencerId,
       impostosIds: entrada.impostosIds,
       ehKit: entrada.ehKit,
       componentes: entrada.componentes as unknown as Prisma.InputJsonValue,

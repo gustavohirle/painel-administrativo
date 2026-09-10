@@ -1,19 +1,32 @@
 /**
- * Aplicacao dos impostos cadastrados sobre os pedidos. Funcoes PURAS.
+ * Aplicacao dos impostos sobre os pedidos. Funcoes PURAS.
  *
- * Duas decisoes que valem ser lidas antes de mexer aqui:
+ * A apuracao e POR INFLUENCER, nao global. Cada influencer tem a sua marca, a
+ * sua loja e os seus produtos, e na pratica e uma operacao separada -- com
+ * regime tributario proprio. Uma marca de R$ 300 mil/mes cabe no Simples; uma
+ * de R$ 900 mil/mes nao cabe. Apurar tudo junto daria um numero que nao
+ * corresponde a nenhuma das duas.
+ *
+ * Tres decisoes que valem ser lidas antes de mexer aqui:
  *
  * 1. A base e o RECEBIDO, nao o faturado. Pedido cancelado nao gera receita
- *    tributavel, e boleto nunca pago tambem nao, no regime de caixa. Tributar
- *    o bruto inflaria o imposto em ~20% no cenario desta empresa.
+ *    tributavel, e boleto nunca pago tambem nao, no regime de caixa.
  *
  * 2. O que esta DENTRO do DAS nunca soma no total. A guia unica ja e um valor
- *    fechado; a quebra por tributo existe so para o dono entender para onde o
- *    dinheiro vai. Somar as duas coisas dobraria o imposto.
+ *    fechado; a quebra por tributo existe so para leitura.
+ *
+ * 3. Tributo do regime que esta INATIVO nao some em silencio -- ele volta em
+ *    `inativosDoRegime` para a tela poder dizer "o ICMS nao esta nesta conta".
  */
 
 import { paraNumero, type Pedido } from "@/types/nuvemshop";
-import type { EsferaImposto, Imposto, ConfiguracaoFiscal } from "@/types/fiscal";
+import type { Influencer } from "@/types/dominio";
+import type {
+  ConfiguracaoFiscal,
+  EsferaImposto,
+  Imposto,
+  RegimeTributario,
+} from "@/types/fiscal";
 import { chaveProduto, type ChaveProduto, type Produto } from "@/types/produto";
 import { razaoSegura } from "@/lib/format";
 import { chaveMes, pedidosRecebidos, reconciliar } from "@/lib/metrics";
@@ -65,6 +78,32 @@ export function produtoDoItem(
 }
 
 // ---------------------------------------------------------------------------
+// Impostos sugeridos por regime
+// ---------------------------------------------------------------------------
+
+/**
+ * Impostos que incidem automaticamente num regime.
+ *
+ * E o que faz o cadastro de produto se preencher sozinho: escolhido o
+ * influencer, o painel sabe o regime dele e ja marca estes. Continuam
+ * editaveis -- o cadastro sugere, quem entende decide.
+ */
+export function impostosDoRegime(
+  impostos: Imposto[],
+  regime: RegimeTributario,
+): Imposto[] {
+  return impostos.filter((i) => i.regimes.includes(regime));
+}
+
+/** Ids sugeridos para um produto, dado o regime do influencer dono. */
+export function idsSugeridosPorRegime(
+  impostos: Imposto[],
+  regime: RegimeTributario,
+): string[] {
+  return impostosDoRegime(impostos, regime).map((i) => i.id);
+}
+
+// ---------------------------------------------------------------------------
 // RBT12
 // ---------------------------------------------------------------------------
 
@@ -86,11 +125,11 @@ export interface ResultadoRBT12 {
  */
 export function calcularRBT12(
   pedidos: Pedido[],
-  config: ConfiguracaoFiscal,
+  rbt12Manual: number | null,
 ): ResultadoRBT12 {
-  if (config.rbt12Manual !== null && config.rbt12Manual > 0) {
+  if (rbt12Manual !== null && rbt12Manual > 0) {
     return {
-      valor: config.rbt12Manual,
+      valor: rbt12Manual,
       mesesConsiderados: 12,
       projetado: false,
       origem: "informado",
@@ -147,23 +186,46 @@ export interface LinhaImposto {
   porProduto: boolean;
 }
 
-export interface ResultadoImpostos {
-  /** Receita que serviu de base aos tributos sobre venda. */
+export interface ApuracaoDeUmInfluencer {
+  /** `null` quando os pedidos nao pertencem a nenhum influencer cadastrado. */
+  influencerId: string | null;
+  nome: string;
+  marca: string;
+  regime: RegimeTributario;
+  /** Receita que serviu de base. */
   baseReceita: number;
 
+  rbt12: ResultadoRBT12;
   /** DAS do mes. `null` fora do Simples. */
   simples: ApuracaoSimples | null;
   monitorTeto: MonitorTeto | null;
-  rbt12: ResultadoRBT12;
 
-  /** Tributos recolhidos por fora da guia unica. Estes SOMAM. */
-  foraDoDAS: LinhaImposto[];
+  /** Tributos que somam, fora da guia unica. */
+  linhas: LinhaImposto[];
   /** Quebra do que ha dentro do DAS. Detalhamento: NAO soma. */
   detalheDoDAS: LinhaImposto[];
 
-  /** DAS + tributos fora do DAS. */
+  /**
+   * Tributos do regime que estao INATIVOS no cadastro.
+   *
+   * Existem para a tela poder dizer "o ICMS nao esta nesta conta" em vez de
+   * apresentar um total menor sem explicar por que.
+   */
+  inativosDoRegime: Array<{ sigla: string; nome: string; observacao: string | null }>;
+
+  total: number;
+  cargaSobreReceita: number;
+}
+
+export interface ResultadoImpostos {
+  /** Uma apuracao por influencer, cada uma no seu regime. */
+  porInfluencer: ApuracaoDeUmInfluencer[];
+
+  /** Soma das bases de todas as apuracoes. */
+  baseReceita: number;
+  /** Soma de tudo que e recolhido. */
   totalSobreVenda: number;
-  /** Fracao da receita que vira imposto. */
+  /** Fracao da receita que vira imposto, no consolidado. */
   cargaSobreReceita: number;
 
   /** Receita de itens sem cadastro fiscal -- lacuna declarada, nao escondida. */
@@ -174,67 +236,75 @@ export interface ResultadoImpostos {
 
   /** `true` se algum imposto usado ainda nao passou pelo contador. */
   temImpostoNaoConfirmado: boolean;
+  /** `true` se algum regime tem tributo relevante desativado. */
+  temTributoDoRegimeInativo: boolean;
 }
 
-/**
- * Apura os impostos do periodo.
- *
- * `pedidos` deve ser o mes analisado; `pedidosHistorico`, a base inteira --
- * o RBT12 olha 12 meses para tras, nao so o mes da tela.
- */
-export function apurarImpostos(
+/** Receita por imposto marcado, dentro de um conjunto de pedidos. */
+function receitaPorImposto(
   pedidos: Pedido[],
-  pedidosHistorico: Pedido[],
-  produtos: Produto[],
-  impostos: Imposto[],
-  config: ConfiguracaoFiscal,
-): ResultadoImpostos {
-  const reconciliacao = reconciliar(pedidos);
-  const baseReceita = reconciliacao.recebido;
-
-  const indice = indexarProdutos(produtos);
-  const ativos = impostos.filter((i) => i.ativo);
-
-  // --- Receita por imposto, para os que dependem do produto ----------------
-  const receitaPorImposto = new Map<string, number>();
-  let receitaSemCadastro = 0;
-  let receitaComCadastro = 0;
-  const semCadastro = new Set<number>();
+  indice: IndiceProdutos,
+): Map<string, number> {
+  const mapa = new Map<string, number>();
 
   for (const pedido of pedidosRecebidos(pedidos)) {
     for (const item of pedido.products) {
-      const receitaItem = paraNumero(item.price) * item.quantity;
       const produto = produtoDoItem(indice, item.product_id, item.variant_id);
+      if (!produto) continue;
 
-      if (!produto) {
-        receitaSemCadastro += receitaItem;
-        semCadastro.add(item.product_id);
-        continue;
-      }
-
-      receitaComCadastro += receitaItem;
+      const receitaItem = paraNumero(item.price) * item.quantity;
       for (const impostoId of produto.impostosIds) {
-        receitaPorImposto.set(
-          impostoId,
-          (receitaPorImposto.get(impostoId) ?? 0) + receitaItem,
-        );
+        mapa.set(impostoId, (mapa.get(impostoId) ?? 0) + receitaItem);
       }
     }
   }
 
-  // --- Tributos fora da guia unica -----------------------------------------
-  const foraDoDAS: LinhaImposto[] = [];
-  for (const imposto of ativos) {
-    if (imposto.dentroDoDAS) continue;
-    if (imposto.baseIncidencia !== "receita") continue;
+  return mapa;
+}
 
-    const base = imposto.aplicacaoPorProduto
-      ? (receitaPorImposto.get(imposto.id) ?? 0)
-      : baseReceita;
+/** Apura um unico grupo (um influencer, ou a sobra sem influencer). */
+function apurarGrupo(
+  identidade: { influencerId: string | null; nome: string; marca: string },
+  fiscal: {
+    regime: RegimeTributario;
+    rbt12Manual: number | null;
+  },
+  pedidosDoMes: Pedido[],
+  pedidosHistorico: Pedido[],
+  indice: IndiceProdutos,
+  impostos: Imposto[],
+): ApuracaoDeUmInfluencer {
+  const baseReceita = reconciliar(pedidosDoMes).recebido;
+  const doRegime = impostosDoRegime(impostos, fiscal.regime);
+  const porImposto = receitaPorImposto(pedidosDoMes, indice);
 
-    if (base <= 0) continue;
+  const noSimples = fiscal.regime === "simples_nacional";
+  const rbt12 = calcularRBT12(pedidosHistorico, fiscal.rbt12Manual);
+  const simples = noSimples ? apurarSimples(rbt12.valor, baseReceita) : null;
+  const monitorTeto = noSimples ? monitorarTeto(rbt12.valor) : null;
 
-    foraDoDAS.push({
+  // --- Tributos que somam ---------------------------------------------------
+  const linhas: LinhaImposto[] = [];
+
+  for (const imposto of doRegime) {
+    if (!imposto.ativo || imposto.dentroDoDAS) continue;
+
+    const base =
+      imposto.baseIncidencia === "lucro"
+        ? // Base presumida: um percentual da receita, menos a deducao mensal
+          // (o adicional de IRPJ so incide sobre o que passa de R$ 20 mil).
+          Math.max(
+            0,
+            (baseReceita * (imposto.percentualPresuncao ?? 100)) / 100 -
+              (imposto.deducaoMensal ?? 0),
+          )
+        : imposto.aplicacaoPorProduto
+          ? (porImposto.get(imposto.id) ?? 0)
+          : baseReceita;
+
+    if (base <= 0 || imposto.aliquota <= 0) continue;
+
+    linhas.push({
       impostoId: imposto.id,
       sigla: imposto.sigla,
       nome: imposto.nome,
@@ -246,85 +316,165 @@ export function apurarImpostos(
       porProduto: imposto.aplicacaoPorProduto,
     });
   }
-  foraDoDAS.sort((a, b) => b.valor - a.valor);
 
-  // --- Guia unica ----------------------------------------------------------
-  const rbt12 = calcularRBT12(pedidosHistorico, config);
-  const noSimples = config.regime === "simples_nacional";
+  if (simples) {
+    linhas.unshift({
+      impostoId: `das-${identidade.influencerId ?? "geral"}`,
+      sigla: "DAS",
+      nome: "Simples Nacional (guia unica)",
+      esfera: "federal",
+      aliquota: simples.aliquotaEfetiva,
+      base: simples.baseDoMes,
+      valor: simples.valorDAS,
+      confirmado: true,
+      porProduto: false,
+    });
+  }
 
-  const simples = noSimples ? apurarSimples(rbt12.valor, baseReceita) : null;
-  const monitorTeto = noSimples ? monitorarTeto(rbt12.valor) : null;
-
+  // --- Detalhamento da guia unica ------------------------------------------
   const detalheDoDAS: LinhaImposto[] = simples
     ? simples.composicao.map((t) => ({
-        impostoId: `das-${t.sigla}`,
+        impostoId: `das-${identidade.influencerId ?? "geral"}-${t.sigla}`,
         sigla: t.sigla,
         nome: t.nome,
-        esfera:
-          t.sigla === "ICMS"
-            ? ("estadual" as const)
-            : ("federal" as const),
+        esfera: t.sigla === "ICMS" ? ("estadual" as const) : ("federal" as const),
         aliquota: t.aliquotaSobreReceita,
         base: baseReceita,
         valor: t.valor,
         confirmado: true,
         porProduto: false,
       }))
-    : ativos
-        .filter((i) => i.dentroDoDAS)
-        .map((i) => ({
-          impostoId: i.id,
-          sigla: i.sigla,
-          nome: i.nome,
-          esfera: i.esfera,
-          aliquota: i.aliquota,
-          base: baseReceita,
-          valor: (baseReceita * i.aliquota) / 100,
-          confirmado: i.confirmadoPeloContador,
-          porProduto: false,
-        }));
+    : [];
 
-  const totalForaDoDAS = foraDoDAS.reduce((s, l) => s + l.valor, 0);
-  const totalSobreVenda = (simples?.valorDAS ?? 0) + totalForaDoDAS;
+  // --- Lacunas declaradas ---------------------------------------------------
+  const inativosDoRegime = doRegime
+    .filter((i) => !i.ativo || i.aliquota <= 0)
+    .map((i) => ({ sigla: i.sigla, nome: i.nome, observacao: i.observacao }));
 
+  const total = linhas.reduce((s, l) => s + l.valor, 0);
+
+  return {
+    ...identidade,
+    regime: fiscal.regime,
+    baseReceita,
+    rbt12,
+    simples,
+    monitorTeto,
+    linhas: linhas.sort((a, b) => b.valor - a.valor),
+    detalheDoDAS,
+    inativosDoRegime,
+    total,
+    cargaSobreReceita: razaoSegura(total, baseReceita),
+  };
+}
+
+/**
+ * Apura os impostos do periodo, um grupo por influencer.
+ *
+ * `pedidosHistorico` e a base inteira: o RBT12 olha 12 meses para tras, nao so
+ * o mes da tela -- e olha por marca, nao no consolidado.
+ */
+export function apurarImpostos(
+  pedidosDoMes: Pedido[],
+  pedidosHistorico: Pedido[],
+  produtos: Produto[],
+  impostos: Imposto[],
+  influencers: Influencer[],
+  configPadrao: ConfiguracaoFiscal,
+): ResultadoImpostos {
+  const indice = indexarProdutos(produtos);
+
+  // Um influencer por marca. Havendo mais de um cadastrado para a mesma marca,
+  // o primeiro ativo manda -- produto pertence a um influencer so.
+  const influencerDaMarca = new Map<string, Influencer>();
+  for (const influencer of influencers) {
+    if (!influencer.ativo) continue;
+    if (!influencerDaMarca.has(influencer.marca)) {
+      influencerDaMarca.set(influencer.marca, influencer);
+    }
+  }
+
+  const marcas = [...new Set(pedidosDoMes.map((p) => p.marca))].sort((a, b) =>
+    a.localeCompare(b, "pt-BR"),
+  );
+
+  const porInfluencer = marcas.map((marca) => {
+    const influencer = influencerDaMarca.get(marca) ?? null;
+    const doMes = pedidosDoMes.filter((p) => p.marca === marca);
+    const historico = pedidosHistorico.filter((p) => p.marca === marca);
+
+    return apurarGrupo(
+      {
+        influencerId: influencer?.id ?? null,
+        nome: influencer?.nome ?? "Sem influencer vinculado",
+        marca,
+      },
+      {
+        regime: influencer?.regime ?? configPadrao.regime,
+        rbt12Manual: influencer?.rbt12Manual ?? configPadrao.rbt12Manual,
+      },
+      doMes,
+      historico,
+      indice,
+      impostos,
+    );
+  });
+
+  // --- Cobertura do cadastro fiscal ----------------------------------------
+  let receitaSemCadastro = 0;
+  let receitaComCadastro = 0;
+  const semCadastro = new Set<number>();
+
+  for (const pedido of pedidosRecebidos(pedidosDoMes)) {
+    for (const item of pedido.products) {
+      const receitaItem = paraNumero(item.price) * item.quantity;
+      const produto = produtoDoItem(indice, item.product_id, item.variant_id);
+
+      if (produto) receitaComCadastro += receitaItem;
+      else {
+        receitaSemCadastro += receitaItem;
+        semCadastro.add(item.product_id);
+      }
+    }
+  }
+
+  const baseReceita = porInfluencer.reduce((s, a) => s + a.baseReceita, 0);
+  const totalSobreVenda = porInfluencer.reduce((s, a) => s + a.total, 0);
   const receitaTotal = receitaComCadastro + receitaSemCadastro;
 
   return {
+    porInfluencer: porInfluencer.sort((a, b) => b.total - a.total),
     baseReceita,
-    simples,
-    monitorTeto,
-    rbt12,
-    foraDoDAS,
-    detalheDoDAS,
     totalSobreVenda,
     cargaSobreReceita: razaoSegura(totalSobreVenda, baseReceita),
     receitaSemCadastro,
     produtosSemCadastro: semCadastro.size,
     cobertura: razaoSegura(receitaComCadastro, receitaTotal),
-    temImpostoNaoConfirmado: foraDoDAS.some((l) => !l.confirmado),
+    temImpostoNaoConfirmado: porInfluencer.some((a) =>
+      a.linhas.some((l) => !l.confirmado),
+    ),
+    temTributoDoRegimeInativo: porInfluencer.some(
+      (a) => a.inativosDoRegime.length > 0,
+    ),
   };
 }
 
-/**
- * Todas as linhas de imposto que efetivamente somam, ja incluindo o DAS
- * como uma linha unica. E o que a tela de detalhamento mostra.
- */
-export function linhasQueSomam(resultado: ResultadoImpostos): LinhaImposto[] {
-  const linhas = [...resultado.foraDoDAS];
+/** Consolida as linhas de todas as apuracoes, somando por sigla. */
+export function linhasConsolidadas(resultado: ResultadoImpostos): LinhaImposto[] {
+  const porSigla = new Map<string, LinhaImposto>();
 
-  if (resultado.simples) {
-    linhas.unshift({
-      impostoId: "das",
-      sigla: "DAS",
-      nome: "Simples Nacional (guia unica)",
-      esfera: "federal",
-      aliquota: resultado.simples.aliquotaEfetiva,
-      base: resultado.simples.baseDoMes,
-      valor: resultado.simples.valorDAS,
-      confirmado: true,
-      porProduto: false,
-    });
+  for (const apuracao of resultado.porInfluencer) {
+    for (const linha of apuracao.linhas) {
+      const atual = porSigla.get(linha.sigla);
+      if (atual) {
+        atual.base += linha.base;
+        atual.valor += linha.valor;
+        atual.confirmado = atual.confirmado && linha.confirmado;
+      } else {
+        porSigla.set(linha.sigla, { ...linha, impostoId: linha.sigla });
+      }
+    }
   }
 
-  return linhas.sort((a, b) => b.valor - a.valor);
+  return [...porSigla.values()].sort((a, b) => b.valor - a.valor);
 }

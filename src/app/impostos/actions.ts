@@ -24,6 +24,22 @@ const booleano = z.preprocess(
   z.boolean(),
 );
 
+const listaDeRegimes = z.preprocess(
+  (v) => (Array.isArray(v) ? v : v === undefined || v === null ? [] : [v]),
+  z.array(z.enum(["simples_nacional", "lucro_presumido", "lucro_real"])),
+);
+
+const numeroOpcional = z.preprocess((entrada) => {
+  if (typeof entrada !== "string") return entrada;
+  const limpo = entrada
+    .replace(/[R$%\s]/g, "")
+    .replace(/\.(?=\d{3}(\D|$))/g, "")
+    .replace(",", ".");
+  if (limpo === "") return null;
+  const n = Number(limpo);
+  return Number.isFinite(n) ? n : Number.NaN;
+}, z.number({ invalid_type_error: "Valor invalido" }).min(0).nullable());
+
 const esquemaImposto = z.object({
   id: z.string().optional(),
   nome: z.string().trim().min(1, "Informe o nome do imposto").max(160),
@@ -31,6 +47,9 @@ const esquemaImposto = z.object({
   esfera: z.enum(["federal", "estadual", "municipal"]),
   baseIncidencia: z.enum(["receita", "lucro"]),
   aliquota: percentualDigitado,
+  regimes: listaDeRegimes,
+  percentualPresuncao: numeroOpcional,
+  deducaoMensal: numeroOpcional,
   dentroDoDAS: booleano,
   aplicacaoPorProduto: booleano,
   ativo: booleano,
@@ -51,6 +70,9 @@ export async function salvarImposto(
     esfera: formData.get("esfera"),
     baseIncidencia: formData.get("baseIncidencia") ?? "receita",
     aliquota: formData.get("aliquota") ?? "0",
+    regimes: formData.getAll("regimes"),
+    percentualPresuncao: formData.get("percentualPresuncao") ?? "",
+    deducaoMensal: formData.get("deducaoMensal") ?? "",
     dentroDoDAS: formData.get("dentroDoDAS") ?? "false",
     aplicacaoPorProduto: formData.get("aplicacaoPorProduto") ?? "false",
     ativo: formData.get("ativo") ?? "false",
@@ -86,6 +108,7 @@ export async function salvarImposto(
   revalidatePath("/impostos");
   revalidatePath("/");
   revalidatePath("/produtos");
+  revalidatePath("/comissoes");
 
   return { ok: true, mensagem: `Imposto "${entrada.sigla}" salvo.` };
 }

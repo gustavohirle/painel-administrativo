@@ -248,13 +248,32 @@ do percentual do simulador da 5.2. Um é a realidade, o outro é cenário.
 ### 5.9 Cadastro de comissões
 
 Cada influencer tem: nome, marca, percentual, base de cálculo
-(`bruto` | `recebido` | `receitaReal`) e ativo/inativo. Influencer inativo não
-entra em nenhum cálculo.
+(`bruto` | `recebido` | `receitaReal`), **regime tributário** (ver 5.10) e
+ativo/inativo. Influencer inativo não entra em nenhum cálculo, nem de comissão
+nem de imposto.
+
+Um influencer por marca. Dois influencers na mesma marca tornariam ambíguo o
+regime dos produtos dela — o primeiro ativo manda.
 
 ### 5.10 Impostos
 
-Regime configurável: Simples Nacional (padrão, Anexo II), Lucro Presumido ou
-Lucro Real. No Simples:
+**O regime tributário mora no influencer, não numa configuração global.**
+
+Cada influencer tem a sua marca, a sua loja Nuvemshop e os seus produtos — um
+produto nunca pertence a dois. Na prática cada um é uma operação separada, e o
+enquadramento acompanha o porte: as duas marcas menores cabem no Simples
+Nacional; as três maiores passariam do teto de R$ 4,8 mi/ano e ficam no Lucro
+Presumido. Apurar tudo num regime só daria um número que não corresponde a
+nenhuma delas.
+
+A cadeia é: **produto → influencer → regime → impostos**. Trocar o influencer
+de um produto troca o conjunto de tributos que incide sobre ele, e o formulário
+faz isso na hora.
+
+A configuração global sobrou apenas como *fallback* para marcas ainda sem
+influencer vinculado.
+
+No Simples:
 
 ```
 RBT12          = receita bruta dos últimos 12 meses (recebido, não faturado)
@@ -270,18 +289,33 @@ fechado; a quebra por tributo é só leitura. Somar as duas coisas dobra o
 imposto. Por isso o cadastro de impostos guarda **apenas** o que é recolhido
 por fora da guia.
 
-O painel monitora os dois limites do regime, que são diferentes: passar do
-**sublimite** (R$ 3,6 mi) tira só o ICMS da guia; passar do **teto**
-(R$ 4,8 mi) desenquadra do regime.
+O painel monitora os dois limites do regime **por marca**, que são diferentes:
+passar do **sublimite** (R$ 3,6 mi) tira só o ICMS da guia; passar do **teto**
+(R$ 4,8 mi) desenquadra do regime. O RBT12 também é por marca — somar as cinco
+jogaria uma empresa pequena numa faixa que não é a dela.
+
+Fora do Simples, um tributo pode incidir sobre a receita ou sobre **lucro
+presumido**: base = `presunção × receita − dedução mensal`. A dedução existe
+por causa do adicional de IRPJ, que é 10% sobre o que exceder R$ 20 mil/mês da
+base presumida — sem ela, seria cobrado desde o primeiro real.
+
+**Tributo do regime que está inativo não some em silêncio.** Ele volta em
+`inativosDoRegime` e a tela diz "o ICMS não está nesta conta", em vez de exibir
+um total menor sem explicar por quê.
 
 Toda alíquota carrega `confirmadoPeloContador`, que começa `false` e aparece
 na tela como aviso. O painel nunca apresenta número fiscal como definitivo.
 
 ### 5.11 Cadastro de produtos e kits
 
-A Nuvemshop sabe o que vendeu e por quanto. Ela **não** sabe o NCM, quais
-tributos incidem sobre cada item, nem que um "Kit Barba" consome um tônico e um
-shampoo — ela entrega o kit como **um** produto, com `product_id` próprio.
+A Nuvemshop sabe o que vendeu e por quanto. Ela **não** sabe de quem é o
+produto, o NCM, nem que um "Kit Barba" consome um tônico e um shampoo — ela
+entrega o kit como **um** produto, com `product_id` próprio.
+
+Cada produto aponta para **um** influencer (`influencerId`). Os impostos vêm
+marcados sozinhos, a partir do regime desse influencer, e continuam editáveis:
+o cadastro sugere, quem entende decide. Desmarcar tira o imposto só daquele
+produto.
 
 ```
 custo do kit = ficha própria, se houver
@@ -348,6 +382,12 @@ soma não bater, o cliente percebe.
 | Marcas | 5 |
 | Meses de histórico | 6 |
 
+Regimes semeados, escolhidos pelo porte de cada marca: Verte Natural e Nitro
+Hair no **Simples Nacional** (~R$ 2,7–2,8 mi/ano, 5ª faixa, ~11% efetivo);
+Aurora, Luma e Petra no **Lucro Presumido** (R$ 7–9 mi/ano, acima do teto do
+Simples). É isso que torna o cenário de R$ 3,1 mi/mês coerente sem baixar a
+escala: são cinco operações, não uma.
+
 Taxas de não pagamento por método, que são as ordens de grandeza reais do
 Brasil: cartão ~4%, Pix ~20%, boleto ~60%. Distribuição de pedidos:
 cartão ~58%, Pix ~26%, boleto ~16%.
@@ -360,12 +400,10 @@ baixo. É por isso que taxas de 4/20/60 por pedido produzem ~14% em valor.
 Nomes de marcas e influencers são **claramente fictícios**. Nunca use nomes de
 influencers ou marcas reais.
 
-**`ESCALA_CENARIO` em `geradorPedidos.ts` escala o cenário inteiro.** Existe por
-causa de um conflito real: R$ 3,1 mi/mês projeta ~R$ 30 mi em 12 meses, contra
-um teto de R$ 4,8 mi no Simples. Com escala 1 e regime Simples, o painel mostra
-— corretamente — a empresa desenquadrada, alíquota de 6ª faixa (~27%) e lucro
-quase zero. Duas saídas: apresentar em Lucro Presumido, ou baixar a escala para
-0,12 (~R$ 373 mil/mês, 5ª faixa, ~12% efetivo).
+**`ESCALA_CENARIO` em `geradorPedidos.ts` escala o cenário inteiro.** Continua
+existindo, mas deixou de ser necessária depois que o regime passou a ser por
+influencer: com cinco operações separadas, cada uma cai na faixa que lhe cabe.
+Só mexa nela se quiser simular a empresa inteira num CNPJ só.
 
 As contagens de estoque iniciais são calculadas **de trás para frente**:
 `quantidade = o que já saiu desde a data da contagem + cobertura desejada`.

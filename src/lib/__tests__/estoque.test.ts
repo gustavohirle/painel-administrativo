@@ -75,6 +75,7 @@ function produto(parcial: Partial<Produto> = {}): Produto {
     sku: null,
     ncm: null,
     origem: "nuvemshop",
+    influencerId: null,
     impostosIds: [],
     ehKit: false,
     componentes: [],

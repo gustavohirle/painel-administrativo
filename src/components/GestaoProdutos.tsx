@@ -5,7 +5,7 @@ import { Fragment, useActionState, useMemo, useState } from "react";
 import { removerProduto, salvarProduto } from "@/app/produtos/actions";
 import { inteiro } from "@/lib/format";
 import { ESTADO_INICIAL } from "@/types/formulario";
-import type { Imposto } from "@/types/fiscal";
+import type { Imposto, RegimeTributario } from "@/types/fiscal";
 import type { ComponenteKit, Produto } from "@/types/produto";
 
 /** Opcao selecionavel como componente de kit. */
@@ -14,9 +14,24 @@ export interface OpcaoComponente {
   nome: string;
 }
 
+/** O que a tela precisa saber de cada influencer: quem e, e em que regime esta. */
+export interface OpcaoInfluencer {
+  id: string;
+  nome: string;
+  marca: string;
+  regime: RegimeTributario;
+}
+
+const ROTULO_REGIME: Record<RegimeTributario, string> = {
+  simples_nacional: "Simples Nacional",
+  lucro_presumido: "Lucro Presumido",
+  lucro_real: "Lucro Real",
+};
+
 interface GestaoProdutosProps {
   produtos: Produto[];
   impostos: Imposto[];
+  influencers: OpcaoInfluencer[];
   /** Unidades vendidas no mes, por chave. Ordena a lista pelo que importa. */
   vendasPorChave: Record<string, number>;
   podeVerFinanceiro: boolean;
@@ -25,11 +40,12 @@ interface GestaoProdutosProps {
 export function GestaoProdutos({
   produtos,
   impostos,
+  influencers,
   vendasPorChave,
   podeVerFinanceiro,
 }: GestaoProdutosProps) {
   const [busca, setBusca] = useState("");
-  const [filtro, setFiltro] = useState<"todos" | "kits" | "semNcm">("todos");
+  const [filtro, setFiltro] = useState<"todos" | "kits" | "semDono">("todos");
   const [editando, setEditando] = useState<Produto | null | "novo">(null);
 
   const opcoes: OpcaoComponente[] = useMemo(
@@ -45,7 +61,7 @@ export function GestaoProdutos({
     const termo = busca.trim().toLowerCase();
     return produtos.filter((produto) => {
       if (filtro === "kits" && !produto.ehKit) return false;
-      if (filtro === "semNcm" && produto.ncm) return false;
+      if (filtro === "semDono" && produto.influencerId) return false;
       if (!termo) return true;
       return (
         produto.nome.toLowerCase().includes(termo) ||
@@ -56,8 +72,9 @@ export function GestaoProdutos({
   }, [produtos, busca, filtro]);
 
   const kits = produtos.filter((p) => p.ehKit);
-  const semNcm = produtos.filter((p) => !p.ncm);
-  const colunas = podeVerFinanceiro ? 6 : 5;
+  const semDono = produtos.filter((p) => !p.influencerId);
+  const porId = new Map(influencers.map((i) => [i.id, i]));
+  const colunas = podeVerFinanceiro ? 7 : 6;
 
   return (
     <div className="space-y-5">
@@ -67,7 +84,7 @@ export function GestaoProdutos({
             [
               ["todos", `Todos (${produtos.length})`],
               ["kits", `Kits (${kits.length})`],
-              ["semNcm", `Sem NCM (${semNcm.length})`],
+              ["semDono", `Sem influencer (${semDono.length})`],
             ] as const
           ).map(([valor, rotulo]) => (
             <button
@@ -106,6 +123,7 @@ export function GestaoProdutos({
         <FormularioProduto
           produto={null}
           impostos={impostos}
+          influencers={influencers}
           opcoes={opcoes}
           aoFechar={() => setEditando(null)}
         />
@@ -116,9 +134,10 @@ export function GestaoProdutos({
           <thead>
             <tr className="border-b border-borda-forte text-left text-xs uppercase tracking-wider text-tinta-fraca">
               <th className="py-2.5 pr-4 font-semibold">Produto</th>
+              <th className="py-2.5 pr-4 font-semibold">Influencer</th>
               <th className="py-2.5 pr-4 font-semibold">NCM</th>
               <th className="py-2.5 pr-4 font-semibold">Tipo</th>
-              <th className="py-2.5 pr-4 font-semibold">Impostos marcados</th>
+              <th className="py-2.5 pr-4 font-semibold">Impostos do regime</th>
               {podeVerFinanceiro && (
                 <th
                   className="py-2.5 pr-4 text-right font-semibold"
@@ -149,6 +168,28 @@ export function GestaoProdutos({
                         {produto.sku}
                       </p>
                     )}
+                  </td>
+                  <td className="py-3 pr-4">
+                    {(() => {
+                      const dono = produto.influencerId
+                        ? porId.get(produto.influencerId)
+                        : undefined;
+                      if (!dono) {
+                        return (
+                          <span className="text-xs font-semibold uppercase text-naopago">
+                            sem influencer
+                          </span>
+                        );
+                      }
+                      return (
+                        <>
+                          <p className="font-medium text-tinta">{dono.nome}</p>
+                          <p className="text-xs text-tinta-fraca">
+                            {ROTULO_REGIME[dono.regime]}
+                          </p>
+                        </>
+                      );
+                    })()}
                   </td>
                   <td className="numerico py-3 pr-4 text-tinta-media">
                     {produto.ncm ?? (
@@ -218,6 +259,7 @@ export function GestaoProdutos({
                         <FormularioProduto
                           produto={produto}
                           impostos={impostos}
+                          influencers={influencers}
                           opcoes={opcoes}
                           aoFechar={() => setEditando(null)}
                         />
@@ -248,11 +290,13 @@ export function GestaoProdutos({
 function FormularioProduto({
   produto,
   impostos,
+  influencers,
   opcoes,
   aoFechar,
 }: {
   produto: Produto | null;
   impostos: Imposto[];
+  influencers: OpcaoInfluencer[];
   opcoes: OpcaoComponente[];
   aoFechar: () => void;
 }) {
@@ -267,8 +311,35 @@ function FormularioProduto({
     produto?.componentes ?? [],
   );
 
-  const porProduto = impostos.filter((i) => i.aplicacaoPorProduto);
-  const globais = impostos.filter((i) => !i.aplicacaoPorProduto);
+  const [influencerId, setInfluencerId] = useState(produto?.influencerId ?? "");
+  const dono = influencers.find((i) => i.id === influencerId) ?? null;
+
+  /*
+   * Impostos derivados do REGIME do influencer dono.
+   *
+   * E o que faz o cadastro se preencher sozinho: escolhido o influencer, o
+   * painel sabe o regime dele e ja marca os tributos daquele conjunto. Trocar
+   * o influencer troca a lista inteira, porque um produto do Simples e um do
+   * Presumido nao pagam os mesmos tributos.
+   */
+  const doRegime = dono
+    ? impostos.filter((i) => i.regimes.includes(dono.regime))
+    : [];
+
+  const [marcados, setMarcados] = useState<string[]>(
+    produto?.impostosIds ?? [],
+  );
+
+  function trocarInfluencer(novoId: string) {
+    setInfluencerId(novoId);
+    const novoDono = influencers.find((i) => i.id === novoId) ?? null;
+    // Ao trocar o dono, os impostos do novo regime entram ja marcados.
+    setMarcados(
+      novoDono
+        ? impostos.filter((i) => i.regimes.includes(novoDono.regime)).map((i) => i.id)
+        : [],
+    );
+  }
 
   function adicionarComponente() {
     const primeira = opcoes[0];
@@ -342,6 +413,29 @@ function FormularioProduto({
           </label>
         </div>
 
+        <label className="block">
+          <span className="text-sm font-medium text-tinta">
+            Influencer dono deste produto
+          </span>
+          <select
+            name="influencerId"
+            value={influencerId}
+            onChange={(e) => trocarInfluencer(e.target.value)}
+            className="mt-1 w-full rounded-lg border border-borda-forte bg-superficie px-3 py-2 text-tinta focus:border-tinta focus:outline-none"
+          >
+            <option value="">Sem influencer vinculado</option>
+            {influencers.map((i) => (
+              <option key={i.id} value={i.id}>
+                {i.nome} — {i.marca} ({ROTULO_REGIME[i.regime]})
+              </option>
+            ))}
+          </select>
+          <span className="mt-1 block text-xs leading-relaxed text-tinta-media">
+            Um produto pertence a um influencer so. E o regime dele que define
+            quais impostos incidem sobre este item.
+          </span>
+        </label>
+
         <div className="grid gap-4 sm:grid-cols-2">
           <label className="block">
             <span className="text-sm font-medium text-tinta">
@@ -378,50 +472,78 @@ function FormularioProduto({
         {/* --- Impostos --------------------------------------------------- */}
         <fieldset className="rounded-lg border border-borda bg-fundo px-5 py-4">
           <legend className="px-2 text-sm font-medium text-tinta">
-            Impostos que incidem sobre este produto
+            Impostos deste produto
           </legend>
 
-          {porProduto.length === 0 ? (
+          {!dono ? (
             <p className="text-sm text-tinta-media">
-              Nenhum imposto por produto cadastrado.
+              Escolha o influencer dono acima. Os impostos aparecem sozinhos, a
+              partir do regime tributario dele.
+            </p>
+          ) : doRegime.length === 0 ? (
+            <p className="text-sm text-tinta-media">
+              Nenhum imposto cadastrado para o regime{" "}
+              {ROTULO_REGIME[dono.regime]}. Cadastre em Impostos.
             </p>
           ) : (
-            <div className="grid gap-3 sm:grid-cols-2">
-              {porProduto.map((imposto) => (
-                <label key={imposto.id} className="flex items-start gap-2">
-                  <input
-                    type="checkbox"
-                    name="impostosIds"
-                    value={imposto.id}
-                    defaultChecked={produto?.impostosIds.includes(imposto.id) ?? true}
-                    className="mt-0.5 h-4 w-4 accent-[var(--color-tinta)]"
-                  />
-                  <span>
-                    <span className="block text-sm font-medium text-tinta">
-                      {imposto.sigla}
-                      {!imposto.ativo && (
-                        <span className="ml-2 text-xs font-normal text-tinta-fraca">
-                          (inativo no cadastro fiscal)
-                        </span>
-                      )}
-                    </span>
-                    <span className="block text-xs text-tinta-media">
-                      {imposto.nome}
-                    </span>
-                  </span>
-                </label>
-              ))}
-            </div>
-          )}
+            <>
+              <p className="mb-3 text-xs leading-relaxed text-tinta-media">
+                Preenchidos a partir do regime{" "}
+                <strong className="text-tinta">{ROTULO_REGIME[dono.regime]}</strong>,
+                de {dono.nome}. Desmarcar aqui tira o imposto so deste produto.
+              </p>
 
-          {globais.length > 0 && (
-            <p className="mt-4 border-t border-borda pt-3 text-xs leading-relaxed text-tinta-media">
-              <strong className="text-tinta">
-                {globais.map((i) => i.sigla).join(", ")}
-              </strong>{" "}
-              incidem sobre toda a receita e nao precisam ser marcados por
-              produto. A guia unica do Simples tambem entra sobre o total.
-            </p>
+              <div className="grid gap-3 sm:grid-cols-2">
+                {doRegime.map((imposto) => (
+                  <label key={imposto.id} className="flex items-start gap-2">
+                    <input
+                      type="checkbox"
+                      name="impostosIds"
+                      value={imposto.id}
+                      checked={marcados.includes(imposto.id)}
+                      onChange={(e) =>
+                        setMarcados((atual) =>
+                          e.target.checked
+                            ? [...atual, imposto.id]
+                            : atual.filter((id) => id !== imposto.id),
+                        )
+                      }
+                      className="mt-0.5 h-4 w-4 accent-[var(--color-tinta)]"
+                    />
+                    <span>
+                      <span className="block text-sm font-medium text-tinta">
+                        {imposto.sigla}{" "}
+                        <span className="numerico font-normal text-tinta-media">
+                          {imposto.aliquota > 0
+                            ? `${String(imposto.aliquota).replace(".", ",")}%`
+                            : ""}
+                        </span>
+                        {!imposto.ativo && (
+                          <span className="ml-1 text-xs font-normal text-naopago">
+                            (sem aliquota informada)
+                          </span>
+                        )}
+                      </span>
+                      <span className="block text-xs text-tinta-media">
+                        {imposto.nome}
+                        {imposto.aplicacaoPorProduto
+                          ? " · depende do produto"
+                          : " · incide sobre toda a receita"}
+                      </span>
+                    </span>
+                  </label>
+                ))}
+              </div>
+
+              {dono.regime === "simples_nacional" && (
+                <p className="mt-4 border-t border-borda pt-3 text-xs leading-relaxed text-tinta-media">
+                  No Simples Nacional, IRPJ, CSLL, PIS, COFINS, CPP, IPI e ICMS
+                  ja estao dentro da guia unica e por isso nao aparecem aqui --
+                  eles entram no calculo pela tabela do Anexo, sobre a receita
+                  inteira da marca.
+                </p>
+              )}
+            </>
           )}
         </fieldset>
 

@@ -52,6 +52,12 @@ const esquema = z.object({
   sku: z.string().trim().max(120).nullable().optional(),
   ncm: z.string().trim().max(20).nullable().optional(),
   origem: z.enum(["nuvemshop", "manual"]),
+  // Um produto pertence a UM influencer. E dele que vem o regime, e do regime
+  // vem o conjunto de impostos sugerido no formulario.
+  influencerId: z.preprocess(
+    (v) => (v === "" || v === null || v === undefined ? null : v),
+    z.string().nullable(),
+  ),
   impostosIds: z.preprocess(
     (v) => (Array.isArray(v) ? v : v === undefined || v === null ? [] : [v]),
     z.array(z.string()),
@@ -76,6 +82,7 @@ export async function salvarProduto(
     sku: formData.get("sku") || null,
     ncm: formData.get("ncm") || null,
     origem: formData.get("origem") ?? "manual",
+    influencerId: formData.get("influencerId") ?? null,
     // Checkbox repetido chega como varios valores no mesmo nome.
     impostosIds: formData.getAll("impostosIds"),
     ehKit: formData.get("ehKit") ?? "false",
@@ -125,6 +132,7 @@ export async function salvarProduto(
         sku: dados.sku ?? null,
         ncm: dados.ncm ?? null,
         origem: dados.origem,
+        influencerId: dados.influencerId,
         impostosIds: dados.impostosIds,
         ehKit: dados.ehKit,
         componentes: dados.ehKit ? dados.componentes : [],

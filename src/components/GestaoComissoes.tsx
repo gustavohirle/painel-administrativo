@@ -6,12 +6,28 @@ import { removerInfluencer, salvarInfluencer } from "@/app/comissoes/actions";
 import { ESTADO_INICIAL } from "@/types/formulario";
 import { moeda, percentual } from "@/lib/format";
 import type { BaseComissao, Influencer } from "@/types/dominio";
+import type { RegimeTributario } from "@/types/fiscal";
 import type { ComissaoInfluencer } from "@/lib/costing";
 
 const ROTULO_BASE: Record<BaseComissao, string> = {
   bruto: "Faturamento bruto",
   recebido: "Dinheiro recebido",
   receitaReal: "Receita real (sem frete)",
+};
+
+const ROTULO_REGIME: Record<RegimeTributario, string> = {
+  simples_nacional: "Simples Nacional",
+  lucro_presumido: "Lucro Presumido",
+  lucro_real: "Lucro Real",
+};
+
+const EXPLICACAO_REGIME: Record<RegimeTributario, string> = {
+  simples_nacional:
+    "Guia unica, aliquota efetiva pela receita de 12 meses desta marca. Teto de R$ 4,8 mi/ano.",
+  lucro_presumido:
+    "PIS/COFINS cumulativos; IRPJ e CSLL sobre base presumida da receita.",
+  lucro_real:
+    "PIS/COFINS nao cumulativos com credito; IRPJ e CSLL sobre o lucro efetivo.",
 };
 
 const EXPLICACAO_BASE: Record<BaseComissao, string> = {
@@ -62,6 +78,7 @@ export function GestaoComissoes({
             <tr className="border-b border-borda-forte text-left text-xs uppercase tracking-wider text-tinta-fraca">
               <th className="py-2.5 pr-4 font-semibold">Influencer</th>
               <th className="py-2.5 pr-4 font-semibold">Marca</th>
+              <th className="py-2.5 pr-4 font-semibold">Regime</th>
               <th className="py-2.5 pr-4 text-right font-semibold">Percentual</th>
               <th className="py-2.5 pr-4 font-semibold">Base de calculo</th>
               <th className="py-2.5 pr-4 text-right font-semibold">Valor base</th>
@@ -96,6 +113,17 @@ export function GestaoComissoes({
                     )}
                   </td>
                   <td className="py-3 pr-4 text-tinta-media">{influencer.marca}</td>
+                  <td className="py-3 pr-4">
+                    <span
+                      className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
+                        influencer.regime === "simples_nacional"
+                          ? "bg-real-claro text-real"
+                          : "bg-fundo text-tinta"
+                      }`}
+                    >
+                      {ROTULO_REGIME[influencer.regime]}
+                    </span>
+                  </td>
                   <td className="numerico py-3 pr-4 text-right font-semibold text-tinta">
                     {percentual(influencer.percentual / 100)}
                   </td>
@@ -134,7 +162,7 @@ export function GestaoComissoes({
                   */}
                   {aberto && (
                     <tr>
-                      <td colSpan={7} className="p-0 pb-4">
+                      <td colSpan={8} className="p-0 pb-4">
                         <FormularioInfluencer
                           influencer={influencer}
                           marcas={marcas}
@@ -149,7 +177,7 @@ export function GestaoComissoes({
 
             {influencers.length === 0 && (
               <tr>
-                <td colSpan={7} className="py-10 text-center text-tinta-media">
+                <td colSpan={8} className="py-10 text-center text-tinta-media">
                   Nenhum contrato cadastrado ainda.
                 </td>
               </tr>
@@ -183,6 +211,9 @@ function FormularioInfluencer({
   );
   const [base, setBase] = useState<BaseComissao>(
     influencer?.baseComissao ?? "bruto",
+  );
+  const [regime, setRegime] = useState<RegimeTributario>(
+    influencer?.regime ?? "simples_nacional",
   );
 
   return (
@@ -277,6 +308,99 @@ function FormularioInfluencer({
                 </span>
               </label>
             ))}
+          </div>
+        </fieldset>
+
+        <fieldset className="rounded-lg border border-borda bg-fundo px-5 py-4">
+          <legend className="px-2 text-sm font-medium text-tinta">
+            Regime tributario desta marca
+          </legend>
+          <p className="mb-3 text-xs leading-relaxed text-tinta-media">
+            Cada marca e uma operacao com o seu proprio enquadramento. E daqui
+            que sai o imposto de <strong>todos os produtos</strong> deste
+            influencer: mudar o regime muda o conjunto de tributos que o
+            cadastro de produto sugere.
+          </p>
+
+          <div className="grid gap-3 xl:grid-cols-3">
+            {(
+              ["simples_nacional", "lucro_presumido", "lucro_real"] as const
+            ).map((valor) => (
+              <label
+                key={valor}
+                className={`cursor-pointer rounded-lg border-2 px-4 py-3 transition-colors ${
+                  regime === valor
+                    ? "border-tinta bg-superficie"
+                    : "border-borda hover:border-borda-forte"
+                }`}
+              >
+                <span className="flex items-center gap-2">
+                  <input
+                    type="radio"
+                    name="regime"
+                    value={valor}
+                    checked={regime === valor}
+                    onChange={() => setRegime(valor)}
+                    className="accent-[var(--color-tinta)]"
+                  />
+                  <span className="text-sm font-semibold text-tinta">
+                    {ROTULO_REGIME[valor]}
+                  </span>
+                </span>
+                <span className="mt-1 block text-xs leading-relaxed text-tinta-media">
+                  {EXPLICACAO_REGIME[valor]}
+                </span>
+              </label>
+            ))}
+          </div>
+
+          <div className="mt-4 grid gap-4 sm:grid-cols-3">
+            <label className="block">
+              <span className="text-sm font-medium text-tinta">
+                Anexo do Simples
+              </span>
+              <select
+                name="anexoSimples"
+                defaultValue={influencer?.anexoSimples ?? "II"}
+                disabled={regime !== "simples_nacional"}
+                className="mt-1 w-full rounded-lg border border-borda-forte bg-superficie px-3 py-2 text-tinta disabled:opacity-50"
+              >
+                {(["I", "II", "III", "IV", "V"] as const).map((a) => (
+                  <option key={a} value={a}>
+                    Anexo {a}
+                    {a === "II" ? " (Industria)" : ""}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="block">
+              <span className="text-sm font-medium text-tinta">UF</span>
+              <input
+                name="uf"
+                maxLength={2}
+                defaultValue={influencer?.uf ?? "GO"}
+                className="mt-1 w-full rounded-lg border border-borda-forte bg-superficie px-3 py-2 uppercase text-tinta focus:border-tinta focus:outline-none"
+              />
+            </label>
+
+            <label className="block">
+              <span className="text-sm font-medium text-tinta">
+                Receita de 12 meses{" "}
+                <span className="text-tinta-fraca">(opcional)</span>
+              </span>
+              <input
+                name="rbt12Manual"
+                inputMode="decimal"
+                placeholder="Calcular do historico"
+                defaultValue={
+                  influencer?.rbt12Manual == null
+                    ? ""
+                    : String(influencer.rbt12Manual).replace(".", ",")
+                }
+                className="numerico mt-1 w-full rounded-lg border border-borda-forte bg-superficie px-3 py-2 text-right text-tinta focus:border-tinta focus:outline-none"
+              />
+            </label>
           </div>
         </fieldset>
 

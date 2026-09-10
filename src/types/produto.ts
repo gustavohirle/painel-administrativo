@@ -66,7 +66,22 @@ export interface Produto {
 
   origem: OrigemProduto;
 
-  /** Ids dos impostos marcados no cadastro (os `aplicacaoPorProduto`). */
+  /**
+   * Influencer dono do produto. `null` enquanto ninguem vinculou.
+   *
+   * Um produto pertence a UM influencer -- nao existe produto vendido por
+   * dois. E deste vinculo que sai o regime tributario aplicado ao item, e
+   * portanto os impostos que incidem sobre ele.
+   */
+  influencerId: string | null;
+
+  /**
+   * Impostos marcados no cadastro.
+   *
+   * Sao pre-preenchidos automaticamente a partir do regime do influencer, e
+   * ficam editaveis: o cadastro sugere, quem entende decide. Desmarcar aqui
+   * tira o imposto so deste produto.
+   */
   impostosIds: string[];
 
   /**

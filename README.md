@@ -51,9 +51,9 @@ verificam que os totais da base de demonstração batem com o cenário esperado.
 | `/entrar` | — | Login. Em modo demonstração, mostra as credenciais de teste |
 | `/` | dono | Cascata do faturamento, raio-x do resultado, carga tributária, simulador de comissão, meios de pagamento, evolução de 6 meses |
 | `/custos` | dono, estoque | Custo de fabricação por produto/variante. Preço de venda e margem só para o dono |
-| `/comissoes` | dono | Influencers e a base de cálculo de cada contrato |
-| `/impostos` | dono | Regime tributário, apuração do mês, monitor dos limites do Simples |
-| `/produtos` | dono, estoque | NCM, impostos por produto e composição dos kits |
+| `/comissoes` | dono | Influencers: contrato de comissão **e** regime tributário de cada marca |
+| `/impostos` | dono | Apuração marca a marca, cadastro de tributos por regime, monitor dos limites do Simples |
+| `/produtos` | dono, estoque | Influencer dono, NCM e composição dos kits. Os impostos vêm do regime do influencer |
 | `/estoque` | dono, estoque | Saldo por item e registro de contagens |
 
 O seletor de mês no topo vale para todas as telas.
@@ -158,13 +158,22 @@ Assim o cálculo é idempotente: recarregar a página não derruba o estoque.
 
 ### Impostos
 
-No Simples Nacional, a alíquota que se paga é a **efetiva** — a da tabela menos
-a parcela a deduzir, dependente da receita de 12 meses. O que está dentro da
-guia única nunca soma no total; a quebra por tributo é só leitura.
+**O regime é do influencer, não da empresa toda.** Cada marca é uma operação
+separada: as menores cabem no Simples Nacional, as maiores passariam do teto e
+ficam no Lucro Presumido. A apuração é marca a marca, com RBT12 próprio —
+somar as cinco jogaria uma empresa pequena numa faixa que não é a dela.
 
-O painel acompanha os dois limites do regime: o sublimite estadual de ICMS
-(R$ 3,6 mi) e o teto (R$ 4,8 mi). Toda alíquota cadastrada carrega um marcador
-de "confirmar com o contador" que aparece na tela enquanto ninguém confirmou.
+A cadeia é **produto → influencer → regime → impostos**. Escolher o influencer
+no cadastro do produto já traz os tributos daquele regime marcados.
+
+No Simples, a alíquota que se paga é a **efetiva** — a da tabela menos a parcela
+a deduzir. O que está dentro da guia única nunca soma no total; a quebra por
+tributo é só leitura.
+
+O painel acompanha os dois limites do regime por marca: o sublimite estadual de
+ICMS (R$ 3,6 mi) e o teto (R$ 4,8 mi). Tributo do regime que está sem alíquota
+informada não some da tela — aparece como lacuna declarada, com o aviso de que
+o imposto real é maior que o exibido.
 
 ### Produtos sem custo ou sem cadastro fiscal
 

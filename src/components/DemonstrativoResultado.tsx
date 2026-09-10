@@ -55,11 +55,8 @@ function montarLinhas(dre: DRE): Linha[] {
     {
       rotulo: "Impostos sobre a venda",
       explicacao: dre.impostos
-        ? `${percentual(dre.impostos.cargaSobreReceita)} do recebido${
-            dre.impostos.simples
-              ? `, guia unica a ${percentual(dre.impostos.simples.aliquotaEfetiva / 100)}`
-              : ""
-          }`
+        ? `${percentual(dre.impostos.cargaSobreReceita)} do recebido, apurado ` +
+          `marca a marca em ${dre.impostos.porInfluencer.length} operacao(oes)`
         : "Nenhum imposto cadastrado ainda",
       valor: -dre.totalImpostos,
       tipo: "deducao",

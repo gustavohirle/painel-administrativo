@@ -75,11 +75,14 @@ const memoriaGlobal = global.__demoCadastros;
 
 async function estadoInicial(): Promise<Estado> {
   const impostos = impostosIniciais();
-  const produtos = produtosIniciais(impostos);
+  // Ordem importa: o produto herda os impostos do REGIME do seu influencer,
+  // entao os influencers precisam existir antes dos produtos.
+  const influencers = influencersIniciais();
+  const produtos = produtosIniciais(impostos, influencers);
 
   return {
     custos: custosIniciais(),
-    influencers: influencersIniciais(),
+    influencers,
     impostos,
     configuracaoFiscal: configuracaoFiscalInicial(),
     produtos,
@@ -99,15 +102,17 @@ async function completar(lido: Partial<Estado>): Promise<Estado> {
   const inicial = await estadoInicial();
 
   const impostos = Array.isArray(lido.impostos) ? lido.impostos : inicial.impostos;
+  const influencers =
+    Array.isArray(lido.influencers) && lido.influencers.length > 0
+      ? lido.influencers
+      : inicial.influencers;
   const produtos = Array.isArray(lido.produtos)
     ? lido.produtos
-    : produtosIniciais(impostos);
+    : produtosIniciais(impostos, influencers);
 
   return {
     custos: Array.isArray(lido.custos) ? lido.custos : inicial.custos,
-    influencers: Array.isArray(lido.influencers)
-      ? lido.influencers
-      : inicial.influencers,
+    influencers,
     impostos,
     configuracaoFiscal: lido.configuracaoFiscal ?? inicial.configuracaoFiscal,
     produtos,

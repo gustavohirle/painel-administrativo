@@ -58,6 +58,14 @@ model Influencer {
   /// "bruto" | "recebido" | "receitaReal" -- ver `BaseComissao` em types/dominio.
   baseComissao String @default("bruto")
 
+  /// Regime tributario DESTA marca. Cada influencer e uma operacao separada:
+  /// uma marca pequena cabe no Simples, uma grande nao, e as duas convivem.
+  regime       String  @default("simples_nacional")
+  anexoSimples String  @default("II")
+  uf           String  @default("GO")
+  /// Receita de 12 meses informada a mao. NULL = calcular do historico.
+  rbt12Manual  Decimal? @db.Decimal(14, 2)
+
   ativo      Boolean @default(true)
   observacao String?
 
@@ -85,6 +93,15 @@ model Imposto {
 
   /// Percentual, ex.: 19.00 para 19%.
   aliquota Decimal @db.Decimal(7, 4)
+
+  /// Regimes em que este tributo incide. E o que faz o cadastro de produto se
+  /// preencher sozinho a partir do regime do influencer dono.
+  regimes String[] @default([])
+
+  /// Presuncao de lucro, para tributos com baseIncidencia = "lucro".
+  percentualPresuncao Decimal? @db.Decimal(6, 3)
+  /// Valor deduzido da base por mes (adicional de IRPJ: R$ 20 mil).
+  deducaoMensal       Decimal? @db.Decimal(14, 2)
 
   dentroDoDAS Boolean @default(false)
 
@@ -139,6 +156,10 @@ model Produto {
 
   /// "nuvemshop" | "manual"
   origem String @default("nuvemshop")
+
+  /// Influencer dono. Um produto pertence a UM influencer -- e dele que vem
+  /// o regime tributario aplicado ao item.
+  influencerId String?
 
   /// Ids dos impostos marcados no cadastro.
   impostosIds String[] @default([])

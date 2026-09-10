@@ -27,11 +27,12 @@ export default async function PaginaImpostos({
   const fonte = obterFonteDePedidos();
   const repositorio = await obterRepositorioCadastros();
 
-  const [todosOsPedidos, impostosCadastrados, produtos, configFiscal] =
+  const [todosOsPedidos, impostosCadastrados, produtos, influencers, configFiscal] =
     await Promise.all([
       fonte.listarPedidos(),
       repositorio.listarImpostos(),
       repositorio.listarProdutos(),
+      repositorio.listarInfluencers(),
       repositorio.obterConfiguracaoFiscal(),
     ]);
 
@@ -45,6 +46,7 @@ export default async function PaginaImpostos({
     todosOsPedidos,
     produtos,
     impostosCadastrados,
+    influencers,
     configFiscal,
   );
 
@@ -63,7 +65,8 @@ export default async function PaginaImpostos({
             Impostos
           </h1>
           <p className="mt-1 max-w-3xl text-sm text-tinta-media">
-            O regime define quanto sai da receita antes de qualquer outra conta.
+            Cada influencer tem o proprio regime, e a apuracao e feita marca a
+            marca. O regime de cada um se edita no cadastro de comissoes.
             Referencia: {mesAnoLongo(mesSelecionado)}.
           </p>
         </div>
@@ -82,22 +85,22 @@ export default async function PaginaImpostos({
         </div>
 
         <Cartao
-          titulo="Regime tributario"
-          descricao="Define como o imposto e calculado no painel inteiro."
+          titulo="Regime padrao"
+          descricao="Vale apenas para marcas que ainda nao tem influencer vinculado. O regime de cada marca fica no cadastro do influencer."
         >
           <FormularioConfiguracaoFiscal config={configFiscal} />
         </Cartao>
 
         <Cartao
           titulo="Apuracao do mes"
-          descricao="Quanto do que entrou vira imposto, e o acompanhamento dos limites do regime."
+          descricao="Quanto do que entrou vira imposto, marca a marca, e o acompanhamento dos limites de quem esta no Simples."
         >
           <CargaTributaria resultado={resultado} />
         </Cartao>
 
         <Cartao
-          titulo="Impostos recolhidos por fora da guia unica"
-          descricao="Marque em cada produto, na tela de produtos, quais destes incidem sobre ele."
+          titulo="Cadastro de impostos"
+          descricao="Cada tributo vale para um ou mais regimes. E dessa lista que o cadastro de produto se preenche sozinho."
         >
           <GestaoImpostos
             impostos={impostosCadastrados}

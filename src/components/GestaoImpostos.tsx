@@ -22,6 +22,12 @@ const ROTULO_REGIME: Record<RegimeTributario, string> = {
   lucro_real: "Lucro Real",
 };
 
+const ROTULO_REGIME_CURTO: Record<RegimeTributario, string> = {
+  simples_nacional: "Simples",
+  lucro_presumido: "Presumido",
+  lucro_real: "Real",
+};
+
 const ROTULO_ESFERA: Record<EsferaImposto, string> = {
   federal: "Federal",
   estadual: "Estadual",
@@ -201,7 +207,7 @@ export function GestaoImpostos({
           <thead>
             <tr className="border-b border-borda-forte text-left text-xs uppercase tracking-wider text-tinta-fraca">
               <th className="py-2.5 pr-4 font-semibold">Imposto</th>
-              <th className="py-2.5 pr-4 font-semibold">Esfera</th>
+              <th className="py-2.5 pr-4 font-semibold">Regimes</th>
               <th className="py-2.5 pr-4 text-right font-semibold">Aliquota</th>
               <th className="py-2.5 pr-4 font-semibold">Incidencia</th>
               <th className="py-2.5 pr-4 text-right font-semibold">
@@ -227,8 +233,28 @@ export function GestaoImpostos({
                     <p className="font-semibold text-tinta">{imposto.sigla}</p>
                     <p className="text-xs text-tinta-fraca">{imposto.nome}</p>
                   </td>
-                  <td className="py-3 pr-4 text-tinta-media">
-                    {ROTULO_ESFERA[imposto.esfera]}
+                  <td className="py-3 pr-4">
+                    {imposto.regimes.length === 0 ? (
+                      <span className="text-xs text-tinta-fraca">nenhum</span>
+                    ) : (
+                      <span className="flex flex-wrap gap-1">
+                        {imposto.regimes.map((r) => (
+                          <span
+                            key={r}
+                            className={`rounded px-1.5 py-0.5 text-xs font-semibold ${
+                              r === "simples_nacional"
+                                ? "bg-real-claro text-real"
+                                : "bg-fundo text-tinta"
+                            }`}
+                          >
+                            {ROTULO_REGIME_CURTO[r]}
+                          </span>
+                        ))}
+                      </span>
+                    )}
+                    <span className="mt-0.5 block text-xs text-tinta-fraca">
+                      {ROTULO_ESFERA[imposto.esfera]}
+                    </span>
                   </td>
                   <td className="numerico py-3 pr-4 text-right font-semibold text-tinta">
                     {percentual(imposto.aliquota / 100, 2)}
@@ -334,6 +360,9 @@ function FormularioImposto({
     removerImposto,
     ESTADO_INICIAL,
   );
+  const [base, setBase] = useState<"receita" | "lucro">(
+    imposto?.baseIncidencia ?? "receita",
+  );
 
   return (
     <div className="rounded-xl border-2 border-tinta bg-superficie p-6">
@@ -352,7 +381,6 @@ function FormularioImposto({
 
       <form action={acaoSalvar} className="space-y-5">
         <input type="hidden" name="id" value={imposto?.id ?? ""} />
-        <input type="hidden" name="baseIncidencia" value="receita" />
         <input type="hidden" name="dentroDoDAS" value="false" />
 
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -390,7 +418,38 @@ function FormularioImposto({
           </label>
         </div>
 
-        <div className="grid gap-4 sm:grid-cols-2">
+        <fieldset className="rounded-lg border border-borda bg-fundo px-5 py-4">
+          <legend className="px-2 text-sm font-medium text-tinta">
+            Em quais regimes este tributo incide
+          </legend>
+          <p className="mb-3 text-xs leading-relaxed text-tinta-media">
+            E o que faz o cadastro de produto se preencher sozinho: escolhido o
+            influencer, o painel marca os impostos do regime dele.
+          </p>
+
+          <div className="grid gap-3 xl:grid-cols-3">
+            {(
+              [
+                ["simples_nacional", "Simples Nacional"],
+                ["lucro_presumido", "Lucro Presumido"],
+                ["lucro_real", "Lucro Real"],
+              ] as const
+            ).map(([valor, rotulo]) => (
+              <label key={valor} className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  name="regimes"
+                  value={valor}
+                  defaultChecked={imposto?.regimes.includes(valor) ?? false}
+                  className="h-4 w-4 accent-[var(--color-tinta)]"
+                />
+                <span className="text-sm font-medium text-tinta">{rotulo}</span>
+              </label>
+            ))}
+          </div>
+        </fieldset>
+
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <label className="block">
             <span className="text-sm font-medium text-tinta">Aliquota</span>
             <div className="mt-1 flex items-center gap-2 rounded-lg border border-borda-forte bg-superficie px-3 py-2 focus-within:border-tinta">
@@ -403,7 +462,68 @@ function FormularioImposto({
               <span className="text-sm font-medium text-tinta-fraca">%</span>
             </div>
           </label>
+
+          <label className="block">
+            <span className="text-sm font-medium text-tinta">Incide sobre</span>
+            <select
+              name="baseIncidencia"
+              value={base}
+              onChange={(e) => setBase(e.target.value as "receita" | "lucro")}
+              className="mt-1 w-full rounded-lg border border-borda-forte bg-superficie px-3 py-2 text-tinta"
+            >
+              <option value="receita">Receita</option>
+              <option value="lucro">Lucro presumido</option>
+            </select>
+          </label>
+
+          <label className="block">
+            <span className="text-sm font-medium text-tinta">Presuncao</span>
+            <div className="mt-1 flex items-center gap-2 rounded-lg border border-borda-forte bg-superficie px-3 py-2 focus-within:border-tinta">
+              <input
+                name="percentualPresuncao"
+                inputMode="decimal"
+                disabled={base !== "lucro"}
+                placeholder="8"
+                defaultValue={
+                  imposto?.percentualPresuncao == null
+                    ? ""
+                    : String(imposto.percentualPresuncao).replace(".", ",")
+                }
+                className="numerico w-full bg-transparent text-right text-lg font-semibold text-tinta outline-none disabled:opacity-40"
+              />
+              <span className="text-sm font-medium text-tinta-fraca">%</span>
+            </div>
+          </label>
+
+          <label className="block">
+            <span className="text-sm font-medium text-tinta">
+              Deducao mensal
+            </span>
+            <div className="mt-1 flex items-center gap-2 rounded-lg border border-borda-forte bg-superficie px-3 py-2 focus-within:border-tinta">
+              <span className="text-sm font-medium text-tinta-fraca">R$</span>
+              <input
+                name="deducaoMensal"
+                inputMode="decimal"
+                disabled={base !== "lucro"}
+                placeholder="20.000"
+                defaultValue={
+                  imposto?.deducaoMensal == null
+                    ? ""
+                    : String(imposto.deducaoMensal).replace(".", ",")
+                }
+                className="numerico w-full bg-transparent text-right text-lg font-semibold text-tinta outline-none disabled:opacity-40"
+              />
+            </div>
+          </label>
         </div>
+
+        {base === "lucro" && (
+          <p className="text-xs leading-relaxed text-tinta-fraca">
+            Base = presuncao x receita, menos a deducao mensal. O adicional de
+            IRPJ, por exemplo, e 10% sobre 8% da receita que exceder R$ 20 mil
+            no mes -- sem a deducao seria cobrado desde o primeiro real.
+          </p>
+        )}
 
         <div className="space-y-3 rounded-lg border border-borda bg-fundo px-5 py-4">
           <label className="flex items-start gap-2">

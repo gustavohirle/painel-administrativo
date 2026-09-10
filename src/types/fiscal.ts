@@ -36,6 +36,32 @@ export interface Imposto {
   aliquota: number;
 
   /**
+   * Regimes em que este tributo incide.
+   *
+   * E o que permite o cadastro de produto se preencher sozinho: escolhido o
+   * influencer, o painel sabe o regime dele e marca os impostos deste conjunto.
+   * PIS cumulativo de 0,65% so existe no Presumido; no Simples ele esta dentro
+   * da guia unica. Lista vazia = nunca incide automaticamente.
+   */
+  regimes: RegimeTributario[];
+
+  /**
+   * Percentual de presuncao do lucro, para tributos com `baseIncidencia`
+   * igual a `lucro`. No Lucro Presumido a industria presume 8% para IRPJ e
+   * 12% para CSLL. `null` quando a base e a receita.
+   */
+  percentualPresuncao: number | null;
+
+  /**
+   * Valor deduzido da base ANTES de aplicar a aliquota, por mes.
+   *
+   * Existe por causa do adicional de IRPJ: 10% sobre o que exceder R$ 20 mil
+   * mensais da base presumida. Sem isso, o adicional seria cobrado desde o
+   * primeiro real.
+   */
+  deducaoMensal: number | null;
+
+  /**
    * `true` quando o tributo ja esta embutido na guia unica do Simples.
    *
    * Serve para o painel nao cobrar duas vezes: o DAS entra como um valor so, e
