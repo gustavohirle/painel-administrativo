@@ -28,6 +28,11 @@ Sem nenhuma configuração, o painel sobe em **modo demonstração**: dados
 fictícios determinísticos, sem banco, sem internet. É o modo usado para
 apresentar o projeto.
 
+Dá para rodar `npm run build` com o `npm run dev` ligado: cada um escreve num
+diretório próprio (`.next` e `.next-dev`). Compartilhar a mesma pasta fazia o
+servidor de desenvolvimento passar a responder 500 com `Cannot find module
+'./833.js'`.
+
 ### Testes
 
 ```bash
