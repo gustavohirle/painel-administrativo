@@ -1,8 +1,9 @@
 // Schema do banco -- so entra aqui o que a Nuvemshop NAO sabe.
 //
-// Pedidos, clientes e produtos vem da API e nao sao replicados: replicar
-// financeiro e criar duas versoes da verdade. O banco guarda exclusivamente
-// os nossos cadastros: custo de fabricacao e contrato de comissao.
+// Pedidos, clientes e produtos vendidos vem da API e nao sao replicados:
+// replicar financeiro e criar duas versoes da verdade. O banco guarda apenas
+// os nossos cadastros -- custo, comissao, imposto, composicao de kit, contagem
+// de estoque e usuarios.
 
 generator client {
   provider = "prisma-client-js"
@@ -64,5 +65,142 @@ model Influencer {
   atualizadoEm DateTime @updatedAt
 
   @@index([marca])
+  @@index([ativo])
+}
+
+/// Um tributo recolhido por fora da guia unica do Simples.
+///
+/// O que esta DENTRO do DAS nao e cadastrado: a reparticao vem da tabela
+/// oficial do Anexo II. Cadastrar tambem faria o painel somar duas vezes.
+model Imposto {
+  id    String @id @default(cuid())
+  nome  String
+  sigla String
+
+  /// "federal" | "estadual" | "municipal"
+  esfera String
+
+  /// "receita" | "lucro"
+  baseIncidencia String @default("receita")
+
+  /// Percentual, ex.: 19.00 para 19%.
+  aliquota Decimal @db.Decimal(7, 4)
+
+  dentroDoDAS Boolean @default(false)
+
+  /// Quando true, so incide sobre os produtos que marcaram este imposto.
+  aplicacaoPorProduto Boolean @default(false)
+
+  ativo Boolean @default(false)
+
+  /// Comeca false. A tela avisa enquanto ninguem confirmou a aliquota.
+  confirmadoPeloContador Boolean @default(false)
+
+  observacao String?
+
+  criadoEm     DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
+
+  @@index([ativo])
+}
+
+/// Configuracao fiscal da empresa. Registro unico, com `id` fixo.
+model ConfiguracaoFiscal {
+  /// Sempre "unica": e um singleton, nao uma colecao.
+  id String @id @default("unica")
+
+  /// "simples_nacional" | "lucro_presumido" | "lucro_real"
+  regime String @default("simples_nacional")
+
+  /// Anexo do Simples. Industria e o II.
+  anexoSimples String @default("II")
+
+  uf String @default("GO")
+
+  /// Receita bruta de 12 meses informada a mao. NULL = calcular do historico.
+  rbt12Manual Decimal? @db.Decimal(14, 2)
+
+  atualizadoEm DateTime @updatedAt
+}
+
+/// Cadastro de produto: vinculo fiscal, composicao de kit e identidade.
+model Produto {
+  id String @id @default(cuid())
+
+  /// "produtoId:varianteId" ou "produtoId:*". Chave unica do item.
+  chave String @unique
+
+  produtoId  Int
+  varianteId Int?
+
+  nome String
+  sku  String?
+  ncm  String?
+
+  /// "nuvemshop" | "manual"
+  origem String @default("nuvemshop")
+
+  /// Ids dos impostos marcados no cadastro.
+  impostosIds String[] @default([])
+
+  /// A Nuvemshop entrega o kit como UM produto -- ela nao decompoe.
+  /// A composicao abaixo e o que baixa o estoque dos componentes certos.
+  ehKit Boolean @default(false)
+
+  /// Array de { chave, nome, quantidade }.
+  componentes Json @default("[]")
+
+  ativo      Boolean @default(true)
+  observacao String?
+
+  criadoEm     DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
+
+  @@index([produtoId])
+  @@index([ativo])
+}
+
+/// Uma contagem de estoque feita por alguem, numa data.
+///
+/// O banco guarda CONTAGENS, nao saldo. O saldo atual e sempre
+/// `contagem - vendido desde a contagem` -- funcao pura, idempotente.
+/// Saldo mutavel iria a zero sozinho a cada reprocessamento.
+model ContagemEstoque {
+  id    String @id @default(cuid())
+  chave String
+  nome  String
+
+  quantidade Int
+
+  /// Vendas anteriores a esta data sao ignoradas no saldo.
+  dataContagem DateTime
+
+  responsavel String?
+  observacao  String?
+
+  registradoEm DateTime @default(now())
+
+  @@index([chave, dataContagem])
+}
+
+/// Usuario do painel.
+model Usuario {
+  id      String @id @default(cuid())
+  nome    String
+  /// Login, sempre em minusculas.
+  usuario String @unique
+
+  /// "dono" | "estoque"
+  perfil String @default("estoque")
+
+  ativo Boolean @default(true)
+
+  /// scrypt. NUNCA sai do servidor.
+  senhaHash String
+  senhaSal  String
+
+  criadoEm     DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
+
   @@index([ativo])
 }

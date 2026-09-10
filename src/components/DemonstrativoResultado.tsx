@@ -53,6 +53,24 @@ function montarLinhas(dre: DRE): Linha[] {
       tipo: "subtotal",
     },
     {
+      rotulo: "Impostos sobre a venda",
+      explicacao: dre.impostos
+        ? `${percentual(dre.impostos.cargaSobreReceita)} do recebido${
+            dre.impostos.simples
+              ? `, guia unica a ${percentual(dre.impostos.simples.aliquotaEfetiva / 100)}`
+              : ""
+          }`
+        : "Nenhum imposto cadastrado ainda",
+      valor: -dre.totalImpostos,
+      tipo: "deducao",
+    },
+    {
+      rotulo: "Receita liquida",
+      explicacao: "Depois dos impostos sobre a venda",
+      valor: dre.receitaLiquida,
+      tipo: "subtotal",
+    },
+    {
       rotulo: "Custo de fabricacao",
       explicacao: "Materia-prima, embalagem, mao de obra e custo indireto",
       valor: -dre.cmv.cmv,

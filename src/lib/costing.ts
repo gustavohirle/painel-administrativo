@@ -15,8 +15,19 @@ import {
   type CustoProduto,
   type Influencer,
 } from "@/types/dominio";
+import {
+  partesDaChave,
+  PROFUNDIDADE_MAXIMA_KIT,
+  type Produto,
+} from "@/types/produto";
 import { razaoSegura } from "@/lib/format";
 import { pedidosRecebidos, reconciliar, type Reconciliacao } from "@/lib/metrics";
+import {
+  indexarProdutos,
+  produtoDoItem,
+  type IndiceProdutos,
+  type ResultadoImpostos,
+} from "@/lib/impostos";
 
 // ---------------------------------------------------------------------------
 // Indice de custos
@@ -64,6 +75,51 @@ export function custoUnitarioDe(
   return generico ?? null;
 }
 
+/**
+ * Custo unitario resolvendo kit.
+ *
+ * Precedencia:
+ *   1. Ficha de custo propria do item. Vence sempre -- a fabrica pode ter um
+ *      custo de montagem e embalagem do kit diferente da soma das partes.
+ *   2. Sendo kit sem ficha propria, soma o custo dos componentes.
+ *   3. Caso contrario, `null`.
+ *
+ * Componente sem custo faz o kit inteiro voltar `null`, de proposito. Devolver
+ * a soma parcial seria pior do que admitir a lacuna: o numero pareceria certo
+ * e estaria errado para MENOS, inflando a margem.
+ */
+export function custoUnitarioComKit(
+  custos: IndiceCustos,
+  produtos: IndiceProdutos,
+  produtoId: number,
+  varianteId: number,
+  profundidade = 0,
+): number | null {
+  const proprio = custoUnitarioDe(custos, produtoId, varianteId);
+  if (proprio !== null) return proprio;
+
+  if (profundidade >= PROFUNDIDADE_MAXIMA_KIT) return null;
+
+  const produto = produtoDoItem(produtos, produtoId, varianteId);
+  if (!produto?.ehKit || produto.componentes.length === 0) return null;
+
+  let soma = 0;
+  for (const componente of produto.componentes) {
+    const { produtoId: cp, varianteId: cv } = partesDaChave(componente.chave);
+    const unitario = custoUnitarioComKit(
+      custos,
+      produtos,
+      cp,
+      cv ?? 0,
+      profundidade + 1,
+    );
+    if (unitario === null) return null;
+    soma += unitario * componente.quantidade;
+  }
+
+  return soma;
+}
+
 // ---------------------------------------------------------------------------
 // CMV -- custo das mercadorias vendidas
 // ---------------------------------------------------------------------------
@@ -92,8 +148,10 @@ export interface ResultadoCMV {
 export function calcularCMV(
   pedidos: Pedido[],
   custos: CustoProduto[],
+  produtos: Produto[] = [],
 ): ResultadoCMV {
   const indice = indexarCustos(custos);
+  const indiceProdutos = indexarProdutos(produtos);
   let cmv = 0;
   let receitaComCusto = 0;
   let receitaSemCusto = 0;
@@ -102,7 +160,12 @@ export function calcularCMV(
   for (const pedido of pedidosRecebidos(pedidos)) {
     for (const item of pedido.products) {
       const receitaItem = paraNumero(item.price) * item.quantity;
-      const unitario = custoUnitarioDe(indice, item.product_id, item.variant_id);
+      const unitario = custoUnitarioComKit(
+        indice,
+        indiceProdutos,
+        item.product_id,
+        item.variant_id,
+      );
 
       if (unitario === null) {
         receitaSemCusto += receitaItem;
@@ -211,7 +274,21 @@ export interface DemonstrativoResultado {
   comissoes: ComissaoInfluencer[];
   /** Soma das comissoes devidas pelos contratos cadastrados. */
   totalComissoes: number;
-  /** receitaReal - cmv */
+
+  /** Apuracao fiscal do periodo. `null` quando nao ha cadastro de impostos. */
+  impostos: ResultadoImpostos | null;
+  /** DAS + tributos fora da guia unica. */
+  totalImpostos: number;
+  /**
+   * receitaReal - impostos.
+   *
+   * Repare que `receitaReal` continua sendo `recebido - frete`, como manda a
+   * secao 5.1: e o numero que sustenta a comparacao de comissao. O imposto
+   * entra como uma deducao DEPOIS dele, para nao mexer naquela tese.
+   */
+  receitaLiquida: number;
+
+  /** receitaLiquida - cmv */
   margemContribuicao: number;
   /** Fracao: margemContribuicao / receitaReal */
   margemContribuicaoPercentual: number;
@@ -230,17 +307,29 @@ export interface DemonstrativoResultado {
  * Monta a DRE do periodo. E a tela que o dono quer: de quanto vendemos ate
  * quanto realmente sobrou.
  */
+export interface OpcoesDemonstrativo {
+  /** Cadastro de produtos, necessario para resolver o custo dos kits. */
+  produtos?: Produto[];
+  /** Apuracao fiscal do periodo. Omitir mantem o resultado antes de impostos. */
+  impostos?: ResultadoImpostos | null;
+}
+
 export function montarDemonstrativo(
   pedidos: Pedido[],
   custos: CustoProduto[],
   influencers: Influencer[],
+  opcoes: OpcoesDemonstrativo = {},
 ): DemonstrativoResultado {
   const reconciliacao = reconciliar(pedidos);
-  const cmv = calcularCMV(pedidos, custos);
+  const cmv = calcularCMV(pedidos, custos, opcoes.produtos ?? []);
   const comissoes = calcularComissoesPorInfluencer(pedidos, influencers);
   const total = totalComissoes(comissoes);
 
-  const margemContribuicao = reconciliacao.receitaReal - cmv.cmv;
+  const impostos = opcoes.impostos ?? null;
+  const totalImpostos = impostos?.totalSobreVenda ?? 0;
+
+  const receitaLiquida = reconciliacao.receitaReal - totalImpostos;
+  const margemContribuicao = receitaLiquida - cmv.cmv;
   const lucroOperacional = margemContribuicao - total;
 
   return {
@@ -248,6 +337,9 @@ export function montarDemonstrativo(
     cmv,
     comissoes,
     totalComissoes: total,
+    impostos,
+    totalImpostos,
+    receitaLiquida,
     margemContribuicao,
     margemContribuicaoPercentual: razaoSegura(
       margemContribuicao,
@@ -291,8 +383,10 @@ export interface LinhaRentabilidade {
 export function rentabilidadePorProduto(
   pedidos: Pedido[],
   custos: CustoProduto[],
+  produtos: Produto[] = [],
 ): LinhaRentabilidade[] {
   const indice = indexarCustos(custos);
+  const indiceProdutos = indexarProdutos(produtos);
 
   interface Acumulado {
     nome: string;
@@ -323,7 +417,12 @@ export function rentabilidadePorProduto(
       acc.unidades += item.quantity;
       acc.receita += paraNumero(item.price) * item.quantity;
 
-      const unitario = custoUnitarioDe(indice, item.product_id, item.variant_id);
+      const unitario = custoUnitarioComKit(
+        indice,
+        indiceProdutos,
+        item.product_id,
+        item.variant_id,
+      );
       if (unitario !== null) {
         acc.custo += unitario * item.quantity;
         acc.unidadesComCusto += item.quantity;
@@ -391,8 +490,10 @@ export interface ProdutoVendido {
 export function catalogoVendido(
   pedidos: Pedido[],
   custos: CustoProduto[],
+  cadastroProdutos: Produto[] = [],
 ): ProdutoVendido[] {
   const indice = indexarCustos(custos);
+  const indiceProdutos = indexarProdutos(cadastroProdutos);
 
   interface AccVariante {
     nome: string;
@@ -448,7 +549,12 @@ export function catalogoVendido(
         sku: v.sku,
         precoMedio: razaoSegura(v.receita, v.unidades),
         unidadesVendidas: v.unidades,
-        custoUnitario: custoUnitarioDe(indice, produtoId, varianteId),
+        custoUnitario: custoUnitarioComKit(
+          indice,
+          indiceProdutos,
+          produtoId,
+          varianteId,
+        ),
       }))
       .sort((a, b) => b.unidadesVendidas - a.unidadesVendidas);
 

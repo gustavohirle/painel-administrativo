@@ -2,6 +2,7 @@ import { Cabecalho } from "@/components/Cabecalho";
 import { Cartao, NumeroDestaque } from "@/components/Cartao";
 import { CascataFaturamento } from "@/components/CascataFaturamento";
 import { AreaComissao } from "@/components/AreaComissao";
+import { CargaTributaria } from "@/components/CargaTributaria";
 import { DemonstrativoResultado } from "@/components/DemonstrativoResultado";
 import { EvolucaoMensal } from "@/components/EvolucaoMensal";
 import { MeiosPagamento } from "@/components/MeiosPagamento";
@@ -12,6 +13,7 @@ import { obterFonteDePedidos, obterRepositorioCadastros } from "@/data";
 import { periodoDoMes } from "@/data/source";
 import { modoDemonstracao, PERCENTUAL_COMISSAO_PADRAO } from "@/lib/config";
 import { montarDemonstrativo } from "@/lib/costing";
+import { apurarImpostos } from "@/lib/impostos";
 import {
   inteiro,
   mesAnoLongo,
@@ -28,6 +30,7 @@ import {
   mesesDisponiveis,
   reconciliar,
 } from "@/lib/metrics";
+import { exigirArea } from "@/lib/sessao";
 
 /* Os numeros sao recalculados a cada carga: dado financeiro em cache mente. */
 export const dynamic = "force-dynamic";
@@ -37,15 +40,26 @@ export default async function PaginaPainel({
 }: {
   searchParams: Promise<{ mes?: string }>;
 }) {
+  const usuario = await exigirArea("financeiro");
   const { mes: mesPedido } = await searchParams;
 
   const fonte = obterFonteDePedidos();
   const repositorio = await obterRepositorioCadastros();
 
-  const [todosOsPedidos, custos, influencers] = await Promise.all([
+  const [
+    todosOsPedidos,
+    custos,
+    influencers,
+    impostosCadastrados,
+    produtos,
+    configFiscal,
+  ] = await Promise.all([
     fonte.listarPedidos(),
     repositorio.listarCustos(),
     repositorio.listarInfluencers(),
+    repositorio.listarImpostos(),
+    repositorio.listarProdutos(),
+    repositorio.obterConfiguracaoFiscal(),
   ]);
 
   const meses = mesesDisponiveis(todosOsPedidos);
@@ -62,7 +76,18 @@ export default async function PaginaPainel({
   const metodos = agruparPorMetodoPagamento(pedidosDoMes);
   const evolucao = evolucaoMensal(todosOsPedidos, 6);
   const sinais = calcularSinaisAdicionais(pedidosDoMes, carrinhos, todosOsPedidos);
-  const dre = montarDemonstrativo(pedidosDoMes, custos, influencers);
+  const impostos = apurarImpostos(
+    pedidosDoMes,
+    todosOsPedidos,
+    produtos,
+    impostosCadastrados,
+    configFiscal,
+  );
+
+  const dre = montarDemonstrativo(pedidosDoMes, custos, influencers, {
+    produtos,
+    impostos,
+  });
 
   const demo = modoDemonstracao();
 
@@ -70,6 +95,7 @@ export default async function PaginaPainel({
     <div className="min-h-screen">
       <Cabecalho
         demonstracao={demo}
+        usuario={usuario}
         meses={meses}
         mesSelecionado={mesSelecionado}
       />
@@ -81,8 +107,8 @@ export default async function PaginaPainel({
           </h1>
           <p className="mt-1 text-sm text-tinta-media">
             {inteiro(reconciliacao.quantidade.total)} pedidos criados em{" "}
-            {marcas.length} marcas. Do faturamento ao lucro, com os custos de
-            fabricacao e as comissoes ja descontados.
+            {marcas.length} marcas. Do faturamento ao lucro, com impostos,
+            custos de fabricacao e comissoes ja descontados.
           </p>
         </div>
 
@@ -99,10 +125,10 @@ export default async function PaginaPainel({
             apoio={`${percentual(razaoSegura(reconciliacao.recebido, reconciliacao.bruto))} do faturado`}
           />
           <NumeroDestaque
-            rotulo="Receita real"
-            valor={moedaRedonda(reconciliacao.receitaReal)}
-            apoio="Recebido menos o frete"
-            cor="var(--color-real)"
+            rotulo="Impostos sobre a venda"
+            valor={moedaRedonda(dre.totalImpostos)}
+            apoio={`${percentual(impostos.cargaSobreReceita)} do recebido`}
+            cor="var(--color-naopago)"
           />
           <NumeroDestaque
             rotulo="Lucro operacional"
@@ -132,9 +158,16 @@ export default async function PaginaPainel({
 
         <Cartao
           titulo="Raio-x do resultado"
-          descricao="Do faturamento bruto ate o lucro operacional, usando os custos de fabricacao e os contratos de comissao cadastrados."
+          descricao="Do faturamento bruto ate o lucro operacional, com impostos, custos de fabricacao e contratos de comissao cadastrados."
         >
           <DemonstrativoResultado dre={dre} />
+        </Cartao>
+
+        <Cartao
+          titulo="Carga tributaria"
+          descricao="Quanto do que entra vira imposto, e para onde vai."
+        >
+          <CargaTributaria resultado={impostos} />
         </Cartao>
 
         {/*

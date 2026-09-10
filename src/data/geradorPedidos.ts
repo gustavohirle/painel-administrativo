@@ -71,7 +71,26 @@ function dinheiro(valor: number): string {
 // Parametros do cenario
 // ---------------------------------------------------------------------------
 
-/** Pedidos no mes mais recente. */
+/**
+ * Escala do cenario inteiro.
+ *
+ * 1 = o cenario do CLAUDE.md: ~8.400 pedidos e ~R$ 3,1 mi de faturamento no
+ * mes. E o numero que sustenta a tese de venda ("R$ 3,1 milhoes faturados nao
+ * sao R$ 3,1 milhoes recebidos").
+ *
+ * PORE M: esse porte NAO cabe no Simples Nacional. Projetado para 12 meses da
+ * ~R$ 30 mi de receita, contra um teto de R$ 4,8 mi -- o painel vai mostrar,
+ * corretamente, que a empresa esta desenquadrada, e a aliquota efetiva sobe
+ * para a 6a faixa (~27%), o que come quase todo o lucro na tela.
+ *
+ * Duas saidas, ambas a uma linha daqui:
+ *   - manter 1 e apresentar no Lucro Presumido (troque o regime em /impostos);
+ *   - baixar para 0.12 e manter o Simples: ~1.000 pedidos e ~R$ 373 mil/mes,
+ *     o que projeta ~R$ 3,6 mi em 12 meses e cai na 5a faixa (~12% efetivo).
+ */
+export const ESCALA_CENARIO = 1;
+
+/** Pedidos no mes mais recente, antes da escala. */
 const PEDIDOS_MES_ATUAL = 8400;
 
 /** Fator de volume de cada mes, do mais antigo ao mais recente. */
@@ -256,7 +275,10 @@ export function gerarBaseDemonstracao(
     const ano = inicioMes.getUTCFullYear();
     const mes = inicioMes.getUTCMonth();
     const diasNoMes = new Date(Date.UTC(ano, mes + 1, 0)).getUTCDate();
-    const quantidade = Math.round(PEDIDOS_MES_ATUAL * (CURVA_MENSAL[indiceMes] ?? 1));
+    const quantidade = Math.max(
+      1,
+      Math.round(PEDIDOS_MES_ATUAL * (CURVA_MENSAL[indiceMes] ?? 1) * ESCALA_CENARIO),
+    );
 
     for (let i = 0; i < quantidade; i += 1) {
       const marca = escolherMarca(rnd);

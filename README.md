@@ -46,13 +46,29 @@ verificam que os totais da base de demonstração batem com o cenário esperado.
 
 ## Telas
 
-| Rota | O que faz |
-|---|---|
-| `/` | Cascata do faturamento, simulador de comissão, raio-x do resultado, meios de pagamento, evolução de 6 meses |
-| `/custos` | Cadastro de custo de fabricação por produto/variante, com margem calculada ao vivo |
-| `/comissoes` | Cadastro de influencers e da base de cálculo de cada contrato |
+| Rota | Perfil | O que faz |
+|---|---|---|
+| `/entrar` | — | Login. Em modo demonstração, mostra as credenciais de teste |
+| `/` | dono | Cascata do faturamento, raio-x do resultado, carga tributária, simulador de comissão, meios de pagamento, evolução de 6 meses |
+| `/custos` | dono | Custo de fabricação por produto/variante, com margem ao vivo |
+| `/comissoes` | dono | Influencers e a base de cálculo de cada contrato |
+| `/impostos` | dono | Regime tributário, apuração do mês, monitor dos limites do Simples |
+| `/produtos` | dono, estoque | NCM, impostos por produto e composição dos kits |
+| `/estoque` | dono, estoque | Saldo por item e registro de contagens |
 
-O seletor de mês no topo vale para as três telas.
+O seletor de mês no topo vale para todas as telas.
+
+### Perfis de acesso
+
+| | dono | estoque |
+|---|---|---|
+| Financeiro, custos, comissões, impostos | vê | **não vê** |
+| Produtos e estoque | vê | vê |
+
+A verificação é feita **no servidor**, antes de a página montar — digitar a URL
+não contorna. Esconder o link no menu é só conveniência.
+
+Credenciais da demonstração: `dono` / `dono123` e `estoque` / `estoque123`.
 
 ---
 
@@ -105,20 +121,45 @@ Toda a regra de negócio vive em dois arquivos puros — sem React, sem I/O:
 - [`src/lib/costing.ts`](src/lib/costing.ts) — CMV, comissões por contrato,
   DRE e rentabilidade por produto.
 
-A cascata de reconciliação é:
+A cadeia completa é:
 
 ```
 bruto − não pago − cancelado − reembolsado = recebido
-recebido − frete = receita real
-receita real − CMV = margem de contribuição
-margem de contribuição − comissões = lucro operacional
+recebido − frete                           = receita real
+receita real − impostos sobre a venda      = receita líquida
+receita líquida − CMV                      = margem de contribuição
+margem de contribuição − comissões         = lucro operacional
 ```
 
 Cada pedido entra em **exatamente uma** categoria de dedução, seguindo a
 precedência `cancelado > reembolsado > não pago > recebido`. Sem isso, um
 pedido cancelado e pendente seria contado duas vezes e a cascata não fecharia.
 
-### Produtos sem custo cadastrado
+### Kits
+
+A Nuvemshop entrega o kit como **um** produto — ela não decompõe. O cadastro de
+composição é o que permite baixar o estoque dos componentes certos e somar o
+custo de fabricação real do kit. Ficha de custo própria do kit vence a soma das
+partes; componente sem custo torna o kit inteiro desconhecido, em vez de
+devolver uma soma parcial que pareceria certa.
+
+### Estoque
+
+O painel guarda **contagens com data**, não um saldo. O saldo atual é sempre
+`última contagem − o que saiu desde ela`, incluindo o que saiu dentro de kits.
+Assim o cálculo é idempotente: recarregar a página não derruba o estoque.
+
+### Impostos
+
+No Simples Nacional, a alíquota que se paga é a **efetiva** — a da tabela menos
+a parcela a deduzir, dependente da receita de 12 meses. O que está dentro da
+guia única nunca soma no total; a quebra por tributo é só leitura.
+
+O painel acompanha os dois limites do regime: o sublimite estadual de ICMS
+(R$ 3,6 mi) e o teto (R$ 4,8 mi). Toda alíquota cadastrada carrega um marcador
+de "confirmar com o contador" que aparece na tela enquanto ninguém confirmou.
+
+### Produtos sem custo ou sem cadastro fiscal
 
 Não somem do cálculo em silêncio. O painel mostra quantos são e quanta receita
 representam, e o lucro operacional é declarado como calculado sobre o restante.
@@ -147,3 +188,8 @@ Documentação de contexto do projeto: [CLAUDE.md](CLAUDE.md).
 Os dados de demonstração são inteiramente fictícios. Marcas, produtos, clientes
 e influencers foram inventados e não correspondem a nenhuma empresa ou pessoa
 real.
+
+As alíquotas e o enquadramento tributário semeados são **ponto de partida, não
+apuração**. Eles mudam por NCM, por regime, por destino da venda e por benefício
+fiscal estadual. Confirme com o contador antes de usar qualquer número fiscal
+deste painel para recolher imposto.

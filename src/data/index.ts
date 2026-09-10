@@ -10,7 +10,7 @@ import { FonteDemonstracao } from "@/data/mockSource";
 import { FonteNuvemshop } from "@/data/apiSource";
 import { RepositorioDemonstracao } from "@/data/demoCostRepository";
 import type { FonteDePedidos } from "@/data/source";
-import type { RepositorioCadastros } from "@/data/costRepository";
+import type { RepositorioCadastros } from "@/data/repositorio";
 
 export function obterFonteDePedidos(): FonteDePedidos {
   return fonteDados() === "live" ? new FonteNuvemshop() : new FonteDemonstracao();

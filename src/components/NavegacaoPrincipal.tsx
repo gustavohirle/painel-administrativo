@@ -3,18 +3,31 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-const ITENS = [
-  { href: "/", rotulo: "Painel" },
-  { href: "/custos", rotulo: "Custos de fabricacao" },
-  { href: "/comissoes", rotulo: "Comissoes" },
-] as const;
+import type { Area } from "@/types/usuario";
 
-export function NavegacaoPrincipal() {
+const ITENS: Array<{ href: string; rotulo: string; area: Area }> = [
+  { href: "/", rotulo: "Painel", area: "financeiro" },
+  { href: "/custos", rotulo: "Custos", area: "financeiro" },
+  { href: "/comissoes", rotulo: "Comissoes", area: "financeiro" },
+  { href: "/impostos", rotulo: "Impostos", area: "fiscal" },
+  { href: "/produtos", rotulo: "Produtos", area: "produtos" },
+  { href: "/estoque", rotulo: "Estoque", area: "estoque" },
+];
+
+/**
+ * Menu filtrado pelas areas do perfil.
+ *
+ * Esconder o link e conveniencia, NAO seguranca -- quem digitar a URL e barrado
+ * no servidor por `exigirArea`. As duas coisas existem porque um link que leva
+ * a um redirecionamento e uma promessa quebrada.
+ */
+export function NavegacaoPrincipal({ areas }: { areas: Area[] }) {
   const pathname = usePathname();
+  const visiveis = ITENS.filter((item) => areas.includes(item.area));
 
   return (
-    <nav className="flex items-center gap-1">
-      {ITENS.map((item) => {
+    <nav className="flex flex-wrap items-center gap-1">
+      {visiveis.map((item) => {
         const ativo =
           item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
 

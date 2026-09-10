@@ -8,6 +8,7 @@ import { modoDemonstracao } from "@/lib/config";
 import { calcularCMV, catalogoVendido } from "@/lib/costing";
 import { mesAnoLongo, moeda, moedaRedonda, percentual, razaoSegura } from "@/lib/format";
 import { filtrarPorMes, mesesDisponiveis, reconciliar } from "@/lib/metrics";
+import { exigirArea } from "@/lib/sessao";
 
 export const dynamic = "force-dynamic";
 
@@ -16,14 +17,16 @@ export default async function PaginaCustos({
 }: {
   searchParams: Promise<{ mes?: string }>;
 }) {
+  const usuario = await exigirArea("financeiro");
   const { mes: mesPedido } = await searchParams;
 
   const fonte = obterFonteDePedidos();
   const repositorio = await obterRepositorioCadastros();
 
-  const [todosOsPedidos, custos] = await Promise.all([
+  const [todosOsPedidos, custos, produtos] = await Promise.all([
     fonte.listarPedidos(),
     repositorio.listarCustos(),
+    repositorio.listarProdutos(),
   ]);
 
   const meses = mesesDisponiveis(todosOsPedidos);
@@ -31,12 +34,12 @@ export default async function PaginaCustos({
     mesPedido && meses.includes(mesPedido) ? mesPedido : (meses[0] ?? "");
   const pedidosDoMes = filtrarPorMes(todosOsPedidos, mesSelecionado);
 
-  const produtos = catalogoVendido(pedidosDoMes, custos);
-  const cmv = calcularCMV(pedidosDoMes, custos);
+  const vendidos = catalogoVendido(pedidosDoMes, custos, produtos);
+  const cmv = calcularCMV(pedidosDoMes, custos, produtos);
   const reconciliacao = reconciliar(pedidosDoMes);
 
   // A tela trabalha no nivel da variante: e ali que o custo realmente muda.
-  const itens: ItemCusteavel[] = produtos.flatMap((produto) =>
+  const itens: ItemCusteavel[] = vendidos.flatMap((produto) =>
     produto.variantes.map((variante) => ({
       produtoId: produto.produtoId,
       varianteId: variante.varianteId,
@@ -55,6 +58,7 @@ export default async function PaginaCustos({
     <div className="min-h-screen">
       <Cabecalho
         demonstracao={modoDemonstracao()}
+        usuario={usuario}
         meses={meses}
         mesSelecionado={mesSelecionado}
       />

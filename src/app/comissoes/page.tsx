@@ -8,6 +8,7 @@ import { modoDemonstracao } from "@/lib/config";
 import { calcularComissoesPorInfluencer, totalComissoes } from "@/lib/costing";
 import { mesAnoLongo, moeda, moedaRedonda, percentual, razaoSegura } from "@/lib/format";
 import { filtrarPorMes, mesesDisponiveis, reconciliar } from "@/lib/metrics";
+import { exigirArea } from "@/lib/sessao";
 
 export const dynamic = "force-dynamic";
 
@@ -16,6 +17,7 @@ export default async function PaginaComissoes({
 }: {
   searchParams: Promise<{ mes?: string }>;
 }) {
+  const usuario = await exigirArea("financeiro");
   const { mes: mesPedido } = await searchParams;
 
   const fonte = obterFonteDePedidos();
@@ -49,6 +51,7 @@ export default async function PaginaComissoes({
     <div className="min-h-screen">
       <Cabecalho
         demonstracao={modoDemonstracao()}
+        usuario={usuario}
         meses={meses}
         mesSelecionado={mesSelecionado}
       />

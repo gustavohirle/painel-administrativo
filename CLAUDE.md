@@ -251,6 +251,78 @@ Cada influencer tem: nome, marca, percentual, base de cálculo
 (`bruto` | `recebido` | `receitaReal`) e ativo/inativo. Influencer inativo não
 entra em nenhum cálculo.
 
+### 5.10 Impostos
+
+Regime configurável: Simples Nacional (padrão, Anexo II), Lucro Presumido ou
+Lucro Real. No Simples:
+
+```
+RBT12          = receita bruta dos últimos 12 meses (recebido, não faturado)
+alíquota efetiva = (RBT12 × nominal da faixa − parcela a deduzir) / RBT12
+DAS do mês     = alíquota efetiva × recebido do mês
+```
+
+A alíquota **efetiva** não é a da tabela — confundir as duas erra a conta em
+milhares. A repartição por tributo vem da tabela oficial do Anexo II.
+
+**O que está dentro do DAS nunca soma no total.** A guia única já é um valor
+fechado; a quebra por tributo é só leitura. Somar as duas coisas dobra o
+imposto. Por isso o cadastro de impostos guarda **apenas** o que é recolhido
+por fora da guia.
+
+O painel monitora os dois limites do regime, que são diferentes: passar do
+**sublimite** (R$ 3,6 mi) tira só o ICMS da guia; passar do **teto**
+(R$ 4,8 mi) desenquadra do regime.
+
+Toda alíquota carrega `confirmadoPeloContador`, que começa `false` e aparece
+na tela como aviso. O painel nunca apresenta número fiscal como definitivo.
+
+### 5.11 Cadastro de produtos e kits
+
+A Nuvemshop sabe o que vendeu e por quanto. Ela **não** sabe o NCM, quais
+tributos incidem sobre cada item, nem que um "Kit Barba" consome um tônico e um
+shampoo — ela entrega o kit como **um** produto, com `product_id` próprio.
+
+```
+custo do kit = ficha própria, se houver
+             senão, Σ (custo do componente × quantidade)
+             senão, null
+```
+
+Ficha própria vence: a fábrica pode ter custo de montagem e embalagem do kit
+diferente da soma das partes. Componente sem custo torna o kit **inteiro**
+`null` — somar a parte conhecida daria um número que parece certo e está errado
+para menos, inflando a margem.
+
+### 5.12 Estoque
+
+O banco guarda **contagens com data**, não saldo:
+
+```
+saldo atual = última contagem − unidades consumidas desde a data da contagem
+```
+
+Saldo mutável exigiria processar cada pedido exatamente uma vez; se a página
+recalculasse, o estoque iria a zero sozinho. Assim é função pura e idempotente.
+
+Kit **não tem saldo próprio** — é montado sob demanda e consome os componentes.
+Controlar nos dois níveis contaria a mesma unidade duas vezes.
+
+Cobertura em dias = saldo ÷ (vendas do período ÷ dias do período).
+Crítico ≤ 7 dias, baixo ≤ 21 dias.
+
+### 5.13 Usuários e acesso
+
+Dois perfis. `dono` vê tudo. `estoque` vê **apenas** produtos e estoque, e
+nenhum valor financeiro — nem faturamento, nem custo, nem margem, nem comissão.
+
+A verificação acontece **no servidor**, em `exigirArea`, antes de a página
+montar. Esconder link no menu é conveniência, não controle de acesso: quem
+digitar a URL seria barrado do mesmo jeito.
+
+Senha com scrypt e sal por usuário; sessão em cookie httpOnly **assinado** —
+sem assinatura, qualquer um trocaria o próprio perfil para `dono` no cookie.
+
 ---
 
 ## 6. Dados fictícios
@@ -280,6 +352,18 @@ baixo. É por isso que taxas de 4/20/60 por pedido produzem ~14% em valor.
 
 Nomes de marcas e influencers são **claramente fictícios**. Nunca use nomes de
 influencers ou marcas reais.
+
+**`ESCALA_CENARIO` em `geradorPedidos.ts` escala o cenário inteiro.** Existe por
+causa de um conflito real: R$ 3,1 mi/mês projeta ~R$ 30 mi em 12 meses, contra
+um teto de R$ 4,8 mi no Simples. Com escala 1 e regime Simples, o painel mostra
+— corretamente — a empresa desenquadrada, alíquota de 6ª faixa (~27%) e lucro
+quase zero. Duas saídas: apresentar em Lucro Presumido, ou baixar a escala para
+0,12 (~R$ 373 mil/mês, 5ª faixa, ~12% efetivo).
+
+As contagens de estoque iniciais são calculadas **de trás para frente**:
+`quantidade = o que já saiu desde a data da contagem + cobertura desejada`.
+Quantidade fixa não funciona — os itens vendem entre dezenas e milhares de
+unidades por mês.
 
 Seed fixo (`SEED_PADRAO` em `geradorPedidos.ts`). O painel mostra os mesmos
 números toda vez que abre — não dá para os valores mudarem no meio da reunião.
@@ -339,6 +423,15 @@ quebram só quando alguém clica.
    cada lado fica com a sua própria cópia: a action grava e a página continua
    servindo o valor antigo, inclusive depois de F5. `demoCostRepository.ts` relê
    o arquivo em toda chamada de propósito.
+
+3. **`Buffer.from(x, "hex")` devolve buffer VAZIO para entrada inválida**, em vez
+   de falhar — e `timingSafeEqual` de dois buffers vazios devolve `true`. Sem a
+   guarda de formato em `verificarSenha`, um hash corrompido no banco aceitaria
+   qualquer senha. Há teste cobrindo isso.
+
+4. **`npm run build` e `npm run dev` não podem compartilhar `.next`.** Os
+   formatos são incompatíveis; rodar os dois derrubava o dev com `Cannot find
+   module './833.js'`. Resolvido com `distDir` separado por `NODE_ENV`.
 
 ---
 
