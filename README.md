@@ -50,7 +50,7 @@ verificam que os totais da base de demonstração batem com o cenário esperado.
 |---|---|---|
 | `/entrar` | — | Login. Em modo demonstração, mostra as credenciais de teste |
 | `/` | dono | Cascata do faturamento, raio-x do resultado, carga tributária, simulador de comissão, meios de pagamento, evolução de 6 meses |
-| `/custos` | dono | Custo de fabricação por produto/variante, com margem ao vivo |
+| `/custos` | dono, estoque | Custo de fabricação por produto/variante. Preço de venda e margem só para o dono |
 | `/comissoes` | dono | Influencers e a base de cálculo de cada contrato |
 | `/impostos` | dono | Regime tributário, apuração do mês, monitor dos limites do Simples |
 | `/produtos` | dono, estoque | NCM, impostos por produto e composição dos kits |
@@ -62,8 +62,15 @@ O seletor de mês no topo vale para todas as telas.
 
 | | dono | estoque |
 |---|---|---|
-| Financeiro, custos, comissões, impostos | vê | **não vê** |
+| Painel, comissões, impostos | vê | **não vê** |
+| Custo de fabricação (cadastro) | vê | vê |
+| Preço de venda, margem, receita, lucro | vê | **não vê** |
 | Produtos e estoque | vê | vê |
+
+Custo de fabricação é uma área separada do financeiro de propósito: quem está na
+fábrica é quem sabe quanto custa a matéria-prima, então precisa cadastrar. Mas a
+mesma tela esconde preço de venda e margem para esse perfil — isso é quanto a
+empresa ganha, não quanto o produto custa.
 
 A verificação é feita **no servidor**, antes de a página montar — digitar a URL
 não contorna. Esconder o link no menu é só conveniência.

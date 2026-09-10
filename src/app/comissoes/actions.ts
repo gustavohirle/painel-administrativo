@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
 import { obterRepositorioCadastros } from "@/data";
+import { exigirArea } from "@/lib/sessao";
 import type { EstadoFormulario } from "@/types/formulario";
 
 const percentualDigitado = z.preprocess((entrada) => {
@@ -30,6 +31,9 @@ export async function salvarInfluencer(
   _anterior: EstadoFormulario,
   formData: FormData,
 ): Promise<EstadoFormulario> {
+  // Server Action e endpoint publico: verificar so na pagina nao basta.
+  await exigirArea("financeiro");
+
   const analise = esquemaInfluencer.safeParse({
     id: formData.get("id") || undefined,
     nome: formData.get("nome"),
@@ -76,6 +80,8 @@ export async function removerInfluencer(
   _anterior: EstadoFormulario,
   formData: FormData,
 ): Promise<EstadoFormulario> {
+  await exigirArea("financeiro");
+
   const id = String(formData.get("id") ?? "");
   if (!id) return { ok: false, mensagem: "Contrato nao encontrado." };
 

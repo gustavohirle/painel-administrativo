@@ -313,12 +313,19 @@ Crítico ≤ 7 dias, baixo ≤ 21 dias.
 
 ### 5.13 Usuários e acesso
 
-Dois perfis. `dono` vê tudo. `estoque` vê **apenas** produtos e estoque, e
-nenhum valor financeiro — nem faturamento, nem custo, nem margem, nem comissão.
+Dois perfis. `dono` vê tudo. `estoque` vê produtos, estoque e o **cadastro** de
+custo de fabricação — e nenhum indicador financeiro: nem faturamento, nem preço
+de venda, nem margem, nem comissão, nem lucro.
 
-A verificação acontece **no servidor**, em `exigirArea`, antes de a página
-montar. Esconder link no menu é conveniência, não controle de acesso: quem
-digitar a URL seria barrado do mesmo jeito.
+`custos` é uma área separada de `financeiro` justamente por isso: quem está na
+fábrica sabe quanto custa a matéria-prima e precisa cadastrar, mas a mesma tela
+esconde preço de venda e margem para esse perfil. Custo é o que o produto
+consome; margem é quanto a empresa ganha.
+
+A verificação acontece **no servidor**, em `exigirArea`, em dois lugares: na
+página, antes de montar, e **dentro de cada Server Action**. As duas são
+necessárias — Server Action é um endpoint público, dá para chamá-la sem nunca
+abrir a página. Esconder link no menu é só conveniência.
 
 Senha com scrypt e sal por usuário; sessão em cookie httpOnly **assinado** —
 sem assinatura, qualquer um trocaria o próprio perfil para `dono` no cookie.
@@ -432,6 +439,11 @@ quebram só quando alguém clica.
 4. **`npm run build` e `npm run dev` não podem compartilhar `.next`.** Os
    formatos são incompatíveis; rodar os dois derrubava o dev com `Cannot find
    module './833.js'`. Resolvido com `distDir` separado por `NODE_ENV`.
+
+5. **Formulário de edição vai dentro da tabela, na linha abaixo do item.** Numa
+   lista de 47 produtos, renderizar o formulário depois da tabela fazia o
+   clique em "Editar" parecer que não fez nada — ele abria fora da tela. Padrão:
+   `<Fragment>` com a `<tr>` do item e uma `<tr>` com `colSpan` logo abaixo.
 
 ---
 

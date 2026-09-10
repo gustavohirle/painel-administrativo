@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { Fragment, useActionState, useState } from "react";
 
 import {
   removerImposto,
@@ -219,8 +219,8 @@ export function GestaoImpostos({
                 : 0;
 
               return (
+                <Fragment key={imposto.id}>
                 <tr
-                  key={imposto.id}
                   className={`border-b border-borda ${imposto.ativo ? "" : "opacity-60"}`}
                 >
                   <td className="py-3 pr-4">
@@ -272,6 +272,23 @@ export function GestaoImpostos({
                     </button>
                   </td>
                 </tr>
+
+                  {/*
+                    O formulario abre AQUI, na linha logo abaixo do item.
+                    Depois da tabela inteira, clicar em "Editar" parecia nao
+                    fazer nada: o formulario abria fora da tela.
+                  */}
+                  {aberto && (
+                    <tr>
+                      <td colSpan={7} className="p-0 pb-4">
+                        <FormularioImposto
+                          imposto={imposto}
+                          aoFechar={() => setEditando(null)}
+                        />
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
               );
             })}
 
@@ -299,9 +316,6 @@ export function GestaoImpostos({
         </div>
       )}
 
-      {editando && editando !== "novo" && (
-        <FormularioImposto imposto={editando} aoFechar={() => setEditando(null)} />
-      )}
     </div>
   );
 }

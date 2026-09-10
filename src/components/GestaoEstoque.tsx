@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useMemo, useState } from "react";
+import { Fragment, useActionState, useMemo, useState } from "react";
 
 import { registrarContagem } from "@/app/estoque/actions";
 import { data as formatarData, inteiro } from "@/lib/format";
@@ -89,13 +89,6 @@ export function GestaoEstoque({ saldos }: { saldos: SaldoEstoque[] }) {
         />
       </div>
 
-      {contando && (
-        <FormularioContagem
-          item={contando}
-          aoFechar={() => setContando(null)}
-        />
-      )}
-
       <div className="overflow-x-auto">
         <table className="w-full min-w-[980px] border-collapse text-sm">
           <thead>
@@ -118,8 +111,8 @@ export function GestaoEstoque({ saldos }: { saldos: SaldoEstoque[] }) {
           </thead>
           <tbody>
             {visiveis.map((saldo) => (
+              <Fragment key={saldo.chave}>
               <tr
-                key={saldo.chave}
                 className={`border-b border-borda ${
                   saldo.situacao === "negativo" || saldo.situacao === "critico"
                     ? "bg-alerta-fundo"
@@ -183,10 +176,27 @@ export function GestaoEstoque({ saldos }: { saldos: SaldoEstoque[] }) {
                     }
                     className="rounded-md border border-borda-forte bg-superficie px-3 py-1.5 text-sm font-medium text-tinta hover:bg-fundo"
                   >
-                    Contar
+                    {contando?.chave === saldo.chave ? "Fechar" : "Contar"}
                   </button>
                 </td>
               </tr>
+
+                  {/*
+                    O formulario abre AQUI, na linha logo abaixo do item.
+                    Depois da tabela inteira, clicar em "Editar" parecia nao
+                    fazer nada: o formulario abria fora da tela.
+                  */}
+                {contando?.chave === saldo.chave && (
+                  <tr>
+                    <td colSpan={8} className="p-0 pb-4">
+                      <FormularioContagem
+                        item={saldo}
+                        aoFechar={() => setContando(null)}
+                      />
+                    </td>
+                  </tr>
+                )}
+              </Fragment>
             ))}
 
             {visiveis.length === 0 && (

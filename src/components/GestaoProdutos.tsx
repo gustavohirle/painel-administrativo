@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useMemo, useState } from "react";
+import { Fragment, useActionState, useMemo, useState } from "react";
 
 import { removerProduto, salvarProduto } from "@/app/produtos/actions";
 import { inteiro } from "@/lib/format";
@@ -57,6 +57,7 @@ export function GestaoProdutos({
 
   const kits = produtos.filter((p) => p.ehKit);
   const semNcm = produtos.filter((p) => !p.ncm);
+  const colunas = podeVerFinanceiro ? 6 : 5;
 
   return (
     <div className="space-y-5">
@@ -137,8 +138,8 @@ export function GestaoProdutos({
               );
 
               return (
+                <Fragment key={produto.id}>
                 <tr
-                  key={produto.id}
                   className={`border-b border-borda ${produto.ativo ? "" : "opacity-60"}`}
                 >
                   <td className="py-3 pr-4">
@@ -205,15 +206,31 @@ export function GestaoProdutos({
                     </button>
                   </td>
                 </tr>
+
+                  {/*
+                    O formulario abre AQUI, na linha logo abaixo do item.
+                    Depois da tabela inteira, clicar em "Editar" parecia nao
+                    fazer nada: o formulario abria fora da tela.
+                  */}
+                  {aberto && (
+                    <tr>
+                      <td colSpan={colunas} className="p-0 pb-4">
+                        <FormularioProduto
+                          produto={produto}
+                          impostos={impostos}
+                          opcoes={opcoes}
+                          aoFechar={() => setEditando(null)}
+                        />
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
               );
             })}
 
             {visiveis.length === 0 && (
               <tr>
-                <td
-                  colSpan={podeVerFinanceiro ? 6 : 5}
-                  className="py-10 text-center text-tinta-media"
-                >
+                <td colSpan={colunas} className="py-10 text-center text-tinta-media">
                   Nenhum produto encontrado com esse filtro.
                 </td>
               </tr>
@@ -222,14 +239,6 @@ export function GestaoProdutos({
         </table>
       </div>
 
-      {editando && editando !== "novo" && (
-        <FormularioProduto
-          produto={editando}
-          impostos={impostos}
-          opcoes={opcoes}
-          aoFechar={() => setEditando(null)}
-        />
-      )}
     </div>
   );
 }

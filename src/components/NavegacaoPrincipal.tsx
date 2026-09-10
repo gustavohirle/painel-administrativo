@@ -7,7 +7,7 @@ import type { Area } from "@/types/usuario";
 
 const ITENS: Array<{ href: string; rotulo: string; area: Area }> = [
   { href: "/", rotulo: "Painel", area: "financeiro" },
-  { href: "/custos", rotulo: "Custos", area: "financeiro" },
+  { href: "/custos", rotulo: "Custos", area: "custos" },
   { href: "/comissoes", rotulo: "Comissoes", area: "financeiro" },
   { href: "/impostos", rotulo: "Impostos", area: "fiscal" },
   { href: "/produtos", rotulo: "Produtos", area: "produtos" },

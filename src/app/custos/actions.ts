@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
 import { obterRepositorioCadastros } from "@/data";
+import { exigirArea } from "@/lib/sessao";
 import type { EstadoFormulario } from "@/types/formulario";
 
 /**
@@ -40,6 +41,10 @@ export async function salvarCusto(
   _anterior: EstadoFormulario,
   formData: FormData,
 ): Promise<EstadoFormulario> {
+  // A tela ja verifica, mas a action tambem precisa: Server Action e um
+  // endpoint publico -- da para chama-la sem nunca abrir a pagina.
+  await exigirArea("custos");
+
   const analise = esquemaCusto.safeParse({
     id: formData.get("id") || undefined,
     produtoId: formData.get("produtoId"),
@@ -85,6 +90,8 @@ export async function removerCusto(
   _anterior: EstadoFormulario,
   formData: FormData,
 ): Promise<EstadoFormulario> {
+  await exigirArea("custos");
+
   const id = String(formData.get("id") ?? "");
   if (!id) return { ok: false, mensagem: "Ficha nao encontrada." };
 

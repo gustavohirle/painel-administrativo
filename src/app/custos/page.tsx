@@ -6,9 +6,17 @@ import { RodapeDemonstracao } from "@/components/RodapeDemonstracao";
 import { obterFonteDePedidos, obterRepositorioCadastros } from "@/data";
 import { modoDemonstracao } from "@/lib/config";
 import { calcularCMV, catalogoVendido } from "@/lib/costing";
-import { mesAnoLongo, moeda, moedaRedonda, percentual, razaoSegura } from "@/lib/format";
+import {
+  inteiro,
+  mesAnoLongo,
+  moeda,
+  moedaRedonda,
+  percentual,
+  razaoSegura,
+} from "@/lib/format";
 import { filtrarPorMes, mesesDisponiveis, reconciliar } from "@/lib/metrics";
 import { exigirArea } from "@/lib/sessao";
+import { podeAcessar } from "@/types/usuario";
 
 export const dynamic = "force-dynamic";
 
@@ -17,7 +25,7 @@ export default async function PaginaCustos({
 }: {
   searchParams: Promise<{ mes?: string }>;
 }) {
-  const usuario = await exigirArea("financeiro");
+  const usuario = await exigirArea("custos");
   const { mes: mesPedido } = await searchParams;
 
   const fonte = obterFonteDePedidos();
@@ -53,6 +61,7 @@ export default async function PaginaCustos({
   );
 
   const margemBruta = reconciliacao.receitaReal - cmv.cmv;
+  const podeVerFinanceiro = podeAcessar(usuario.perfil, "financeiro");
 
   return (
     <div className="min-h-screen">
@@ -76,40 +85,71 @@ export default async function PaginaCustos({
           </p>
         </div>
 
+        {/*
+          Os tres indicadores de dinheiro so aparecem para quem tem acesso ao
+          financeiro. Quem cuida da fabrica cadastra o custo -- nao precisa ver
+          margem nem receita para isso.
+        */}
         <div className="grid gap-4 rounded-xl border border-borda bg-superficie px-6 py-5 shadow-[0_1px_2px_rgba(16,24,40,0.05)] sm:grid-cols-2 xl:grid-cols-4">
           <NumeroDestaque
             rotulo="Itens cadastrados"
             valor={`${itens.filter((i) => i.custoUnitario !== null).length} de ${itens.length}`}
-            apoio={`${percentual(cmv.cobertura)} da receita coberta`}
-          />
-          <NumeroDestaque
-            rotulo="Custo de fabricacao no mes"
-            valor={moedaRedonda(cmv.cmv)}
-            apoio="Somente dos pedidos efetivamente pagos"
-          />
-          <NumeroDestaque
-            rotulo="Margem de contribuicao"
-            valor={moedaRedonda(margemBruta)}
-            apoio={`${percentual(razaoSegura(margemBruta, reconciliacao.receitaReal))} da receita real`}
-            cor="var(--color-real)"
-          />
-          <NumeroDestaque
-            rotulo="Receita sem custo informado"
-            valor={moeda(cmv.receitaSemCusto)}
-            apoio="Fica de fora do calculo de lucro"
-            cor={
-              cmv.receitaSemCusto > 0
-                ? "var(--color-naopago)"
-                : "var(--color-tinta)"
+            apoio={
+              podeVerFinanceiro
+                ? `${percentual(cmv.cobertura)} da receita coberta`
+                : `${itens.filter((i) => i.custoUnitario === null).length} ainda sem custo`
             }
           />
+
+          {podeVerFinanceiro ? (
+            <>
+              <NumeroDestaque
+                rotulo="Custo de fabricacao no mes"
+                valor={moedaRedonda(cmv.cmv)}
+                apoio="Somente dos pedidos efetivamente pagos"
+              />
+              <NumeroDestaque
+                rotulo="Margem de contribuicao"
+                valor={moedaRedonda(margemBruta)}
+                apoio={`${percentual(razaoSegura(margemBruta, reconciliacao.receitaReal))} da receita real`}
+                cor="var(--color-real)"
+              />
+              <NumeroDestaque
+                rotulo="Receita sem custo informado"
+                valor={moeda(cmv.receitaSemCusto)}
+                apoio="Fica de fora do calculo de lucro"
+                cor={
+                  cmv.receitaSemCusto > 0
+                    ? "var(--color-naopago)"
+                    : "var(--color-tinta)"
+                }
+              />
+            </>
+          ) : (
+            <>
+              <NumeroDestaque
+                rotulo="Itens vendidos no mes"
+                valor={inteiro(itens.reduce((s, i) => s + i.unidadesVendidas, 0))}
+                apoio="Unidades que sairam, somando o que foi dentro de kit"
+              />
+              <NumeroDestaque
+                rotulo="Produtos diferentes"
+                valor={inteiro(itens.length)}
+                apoio="Cada tamanho conta como um item, porque o custo muda"
+              />
+            </>
+          )}
         </div>
 
         <Cartao
           titulo="Produtos vendidos no mes"
           descricao="Ordenados por receita: cadastrar os primeiros da lista e o que mais muda o resultado."
         >
-          <GestaoCustos itens={itens} custos={custos} />
+          <GestaoCustos
+            itens={itens}
+            custos={custos}
+            podeVerFinanceiro={podeVerFinanceiro}
+          />
         </Cartao>
 
         <RodapeDemonstracao demonstracao={modoDemonstracao()} />

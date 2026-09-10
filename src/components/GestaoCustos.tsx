@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useMemo, useState } from "react";
+import { Fragment, useActionState, useMemo, useState } from "react";
 
 import { removerCusto, salvarCusto } from "@/app/custos/actions";
 import { ESTADO_INICIAL } from "@/types/formulario";
@@ -22,9 +22,19 @@ export interface ItemCusteavel {
 interface GestaoCustosProps {
   itens: ItemCusteavel[];
   custos: CustoProduto[];
+  /**
+   * Quem nao ve financeiro cadastra o custo, mas nao ve preco de venda nem
+   * margem: essas duas colunas dizem quanto a empresa ganha, nao quanto o
+   * produto custa.
+   */
+  podeVerFinanceiro: boolean;
 }
 
-export function GestaoCustos({ itens, custos }: GestaoCustosProps) {
+export function GestaoCustos({
+  itens,
+  custos,
+  podeVerFinanceiro,
+}: GestaoCustosProps) {
   const [filtro, setFiltro] = useState<"todos" | "semCusto">("todos");
   const [busca, setBusca] = useState("");
   const [editando, setEditando] = useState<ItemCusteavel | null>(null);
@@ -45,6 +55,9 @@ export function GestaoCustos({ itens, custos }: GestaoCustosProps) {
   const receitaSemCusto = semCusto.reduce((s, i) => s + i.receita, 0);
   const receitaTotal = itens.reduce((s, i) => s + i.receita, 0);
 
+  // Colunas: Produto, Unidades, [Preco medio], Custo, [Margem], Acao.
+  const colunas = podeVerFinanceiro ? 6 : 4;
+
   function fichaDe(item: ItemCusteavel): CustoProduto | undefined {
     return custos.find(
       (c) =>
@@ -61,14 +74,25 @@ export function GestaoCustos({ itens, custos }: GestaoCustosProps) {
             {semCusto.length} item(ns) sem custo cadastrado
           </p>
           <p className="mt-1 text-sm text-tinta-media">
-            Representam{" "}
-            <strong className="numerico text-tinta">{moeda(receitaSemCusto)}</strong> de
-            receita no mes, ou{" "}
-            <strong className="numerico text-tinta">
-              {percentual(razaoSegura(receitaSemCusto, receitaTotal))}
-            </strong>{" "}
-            do total vendido. Enquanto nao forem informados, esses itens ficam de
-            fora do calculo de lucro.
+            {podeVerFinanceiro ? (
+              <>
+                Representam{" "}
+                <strong className="numerico text-tinta">
+                  {moeda(receitaSemCusto)}
+                </strong>{" "}
+                de receita no mes, ou{" "}
+                <strong className="numerico text-tinta">
+                  {percentual(razaoSegura(receitaSemCusto, receitaTotal))}
+                </strong>{" "}
+                do total vendido. Enquanto nao forem informados, esses itens ficam
+                de fora do calculo de lucro.
+              </>
+            ) : (
+              <>
+                Enquanto o custo desses itens nao for informado, eles ficam de
+                fora do calculo de resultado da empresa.
+              </>
+            )}
           </p>
         </div>
       )}
@@ -106,14 +130,18 @@ export function GestaoCustos({ itens, custos }: GestaoCustosProps) {
       </div>
 
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[900px] border-collapse text-sm">
+        <table className="w-full min-w-[760px] border-collapse text-sm">
           <thead>
             <tr className="border-b border-borda-forte text-left text-xs uppercase tracking-wider text-tinta-fraca">
               <th className="py-2.5 pr-4 font-semibold">Produto</th>
               <th className="py-2.5 pr-4 text-right font-semibold">Unidades</th>
-              <th className="py-2.5 pr-4 text-right font-semibold">Preco medio</th>
+              {podeVerFinanceiro && (
+                <th className="py-2.5 pr-4 text-right font-semibold">Preco medio</th>
+              )}
               <th className="py-2.5 pr-4 text-right font-semibold">Custo unitario</th>
-              <th className="py-2.5 pr-4 text-right font-semibold">Margem</th>
+              {podeVerFinanceiro && (
+                <th className="py-2.5 pr-4 text-right font-semibold">Margem</th>
+              )}
               <th className="py-2.5 text-right font-semibold">Acao</th>
             </tr>
           </thead>
@@ -128,62 +156,86 @@ export function GestaoCustos({ itens, custos }: GestaoCustosProps) {
                 editando?.varianteId === item.varianteId;
 
               return (
-                <tr
-                  key={`${item.produtoId}-${item.varianteId}`}
-                  className={`border-b border-borda ${
-                    item.custoUnitario === null ? "bg-alerta-fundo" : ""
-                  }`}
-                >
-                  <td className="py-3 pr-4">
-                    <p className="font-semibold text-tinta">{item.nome}</p>
-                    {item.sku && (
-                      <p className="numerico text-xs text-tinta-fraca">{item.sku}</p>
+                <Fragment key={`${item.produtoId}-${item.varianteId}`}>
+                  <tr
+                    className={`border-b border-borda ${
+                      item.custoUnitario === null ? "bg-alerta-fundo" : ""
+                    }`}
+                  >
+                    <td className="py-3 pr-4">
+                      <p className="font-semibold text-tinta">{item.nome}</p>
+                      {item.sku && (
+                        <p className="numerico text-xs text-tinta-fraca">{item.sku}</p>
+                      )}
+                    </td>
+                    <td className="numerico py-3 pr-4 text-right text-tinta-media">
+                      {inteiro(item.unidadesVendidas)}
+                    </td>
+                    {podeVerFinanceiro && (
+                      <td className="numerico py-3 pr-4 text-right text-tinta-media">
+                        {moeda(item.precoMedio)}
+                      </td>
                     )}
-                  </td>
-                  <td className="numerico py-3 pr-4 text-right text-tinta-media">
-                    {inteiro(item.unidadesVendidas)}
-                  </td>
-                  <td className="numerico py-3 pr-4 text-right text-tinta-media">
-                    {moeda(item.precoMedio)}
-                  </td>
-                  <td className="numerico py-3 pr-4 text-right">
-                    {item.custoUnitario === null ? (
-                      <span className="text-xs font-semibold uppercase text-naopago">
-                        nao cadastrado
-                      </span>
-                    ) : (
-                      <span className="text-tinta">{moeda(item.custoUnitario)}</span>
+                    <td className="numerico py-3 pr-4 text-right">
+                      {item.custoUnitario === null ? (
+                        <span className="text-xs font-semibold uppercase text-naopago">
+                          nao cadastrado
+                        </span>
+                      ) : (
+                        <span className="text-tinta">{moeda(item.custoUnitario)}</span>
+                      )}
+                    </td>
+                    {podeVerFinanceiro && (
+                      <td className="numerico py-3 pr-4 text-right font-semibold">
+                        {margem === null ? (
+                          <span className="text-tinta-fraca">—</span>
+                        ) : (
+                          <span className="text-real">
+                            {percentual(razaoSegura(margem, item.precoMedio))}
+                          </span>
+                        )}
+                      </td>
                     )}
-                  </td>
-                  <td className="numerico py-3 pr-4 text-right font-semibold">
-                    {margem === null ? (
-                      <span className="text-tinta-fraca">—</span>
-                    ) : (
-                      <span className="text-real">
-                        {percentual(razaoSegura(margem, item.precoMedio))}
-                      </span>
-                    )}
-                  </td>
-                  <td className="py-3 text-right">
-                    <button
-                      type="button"
-                      onClick={() => setEditando(aberto ? null : item)}
-                      className="rounded-md border border-borda-forte bg-superficie px-3 py-1.5 text-sm font-medium text-tinta hover:bg-fundo"
-                    >
-                      {aberto
-                        ? "Fechar"
-                        : item.custoUnitario === null
-                          ? "Cadastrar"
-                          : "Editar"}
-                    </button>
-                  </td>
-                </tr>
+                    <td className="py-3 text-right">
+                      <button
+                        type="button"
+                        onClick={() => setEditando(aberto ? null : item)}
+                        className="rounded-md border border-borda-forte bg-superficie px-3 py-1.5 text-sm font-medium text-tinta hover:bg-fundo"
+                      >
+                        {aberto
+                          ? "Fechar"
+                          : item.custoUnitario === null
+                            ? "Cadastrar"
+                            : "Editar"}
+                      </button>
+                    </td>
+                  </tr>
+
+                  {/*
+                    O formulario abre AQUI, na linha logo abaixo do item.
+                    Antes ele ficava depois da tabela inteira: com 47 produtos,
+                    clicar em "Editar" parecia nao fazer nada, porque o
+                    formulario abria fora da tela.
+                  */}
+                  {aberto && (
+                    <tr>
+                      <td colSpan={colunas} className="p-0 pb-4">
+                        <FormularioCusto
+                          item={item}
+                          ficha={fichaDe(item)}
+                          podeVerFinanceiro={podeVerFinanceiro}
+                          aoFechar={() => setEditando(null)}
+                        />
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
               );
             })}
 
             {visiveis.length === 0 && (
               <tr>
-                <td colSpan={6} className="py-10 text-center text-tinta-media">
+                <td colSpan={colunas} className="py-10 text-center text-tinta-media">
                   Nenhum produto encontrado com esse filtro.
                 </td>
               </tr>
@@ -191,14 +243,6 @@ export function GestaoCustos({ itens, custos }: GestaoCustosProps) {
           </tbody>
         </table>
       </div>
-
-      {editando && (
-        <FormularioCusto
-          item={editando}
-          ficha={fichaDe(editando)}
-          aoFechar={() => setEditando(null)}
-        />
-      )}
     </div>
   );
 }
@@ -208,10 +252,12 @@ export function GestaoCustos({ itens, custos }: GestaoCustosProps) {
 function FormularioCusto({
   item,
   ficha,
+  podeVerFinanceiro,
   aoFechar,
 }: {
   item: ItemCusteavel;
   ficha: CustoProduto | undefined;
+  podeVerFinanceiro: boolean;
   aoFechar: () => void;
 }) {
   const [estado, acaoSalvar, salvando] = useActionState(salvarCusto, ESTADO_INICIAL);
@@ -220,7 +266,7 @@ function FormularioCusto({
     ESTADO_INICIAL,
   );
 
-  // Espelha os campos para mostrar a margem enquanto o dono digita.
+  // Espelha os campos para mostrar o total enquanto o dono digita.
   const [campos, setCampos] = useState({
     custoMateriaPrima: ficha?.custoMateriaPrima ?? 0,
     custoEmbalagem: ficha?.custoEmbalagem ?? 0,
@@ -248,8 +294,16 @@ function FormularioCusto({
         <div>
           <h3 className="text-lg font-semibold text-tinta">{item.nome}</h3>
           <p className="text-sm text-tinta-media">
-            Custo por unidade fabricada. Preco medio de venda:{" "}
-            <strong className="numerico text-tinta">{moeda(item.precoMedio)}</strong>
+            Custo por unidade fabricada.
+            {podeVerFinanceiro && (
+              <>
+                {" "}
+                Preco medio de venda:{" "}
+                <strong className="numerico text-tinta">
+                  {moeda(item.precoMedio)}
+                </strong>
+              </>
+            )}
           </p>
         </div>
         <button
@@ -292,7 +346,11 @@ function FormularioCusto({
           ))}
         </div>
 
-        <div className="grid gap-4 rounded-lg border border-borda bg-fundo px-5 py-4 sm:grid-cols-3">
+        <div
+          className={`grid gap-4 rounded-lg border border-borda bg-fundo px-5 py-4 ${
+            podeVerFinanceiro ? "sm:grid-cols-3" : ""
+          }`}
+        >
           <div>
             <p className="text-xs font-semibold uppercase tracking-wider text-tinta-fraca">
               Custo total por unidade
@@ -301,32 +359,37 @@ function FormularioCusto({
               {moeda(total)}
             </p>
           </div>
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-wider text-tinta-fraca">
-              Margem por unidade
-            </p>
-            <p
-              className="numerico mt-1 text-2xl font-semibold"
-              style={{
-                color: margem >= 0 ? "var(--color-real)" : "var(--color-naopago)",
-              }}
-            >
-              {moeda(margem)}
-            </p>
-          </div>
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-wider text-tinta-fraca">
-              Margem percentual
-            </p>
-            <p
-              className="numerico mt-1 text-2xl font-semibold"
-              style={{
-                color: margem >= 0 ? "var(--color-real)" : "var(--color-naopago)",
-              }}
-            >
-              {percentual(razaoSegura(margem, item.precoMedio))}
-            </p>
-          </div>
+
+          {podeVerFinanceiro && (
+            <>
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wider text-tinta-fraca">
+                  Margem por unidade
+                </p>
+                <p
+                  className="numerico mt-1 text-2xl font-semibold"
+                  style={{
+                    color: margem >= 0 ? "var(--color-real)" : "var(--color-naopago)",
+                  }}
+                >
+                  {moeda(margem)}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wider text-tinta-fraca">
+                  Margem percentual
+                </p>
+                <p
+                  className="numerico mt-1 text-2xl font-semibold"
+                  style={{
+                    color: margem >= 0 ? "var(--color-real)" : "var(--color-naopago)",
+                  }}
+                >
+                  {percentual(razaoSegura(margem, item.precoMedio))}
+                </p>
+              </div>
+            </>
+          )}
         </div>
 
         <div className="flex flex-wrap items-center gap-3">

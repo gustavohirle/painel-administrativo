@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { Fragment, useActionState, useState } from "react";
 
 import { removerInfluencer, salvarInfluencer } from "@/app/comissoes/actions";
 import { ESTADO_INICIAL } from "@/types/formulario";
@@ -76,8 +76,8 @@ export function GestaoComissoes({
                 editando !== "novo" && editando?.id === influencer.id;
 
               return (
+                <Fragment key={influencer.id}>
                 <tr
-                  key={influencer.id}
                   className={`border-b border-borda ${
                     influencer.ativo ? "" : "opacity-55"
                   }`}
@@ -126,6 +126,24 @@ export function GestaoComissoes({
                     </button>
                   </td>
                 </tr>
+
+                  {/*
+                    O formulario abre AQUI, na linha logo abaixo do item.
+                    Depois da tabela inteira, clicar em "Editar" parecia nao
+                    fazer nada: o formulario abria fora da tela.
+                  */}
+                  {aberto && (
+                    <tr>
+                      <td colSpan={7} className="p-0 pb-4">
+                        <FormularioInfluencer
+                          influencer={influencer}
+                          marcas={marcas}
+                          aoFechar={() => setEditando(null)}
+                        />
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
               );
             })}
 
@@ -140,13 +158,6 @@ export function GestaoComissoes({
         </table>
       </div>
 
-      {editando && editando !== "novo" && (
-        <FormularioInfluencer
-          influencer={editando}
-          marcas={marcas}
-          aoFechar={() => setEditando(null)}
-        />
-      )}
     </div>
   );
 }

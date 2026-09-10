@@ -58,13 +58,27 @@ export function paraUsuarioPublico(usuario: Usuario): UsuarioPublico {
  * Areas do painel. A lista e curta de proposito: permissao granular demais
  * vira configuracao que ninguem entende e todo mundo marca tudo.
  */
-export type Area = "financeiro" | "produtos" | "estoque" | "fiscal" | "usuarios";
+export type Area =
+  | "financeiro"
+  | "custos"
+  | "produtos"
+  | "estoque"
+  | "fiscal"
+  | "usuarios";
 
 const PERMISSOES: Record<PerfilUsuario, Area[]> = {
   // O dono ve tudo.
-  dono: ["financeiro", "produtos", "estoque", "fiscal", "usuarios"],
-  // Quem cuida do estoque cadastra produto e conta -- e nao ve dinheiro.
-  estoque: ["produtos", "estoque"],
+  dono: ["financeiro", "custos", "produtos", "estoque", "fiscal", "usuarios"],
+  /*
+   * Quem cuida do estoque cadastra produto, conta e informa custo de
+   * fabricacao -- e quem esta na fabrica que sabe quanto custa a materia-prima.
+   *
+   * `custos` e uma area separada de `financeiro` justamente por isso: dar
+   * acesso a tela de custo nao abre faturamento, margem, comissao nem lucro.
+   * A propria tela esconde preco de venda e margem para quem nao tem
+   * `financeiro`.
+   */
+  estoque: ["custos", "produtos", "estoque"],
 };
 
 export function podeAcessar(perfil: PerfilUsuario, area: Area): boolean {
