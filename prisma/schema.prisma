@@ -1,0 +1,68 @@
+// Schema do banco -- so entra aqui o que a Nuvemshop NAO sabe.
+//
+// Pedidos, clientes e produtos vem da API e nao sao replicados: replicar
+// financeiro e criar duas versoes da verdade. O banco guarda exclusivamente
+// os nossos cadastros: custo de fabricacao e contrato de comissao.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+/// Ficha de custo de fabricacao de um produto ou variante da Nuvemshop.
+model CustoProduto {
+  id String @id @default(cuid())
+
+  /// `product_id` da Nuvemshop. E a chave do vinculo com a venda.
+  produtoId Int
+
+  /// `variant_id` da Nuvemshop. NULL = o custo vale para todas as variantes.
+  varianteId Int?
+
+  /// SKU, para o dono conferir contra a planilha dele.
+  sku  String?
+  nome String
+
+  custoMateriaPrima Decimal @db.Decimal(12, 2)
+  custoEmbalagem    Decimal @db.Decimal(12, 2)
+  custoMaoDeObra    Decimal @db.Decimal(12, 2)
+  custoIndireto     Decimal @db.Decimal(12, 2)
+
+  criadoEm     DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
+
+  // ATENCAO: no Postgres, NULLs sao distintos entre si num indice unico.
+  // Ou seja, este @@unique NAO impede duas fichas de produto inteiro
+  // (varianteId = NULL) para o mesmo produtoId. A unicidade desse caso e
+  // garantida no repositorio, em `salvarCusto`.
+  @@unique([produtoId, varianteId])
+  @@index([produtoId])
+}
+
+/// Contrato de comissao de um influencer, vinculado a uma marca/loja.
+model Influencer {
+  id   String @id @default(cuid())
+  nome String
+
+  /// Casa com `Pedido.marca` (a loja Nuvemshop de origem).
+  marca String
+
+  /// Percentual do contrato, ex.: 30.00 para 30%.
+  percentual Decimal @db.Decimal(5, 2)
+
+  /// "bruto" | "recebido" | "receitaReal" -- ver `BaseComissao` em types/dominio.
+  baseComissao String @default("bruto")
+
+  ativo      Boolean @default(true)
+  observacao String?
+
+  criadoEm     DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
+
+  @@index([marca])
+  @@index([ativo])
+}

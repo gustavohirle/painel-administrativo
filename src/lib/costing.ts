@@ -1,0 +1,469 @@
+/**
+ * Funcoes PURAS de custeio: cruzam os pedidos da Nuvemshop com os cadastros
+ * de custo de fabricacao e de comissao.
+ *
+ * A Nuvemshop sabe o preco de venda. Ela nao sabe quanto custa fabricar nem
+ * quanto o influencer leva. E o cruzamento aqui que transforma um relatorio
+ * de vendas no raio-x de lucro.
+ *
+ * Como em `metrics.ts`: nada de React, nada de I/O.
+ */
+
+import { paraNumero, type Pedido } from "@/types/nuvemshop";
+import {
+  custoUnitarioTotal,
+  type CustoProduto,
+  type Influencer,
+} from "@/types/dominio";
+import { razaoSegura } from "@/lib/format";
+import { pedidosRecebidos, reconciliar, type Reconciliacao } from "@/lib/metrics";
+
+// ---------------------------------------------------------------------------
+// Indice de custos
+// ---------------------------------------------------------------------------
+
+export interface IndiceCustos {
+  /** Chave `${produtoId}:${varianteId}` -- custo especifico da variante. */
+  porVariante: Map<string, number>;
+  /** Chave `${produtoId}` -- custo que vale para todas as variantes. */
+  porProduto: Map<number, number>;
+}
+
+/**
+ * Monta o indice de busca de custo.
+ *
+ * Uma ficha com `varianteId: null` vale para o produto inteiro. Uma ficha com
+ * variante especifica tem precedencia sobre a do produto -- um creme de 30ml e
+ * um de 200ml tem custos muito diferentes.
+ */
+export function indexarCustos(custos: CustoProduto[]): IndiceCustos {
+  const porVariante = new Map<string, number>();
+  const porProduto = new Map<number, number>();
+
+  for (const custo of custos) {
+    const unitario = custoUnitarioTotal(custo);
+    if (custo.varianteId === null) {
+      porProduto.set(custo.produtoId, unitario);
+    } else {
+      porVariante.set(`${custo.produtoId}:${custo.varianteId}`, unitario);
+    }
+  }
+
+  return { porVariante, porProduto };
+}
+
+/** Custo unitario de um item, ou `null` quando nao ha ficha cadastrada. */
+export function custoUnitarioDe(
+  indice: IndiceCustos,
+  produtoId: number,
+  varianteId: number,
+): number | null {
+  const especifico = indice.porVariante.get(`${produtoId}:${varianteId}`);
+  if (especifico !== undefined) return especifico;
+  const generico = indice.porProduto.get(produtoId);
+  return generico ?? null;
+}
+
+// ---------------------------------------------------------------------------
+// CMV -- custo das mercadorias vendidas
+// ---------------------------------------------------------------------------
+
+export interface ResultadoCMV {
+  /** Custo de fabricacao total dos itens efetivamente pagos. */
+  cmv: number;
+  /** Receita dos itens que TEM ficha de custo. */
+  receitaComCusto: number;
+  /** Receita dos itens SEM ficha de custo -- o buraco do calculo. */
+  receitaSemCusto: number;
+  /** Fracao da receita coberta por ficha de custo. Abaixo de 1 o lucro e parcial. */
+  cobertura: number;
+  /** Quantos produtos distintos ainda nao tem custo cadastrado. */
+  produtosSemCusto: number;
+  /** Ids dos produtos sem ficha, para a tela de cadastro destacar. */
+  idsProdutosSemCusto: number[];
+}
+
+/**
+ * Calcula o CMV apenas sobre pedidos RECEBIDOS.
+ *
+ * Motivo: um boleto que nunca foi pago normalmente nem chega a ser produzido
+ * ou expedido. Somar o custo dele infla o custo e esconde a margem real.
+ */
+export function calcularCMV(
+  pedidos: Pedido[],
+  custos: CustoProduto[],
+): ResultadoCMV {
+  const indice = indexarCustos(custos);
+  let cmv = 0;
+  let receitaComCusto = 0;
+  let receitaSemCusto = 0;
+  const semCusto = new Set<number>();
+
+  for (const pedido of pedidosRecebidos(pedidos)) {
+    for (const item of pedido.products) {
+      const receitaItem = paraNumero(item.price) * item.quantity;
+      const unitario = custoUnitarioDe(indice, item.product_id, item.variant_id);
+
+      if (unitario === null) {
+        receitaSemCusto += receitaItem;
+        semCusto.add(item.product_id);
+      } else {
+        receitaComCusto += receitaItem;
+        cmv += unitario * item.quantity;
+      }
+    }
+  }
+
+  const receitaTotal = receitaComCusto + receitaSemCusto;
+
+  return {
+    cmv,
+    receitaComCusto,
+    receitaSemCusto,
+    cobertura: razaoSegura(receitaComCusto, receitaTotal),
+    produtosSemCusto: semCusto.size,
+    idsProdutosSemCusto: [...semCusto],
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Comissao a partir do cadastro de influencers
+// ---------------------------------------------------------------------------
+
+export interface ComissaoInfluencer {
+  influencerId: string;
+  nome: string;
+  marca: string;
+  percentual: number;
+  baseComissao: Influencer["baseComissao"];
+  /** Valor sobre o qual o percentual incidiu. */
+  valorBase: number;
+  /** Comissao devida pelo contrato cadastrado. */
+  valorComissao: number;
+  /** O que seria pago se a base fosse o faturamento bruto. */
+  comissaoSeSobreBruto: number;
+  /** comissaoSeSobreBruto - valorComissao. */
+  diferencaParaBruto: number;
+}
+
+/**
+ * Comissao devida por influencer, respeitando a base de cada contrato.
+ * Influencers inativos sao ignorados.
+ */
+export function calcularComissoesPorInfluencer(
+  pedidos: Pedido[],
+  influencers: Influencer[],
+): ComissaoInfluencer[] {
+  const reconciliacaoPorMarca = new Map<string, Reconciliacao>();
+  const marcas = new Set(pedidos.map((p) => p.marca));
+  for (const marca of marcas) {
+    reconciliacaoPorMarca.set(
+      marca,
+      reconciliar(pedidos.filter((p) => p.marca === marca)),
+    );
+  }
+
+  const linhas: ComissaoInfluencer[] = [];
+
+  for (const influencer of influencers) {
+    if (!influencer.ativo) continue;
+    const r = reconciliacaoPorMarca.get(influencer.marca);
+    if (!r) continue;
+
+    const fracao = influencer.percentual / 100;
+    const valorBase =
+      influencer.baseComissao === "bruto"
+        ? r.bruto
+        : influencer.baseComissao === "recebido"
+          ? r.recebido
+          : r.receitaReal;
+
+    const valorComissao = valorBase * fracao;
+    const comissaoSeSobreBruto = r.bruto * fracao;
+
+    linhas.push({
+      influencerId: influencer.id,
+      nome: influencer.nome,
+      marca: influencer.marca,
+      percentual: influencer.percentual,
+      baseComissao: influencer.baseComissao,
+      valorBase,
+      valorComissao,
+      comissaoSeSobreBruto,
+      diferencaParaBruto: comissaoSeSobreBruto - valorComissao,
+    });
+  }
+
+  return linhas.sort((a, b) => b.valorComissao - a.valorComissao);
+}
+
+export function totalComissoes(linhas: ComissaoInfluencer[]): number {
+  return linhas.reduce((soma, l) => soma + l.valorComissao, 0);
+}
+
+// ---------------------------------------------------------------------------
+// DRE -- o raio-x completo
+// ---------------------------------------------------------------------------
+
+export interface DemonstrativoResultado {
+  reconciliacao: Reconciliacao;
+  cmv: ResultadoCMV;
+  comissoes: ComissaoInfluencer[];
+  /** Soma das comissoes devidas pelos contratos cadastrados. */
+  totalComissoes: number;
+  /** receitaReal - cmv */
+  margemContribuicao: number;
+  /** Fracao: margemContribuicao / receitaReal */
+  margemContribuicaoPercentual: number;
+  /** margemContribuicao - totalComissoes */
+  lucroOperacional: number;
+  /** Fracao: lucroOperacional / receitaReal */
+  margemOperacionalPercentual: number;
+  /**
+   * Fracao do lucro que ainda nao pode ser afirmada com certeza, porque parte
+   * da receita vem de produto sem ficha de custo. Exibir sempre que > 0.
+   */
+  incertezaPorFaltaDeCusto: number;
+}
+
+/**
+ * Monta a DRE do periodo. E a tela que o dono quer: de quanto vendemos ate
+ * quanto realmente sobrou.
+ */
+export function montarDemonstrativo(
+  pedidos: Pedido[],
+  custos: CustoProduto[],
+  influencers: Influencer[],
+): DemonstrativoResultado {
+  const reconciliacao = reconciliar(pedidos);
+  const cmv = calcularCMV(pedidos, custos);
+  const comissoes = calcularComissoesPorInfluencer(pedidos, influencers);
+  const total = totalComissoes(comissoes);
+
+  const margemContribuicao = reconciliacao.receitaReal - cmv.cmv;
+  const lucroOperacional = margemContribuicao - total;
+
+  return {
+    reconciliacao,
+    cmv,
+    comissoes,
+    totalComissoes: total,
+    margemContribuicao,
+    margemContribuicaoPercentual: razaoSegura(
+      margemContribuicao,
+      reconciliacao.receitaReal,
+    ),
+    lucroOperacional,
+    margemOperacionalPercentual: razaoSegura(
+      lucroOperacional,
+      reconciliacao.receitaReal,
+    ),
+    incertezaPorFaltaDeCusto: 1 - cmv.cobertura,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Rentabilidade por produto
+// ---------------------------------------------------------------------------
+
+export interface LinhaRentabilidade {
+  produtoId: number;
+  nome: string;
+  sku: string | null;
+  unidadesVendidas: number;
+  receita: number;
+  /** `null` quando o produto ainda nao tem ficha de custo. */
+  custoTotal: number | null;
+  /** `null` quando nao ha custo cadastrado. */
+  margem: number | null;
+  /** Fracao. `null` quando nao ha custo cadastrado. */
+  margemPercentual: number | null;
+  /** Preco medio praticado no periodo. */
+  precoMedio: number;
+  temCusto: boolean;
+}
+
+/**
+ * Rentabilidade por produto, sobre os pedidos recebidos.
+ * Produtos sem ficha aparecem na lista com custo `null` -- some-los esconderia
+ * exatamente o que precisa ser cadastrado.
+ */
+export function rentabilidadePorProduto(
+  pedidos: Pedido[],
+  custos: CustoProduto[],
+): LinhaRentabilidade[] {
+  const indice = indexarCustos(custos);
+
+  interface Acumulado {
+    nome: string;
+    sku: string | null;
+    unidades: number;
+    receita: number;
+    custo: number;
+    unidadesComCusto: number;
+  }
+
+  const mapa = new Map<number, Acumulado>();
+
+  for (const pedido of pedidosRecebidos(pedidos)) {
+    for (const item of pedido.products) {
+      let acc = mapa.get(item.product_id);
+      if (!acc) {
+        acc = {
+          nome: item.name,
+          sku: item.sku,
+          unidades: 0,
+          receita: 0,
+          custo: 0,
+          unidadesComCusto: 0,
+        };
+        mapa.set(item.product_id, acc);
+      }
+
+      acc.unidades += item.quantity;
+      acc.receita += paraNumero(item.price) * item.quantity;
+
+      const unitario = custoUnitarioDe(indice, item.product_id, item.variant_id);
+      if (unitario !== null) {
+        acc.custo += unitario * item.quantity;
+        acc.unidadesComCusto += item.quantity;
+      }
+    }
+  }
+
+  const linhas: LinhaRentabilidade[] = [];
+  for (const [produtoId, acc] of mapa) {
+    const temCusto = acc.unidadesComCusto > 0;
+    const custoTotal = temCusto ? acc.custo : null;
+    const margem = custoTotal === null ? null : acc.receita - custoTotal;
+
+    linhas.push({
+      produtoId,
+      nome: acc.nome,
+      sku: acc.sku,
+      unidadesVendidas: acc.unidades,
+      receita: acc.receita,
+      custoTotal,
+      margem,
+      margemPercentual: margem === null ? null : razaoSegura(margem, acc.receita),
+      precoMedio: razaoSegura(acc.receita, acc.unidades),
+      temCusto,
+    });
+  }
+
+  return linhas.sort((a, b) => b.receita - a.receita);
+}
+
+// ---------------------------------------------------------------------------
+// Catalogo do que foi vendido
+// ---------------------------------------------------------------------------
+
+export interface VarianteVendida {
+  varianteId: number;
+  nome: string;
+  sku: string | null;
+  precoMedio: number;
+  unidadesVendidas: number;
+  /** Custo unitario cadastrado, ou `null`. */
+  custoUnitario: number | null;
+}
+
+export interface ProdutoVendido {
+  produtoId: number;
+  nome: string;
+  sku: string | null;
+  unidadesVendidas: number;
+  receita: number;
+  variantes: VarianteVendida[];
+  /** Custo cadastrado no nivel do produto inteiro (varianteId null). */
+  custoDoProduto: number | null;
+  /** Alguma variante ainda sem custo. */
+  temVarianteSemCusto: boolean;
+}
+
+/**
+ * Monta a arvore produto -> variantes a partir dos PEDIDOS.
+ *
+ * De proposito nao chama o endpoint de produtos da Nuvemshop: o que interessa
+ * para o custeio e o que efetivamente vendeu no periodo, e assim a tela de
+ * cadastro funciona igual em demonstracao e em producao, sem requisicao extra.
+ */
+export function catalogoVendido(
+  pedidos: Pedido[],
+  custos: CustoProduto[],
+): ProdutoVendido[] {
+  const indice = indexarCustos(custos);
+
+  interface AccVariante {
+    nome: string;
+    sku: string | null;
+    receita: number;
+    unidades: number;
+  }
+  interface AccProduto {
+    nome: string;
+    sku: string | null;
+    receita: number;
+    unidades: number;
+    variantes: Map<number, AccVariante>;
+  }
+
+  const produtos = new Map<number, AccProduto>();
+
+  for (const pedido of pedidosRecebidos(pedidos)) {
+    for (const item of pedido.products) {
+      let produto = produtos.get(item.product_id);
+      if (!produto) {
+        produto = {
+          nome: item.name,
+          sku: item.sku,
+          receita: 0,
+          unidades: 0,
+          variantes: new Map(),
+        };
+        produtos.set(item.product_id, produto);
+      }
+
+      const receitaItem = paraNumero(item.price) * item.quantity;
+      produto.receita += receitaItem;
+      produto.unidades += item.quantity;
+
+      let variante = produto.variantes.get(item.variant_id);
+      if (!variante) {
+        variante = { nome: item.name, sku: item.sku, receita: 0, unidades: 0 };
+        produto.variantes.set(item.variant_id, variante);
+      }
+      variante.receita += receitaItem;
+      variante.unidades += item.quantity;
+    }
+  }
+
+  const lista: ProdutoVendido[] = [];
+
+  for (const [produtoId, produto] of produtos) {
+    const variantes: VarianteVendida[] = [...produto.variantes.entries()]
+      .map(([varianteId, v]) => ({
+        varianteId,
+        nome: v.nome,
+        sku: v.sku,
+        precoMedio: razaoSegura(v.receita, v.unidades),
+        unidadesVendidas: v.unidades,
+        custoUnitario: custoUnitarioDe(indice, produtoId, varianteId),
+      }))
+      .sort((a, b) => b.unidadesVendidas - a.unidadesVendidas);
+
+    lista.push({
+      produtoId,
+      nome: produto.nome,
+      sku: produto.sku,
+      unidadesVendidas: produto.unidades,
+      receita: produto.receita,
+      variantes,
+      custoDoProduto: indice.porProduto.get(produtoId) ?? null,
+      temVarianteSemCusto: variantes.some((v) => v.custoUnitario === null),
+    });
+  }
+
+  // Maior receita primeiro: e o produto que mais importa cadastrar.
+  return lista.sort((a, b) => b.receita - a.receita);
+}

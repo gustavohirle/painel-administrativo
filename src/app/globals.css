@@ -1,0 +1,79 @@
+@import "tailwindcss";
+
+/*
+ * Paleta e tipografia do painel.
+ *
+ * Contexto: tela grande de sala de reuniao, leitor de ~55 anos, possivelmente
+ * um projetor. Fundo claro e contraste alto leem melhor nessa situacao do que
+ * um tema escuro. Uma cor de destaque so, e ela pertence ao numero heroi
+ * (receita real). O resto e neutro.
+ */
+@theme {
+  --color-fundo: #f5f6f8;
+  --color-superficie: #ffffff;
+  --color-borda: #e2e5ea;
+  --color-borda-forte: #cbd2dc;
+
+  --color-tinta: #101828;
+  --color-tinta-media: #475467;
+  --color-tinta-fraca: #7a869a;
+
+  /* O numero que o cliente deveria estar olhando. */
+  --color-real: #0f766e;
+  --color-real-claro: #ccfbf1;
+
+  /* Faturamento bruto: neutro-serio, nunca comemorativo. */
+  --color-bruto: #334155;
+
+  /* Deducoes, em ordem de gravidade. */
+  --color-naopago: #b42318;
+  --color-cancelado: #c4320a;
+  --color-reembolsado: #b54708;
+  --color-frete: #7a5af8;
+
+  --color-alerta-fundo: #fef3f2;
+  --color-alerta-borda: #fecdca;
+
+  --color-destaque: #1849a9;
+
+  --font-sans:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue",
+    Arial, sans-serif;
+}
+
+/*
+ * Nenhuma fonte externa: a apresentacao pode acontecer sem internet, e uma
+ * fonte que nao carrega arruina o layout justamente na hora errada.
+ */
+html {
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+body {
+  background-color: var(--color-fundo);
+  color: var(--color-tinta);
+}
+
+/* Numero em coluna so alinha se todos os digitos tiverem a mesma largura. */
+.numerico {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+}
+
+/* Faixa diagonal do selo de demonstracao. */
+.listrado-demo {
+  background-image: repeating-linear-gradient(
+    45deg,
+    transparent,
+    transparent 6px,
+    rgba(180, 35, 24, 0.08) 6px,
+    rgba(180, 35, 24, 0.08) 12px
+  );
+}
+
+@media print {
+  .sem-impressao {
+    display: none !important;
+  }
+}
