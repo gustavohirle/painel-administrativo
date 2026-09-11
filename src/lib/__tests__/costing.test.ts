@@ -1,15 +1,19 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  aplicarPercentualNosContratos,
+  BASE_SEM_CONTRATO,
   calcularCMV,
   calcularComissoesPorInfluencer,
+  cruzarMarcasComContratos,
   custoUnitarioDe,
   indexarCustos,
   montarDemonstrativo,
   rentabilidadePorProduto,
+  somarComissoesDeContratos,
   totalComissoes,
 } from "@/lib/costing";
-import { reconciliar } from "@/lib/metrics";
+import { reconciliar, type LinhaMarca } from "@/lib/metrics";
 import type { CustoProduto, Influencer } from "@/types/dominio";
 import type { Pedido } from "@/types/nuvemshop";
 
@@ -320,5 +324,189 @@ describe("rentabilidadePorProduto", () => {
       }),
     ];
     expect(rentabilidadePorProduto(pedidos, [])[0]!.nome).toBe("Grande");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 5.3 Comissao por marca, na base do contrato
+// ---------------------------------------------------------------------------
+
+/** Linha por marca com valores redondos, para a conta ser conferivel a olho. */
+function linhaMarca(parcial: Partial<LinhaMarca> = {}): LinhaMarca {
+  return {
+    marca: "Marca Teste",
+    bruto: 1000,
+    naoPago: 200,
+    recebido: 800,
+    receitaReal: 700,
+    taxaNaoPago: 0.2,
+    comissaoSobreBruto: 300,
+    comissaoSobreReal: 210,
+    diferenca: 90,
+    alerta: false,
+    quantidadePedidos: 10,
+    ...parcial,
+  };
+}
+
+describe("cruzarMarcasComContratos", () => {
+  it("traz o nome, o percentual e a base do contrato de cada marca", () => {
+    const [linha] = cruzarMarcasComContratos(
+      [linhaMarca({ marca: "Aurora" })],
+      [influencer({ marca: "Aurora", nome: "Bia", percentual: 25, baseComissao: "recebido" })],
+    );
+
+    expect(linha!.influencerNome).toBe("Bia");
+    expect(linha!.percentualContrato).toBe(25);
+    expect(linha!.baseComissao).toBe("recebido");
+  });
+
+  it("ignora influencer inativo", () => {
+    // Inativo nao entra em calculo nenhum, nem de comissao nem de imposto.
+    const [linha] = cruzarMarcasComContratos(
+      [linhaMarca({ marca: "Aurora" })],
+      [influencer({ marca: "Aurora", baseComissao: "receitaReal", ativo: false })],
+    );
+
+    expect(linha!.influencerNome).toBeNull();
+    expect(linha!.baseComissao).toBe(BASE_SEM_CONTRATO);
+  });
+
+  it("com dois na mesma marca, o primeiro ATIVO manda", () => {
+    const [linha] = cruzarMarcasComContratos(
+      [linhaMarca({ marca: "Aurora" })],
+      [
+        influencer({ id: "a", marca: "Aurora", nome: "Inativa", ativo: false }),
+        influencer({ id: "b", marca: "Aurora", nome: "Ativa", baseComissao: "recebido" }),
+        influencer({ id: "c", marca: "Aurora", nome: "Terceira", baseComissao: "receitaReal" }),
+      ],
+    );
+
+    expect(linha!.influencerNome).toBe("Ativa");
+    expect(linha!.baseComissao).toBe("recebido");
+  });
+
+  it("marca sem influencer assume a base bruta, que e a praticada hoje", () => {
+    // Assumir a base mais favoravel a empresa mostraria uma comissao MENOR do
+    // que a que o cliente efetivamente paga.
+    const [linha] = cruzarMarcasComContratos([linhaMarca()], []);
+
+    expect(linha!.baseComissao).toBe("bruto");
+    expect(linha!.influencerNome).toBeNull();
+    expect(linha!.percentualContrato).toBeNull();
+  });
+});
+
+describe("aplicarPercentualNosContratos", () => {
+  const marcas = [
+    linhaMarca({ marca: "SobreBruto", bruto: 1000, recebido: 800, receitaReal: 700 }),
+    linhaMarca({ marca: "SobreRecebido", bruto: 1000, recebido: 800, receitaReal: 700 }),
+    linhaMarca({ marca: "SobreReal", bruto: 1000, recebido: 800, receitaReal: 700 }),
+  ];
+
+  const contratos = [
+    influencer({ id: "1", marca: "SobreBruto", baseComissao: "bruto" }),
+    influencer({ id: "2", marca: "SobreRecebido", baseComissao: "recebido" }),
+    influencer({ id: "3", marca: "SobreReal", baseComissao: "receitaReal" }),
+  ];
+
+  const linhas = aplicarPercentualNosContratos(
+    cruzarMarcasComContratos(marcas, contratos),
+    10,
+  );
+  const por = (marca: string) => linhas.find((l) => l.marca === marca)!;
+
+  it("cada marca incide sobre a base do proprio contrato", () => {
+    expect(por("SobreBruto").valorBase).toBe(1000);
+    expect(por("SobreRecebido").valorBase).toBe(800);
+    expect(por("SobreReal").valorBase).toBe(700);
+  });
+
+  it("a comissao e o percentual do simulador sobre essa base", () => {
+    expect(por("SobreBruto").comissao).toBeCloseTo(100, 6);
+    expect(por("SobreRecebido").comissao).toBeCloseTo(80, 6);
+    expect(por("SobreReal").comissao).toBeCloseTo(70, 6);
+  });
+
+  it("contrato ja sobre a receita real nao tem diferenca de base", () => {
+    expect(por("SobreReal").aMaisQueSobreReceitaReal).toBeCloseTo(0, 6);
+  });
+
+  it("sobre o recebido, a diferenca e exatamente o frete", () => {
+    // recebido 800 - receita real 700 = 100 de frete; 10% disso e 10.
+    expect(por("SobreRecebido").aMaisQueSobreReceitaReal).toBeCloseTo(10, 6);
+  });
+
+  it("ordena pela maior distancia entre as bases", () => {
+    expect(linhas.map((l) => l.marca)).toEqual([
+      "SobreBruto",
+      "SobreRecebido",
+      "SobreReal",
+    ]);
+  });
+
+  it("percentual zero zera tudo sem produzir NaN", () => {
+    const zeradas = aplicarPercentualNosContratos(
+      cruzarMarcasComContratos(marcas, contratos),
+      0,
+    );
+    for (const l of zeradas) {
+      expect(l.comissao).toBe(0);
+      expect(l.aMaisQueSobreReceitaReal).toBe(0);
+    }
+  });
+});
+
+describe("somarComissoesDeContratos", () => {
+  it("soma cada marca na sua base e projeta a diferenca em 12 meses", () => {
+    const linhas = aplicarPercentualNosContratos(
+      cruzarMarcasComContratos(
+        [
+          linhaMarca({ marca: "A", bruto: 1000, recebido: 800, receitaReal: 700 }),
+          linhaMarca({ marca: "B", bruto: 2000, recebido: 1500, receitaReal: 1400 }),
+        ],
+        [
+          influencer({ id: "1", marca: "A", baseComissao: "bruto" }),
+          influencer({ id: "2", marca: "B", baseComissao: "receitaReal" }),
+        ],
+      ),
+      10,
+    );
+
+    const total = somarComissoesDeContratos(linhas);
+
+    // A paga sobre 1000, B paga sobre 1400.
+    expect(total.comissao).toBeCloseTo(100 + 140, 6);
+    // Se as duas fossem sobre a receita real: 700 e 1400.
+    expect(total.comissaoSeSobreReceitaReal).toBeCloseTo(70 + 140, 6);
+    expect(total.aMaisQueSobreReceitaReal).toBeCloseTo(30, 6);
+    expect(total.projecaoAnual).toBeCloseTo(360, 6);
+  });
+
+  it("a soma das linhas bate com os totais gerais", () => {
+    // O criterio de pronto exige isso: se a tabela nao fechar, o cliente ve.
+    const linhas = aplicarPercentualNosContratos(
+      cruzarMarcasComContratos(
+        [
+          linhaMarca({ marca: "A", bruto: 1000, naoPago: 200, recebido: 800, receitaReal: 700 }),
+          linhaMarca({ marca: "B", bruto: 2000, naoPago: 500, recebido: 1500, receitaReal: 1400 }),
+        ],
+        [],
+      ),
+      30,
+    );
+
+    const total = somarComissoesDeContratos(linhas);
+
+    expect(total.bruto).toBe(3000);
+    expect(total.naoPago).toBe(700);
+    expect(total.recebido).toBe(2300);
+    expect(total.receitaReal).toBe(2100);
+  });
+
+  it("sem nenhuma marca devolve zeros, sem NaN", () => {
+    const total = somarComissoesDeContratos([]);
+    expect(total.comissao).toBe(0);
+    expect(total.projecaoAnual).toBe(0);
   });
 });

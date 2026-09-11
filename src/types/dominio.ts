@@ -52,6 +52,26 @@ export function custoUnitarioTotal(custo: CustoProduto): number {
 export type BaseComissao = "bruto" | "recebido" | "receitaReal";
 
 /**
+ * Como cada base se chama e o que ela quer dizer, na tela.
+ *
+ * Moram aqui, e nao no componente, porque duas telas falam da mesma base -- o
+ * cadastro de contrato e o simulador do painel. Textos diferentes para a mesma
+ * coisa fariam parecer que sao duas contas.
+ */
+export const ROTULO_BASE: Record<BaseComissao, string> = {
+  bruto: "Faturamento bruto",
+  recebido: "Dinheiro recebido",
+  receitaReal: "Receita real (sem frete)",
+};
+
+export const EXPLICACAO_BASE: Record<BaseComissao, string> = {
+  bruto:
+    "Inclui pedidos cancelados, reembolsados e boletos que nunca foram pagos.",
+  recebido: "Somente pedidos efetivamente pagos, incluindo o frete cobrado.",
+  receitaReal: "Pedidos pagos, descontando o frete cobrado do cliente.",
+};
+
+/**
  * Cadastro de um influencer: contrato de comissao E enquadramento fiscal.
  *
  * Cada influencer tem a sua marca, a sua loja Nuvemshop e os seus produtos --

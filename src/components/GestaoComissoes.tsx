@@ -5,15 +5,14 @@ import { Fragment, useActionState, useState } from "react";
 import { removerInfluencer, salvarInfluencer } from "@/app/comissoes/actions";
 import { ESTADO_INICIAL } from "@/types/formulario";
 import { moeda, percentual } from "@/lib/format";
-import type { BaseComissao, Influencer } from "@/types/dominio";
+import {
+  EXPLICACAO_BASE,
+  ROTULO_BASE,
+  type BaseComissao,
+  type Influencer,
+} from "@/types/dominio";
 import type { RegimeTributario } from "@/types/fiscal";
 import type { ComissaoInfluencer } from "@/lib/costing";
-
-const ROTULO_BASE: Record<BaseComissao, string> = {
-  bruto: "Faturamento bruto",
-  recebido: "Dinheiro recebido",
-  receitaReal: "Receita real (sem frete)",
-};
 
 const ROTULO_REGIME: Record<RegimeTributario, string> = {
   simples_nacional: "Simples Nacional",
@@ -28,13 +27,6 @@ const EXPLICACAO_REGIME: Record<RegimeTributario, string> = {
     "PIS/COFINS cumulativos; IRPJ e CSLL sobre base presumida da receita.",
   lucro_real:
     "PIS/COFINS nao cumulativos com credito; IRPJ e CSLL sobre o lucro efetivo.",
-};
-
-const EXPLICACAO_BASE: Record<BaseComissao, string> = {
-  bruto:
-    "Inclui pedidos cancelados, reembolsados e boletos que nunca foram pagos.",
-  recebido: "Somente pedidos efetivamente pagos, incluindo o frete cobrado.",
-  receitaReal: "Pedidos pagos, descontando o frete cobrado do cliente.",
 };
 
 interface GestaoComissoesProps {

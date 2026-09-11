@@ -12,6 +12,7 @@
 import { paraNumero, type Pedido } from "@/types/nuvemshop";
 import {
   custoUnitarioTotal,
+  type BaseComissao,
   type CustoProduto,
   type Influencer,
 } from "@/types/dominio";
@@ -21,7 +22,12 @@ import {
   type Produto,
 } from "@/types/produto";
 import { razaoSegura } from "@/lib/format";
-import { pedidosRecebidos, reconciliar, type Reconciliacao } from "@/lib/metrics";
+import {
+  pedidosRecebidos,
+  reconciliar,
+  type LinhaMarca,
+  type Reconciliacao,
+} from "@/lib/metrics";
 import {
   indexarProdutos,
   produtoDoItem,
@@ -572,4 +578,164 @@ export function catalogoVendido(
 
   // Maior receita primeiro: e o produto que mais importa cadastrar.
   return lista.sort((a, b) => b.receita - a.receita);
+}
+
+// ---------------------------------------------------------------------------
+// 5.3 Comissao por marca, na base do contrato
+// ---------------------------------------------------------------------------
+
+/**
+ * Linha de marca ja sabendo QUAL base o contrato daquela marca usa, mas ainda
+ * sem percentual aplicado.
+ *
+ * A separacao em duas etapas existe por causa do simulador: o servidor cruza
+ * marca com contrato uma vez, e o navegador so multiplica quando o cliente
+ * arrasta o percentual. Assim o recalculo e instantaneo e nao volta ao servidor.
+ */
+export interface MarcaComContrato extends LinhaMarca {
+  /** `null` quando a marca ainda nao tem influencer ativo vinculado. */
+  influencerNome: string | null;
+  /** Percentual do contrato cadastrado, para confrontar com o do simulador. */
+  percentualContrato: number | null;
+  /** Base do contrato. Sem influencer vinculado, cai em `BASE_SEM_CONTRATO`. */
+  baseComissao: BaseComissao;
+}
+
+/**
+ * Base do contrato de uma marca sem influencer ativo vinculado.
+ *
+ * `bruto` de proposito: e o que o cliente faz hoje, e assumir a base mais
+ * favorravel a empresa mostraria uma comissao menor do que a que ele paga.
+ */
+export const BASE_SEM_CONTRATO: BaseComissao = "bruto";
+
+/**
+ * Cruza as linhas por marca com o contrato de cada influencer.
+ *
+ * Havendo mais de um influencer na mesma marca, o primeiro ATIVO manda -- a
+ * mesma regra que a seccao 5.9 usa para resolver o regime tributario dos
+ * produtos. Inativo nao entra em calculo nenhum.
+ */
+export function cruzarMarcasComContratos(
+  marcas: LinhaMarca[],
+  influencers: Influencer[],
+): MarcaComContrato[] {
+  const contratoPorMarca = new Map<string, Influencer>();
+  for (const influencer of influencers) {
+    if (!influencer.ativo) continue;
+    if (!contratoPorMarca.has(influencer.marca)) {
+      contratoPorMarca.set(influencer.marca, influencer);
+    }
+  }
+
+  return marcas.map((linha) => {
+    const contrato = contratoPorMarca.get(linha.marca);
+    return {
+      ...linha,
+      influencerNome: contrato?.nome ?? null,
+      percentualContrato: contrato?.percentual ?? null,
+      baseComissao: contrato?.baseComissao ?? BASE_SEM_CONTRATO,
+    };
+  });
+}
+
+export interface LinhaComissaoContrato extends MarcaComContrato {
+  /** O numero da linha sobre o qual o percentual incide. */
+  valorBase: number;
+  /** Comissao da marca, na base do contrato dela. */
+  comissao: number;
+  /** A mesma comissao se a base fosse a receita real. */
+  comissaoSeSobreReceitaReal: number;
+  /**
+   * `comissao - comissaoSeSobreReceitaReal`. Zero quando o contrato ja e sobre
+   * a receita real -- ai nao ha duas bases para comparar.
+   */
+  aMaisQueSobreReceitaReal: number;
+}
+
+/** O valor de uma linha correspondente a base pedida. */
+export function valorDaBase(linha: LinhaMarca, base: BaseComissao): number {
+  if (base === "bruto") return linha.bruto;
+  if (base === "recebido") return linha.recebido;
+  return linha.receitaReal;
+}
+
+/**
+ * Aplica o percentual do simulador sobre a base de cada contrato.
+ *
+ * O percentual vem do simulador e nao do contrato de proposito (seccao 5.2): o
+ * cliente quer testar cenarios na reuniao. A BASE, essa sim, e sempre a do
+ * contrato -- mostrar a comissao numa base que aquele influencer nao usa seria
+ * um numero que nao existe.
+ */
+export function aplicarPercentualNosContratos(
+  marcas: MarcaComContrato[],
+  percentual: number,
+): LinhaComissaoContrato[] {
+  const fracao = percentual / 100;
+
+  return marcas
+    .map((linha) => {
+      const valorBase = valorDaBase(linha, linha.baseComissao);
+      const comissao = valorBase * fracao;
+      const comissaoSeSobreReceitaReal = linha.receitaReal * fracao;
+
+      return {
+        ...linha,
+        valorBase,
+        comissao,
+        comissaoSeSobreReceitaReal,
+        aMaisQueSobreReceitaReal: comissao - comissaoSeSobreReceitaReal,
+      };
+    })
+    // Maior distancia entre as bases primeiro: e a marca onde a escolha da
+    // base pesa mais. Empate desempata pela comissao, a maior na frente.
+    .sort(
+      (a, b) =>
+        b.aMaisQueSobreReceitaReal - a.aMaisQueSobreReceitaReal ||
+        b.comissao - a.comissao,
+    );
+}
+
+export interface TotalComissaoContratos {
+  bruto: number;
+  naoPago: number;
+  recebido: number;
+  receitaReal: number;
+  /** Soma das comissoes, cada marca na base do seu contrato. */
+  comissao: number;
+  /** Soma das comissoes se TODAS fossem sobre a receita real. */
+  comissaoSeSobreReceitaReal: number;
+  /** Distancia entre os dois totais no mes. */
+  aMaisQueSobreReceitaReal: number;
+  /** Distancia mensal x 12, mantendo o percentual. */
+  projecaoAnual: number;
+}
+
+export function somarComissoesDeContratos(
+  linhas: LinhaComissaoContrato[],
+): TotalComissaoContratos {
+  const total = linhas.reduce(
+    (acc, l) => ({
+      bruto: acc.bruto + l.bruto,
+      naoPago: acc.naoPago + l.naoPago,
+      recebido: acc.recebido + l.recebido,
+      receitaReal: acc.receitaReal + l.receitaReal,
+      comissao: acc.comissao + l.comissao,
+      comissaoSeSobreReceitaReal:
+        acc.comissaoSeSobreReceitaReal + l.comissaoSeSobreReceitaReal,
+    }),
+    {
+      bruto: 0,
+      naoPago: 0,
+      recebido: 0,
+      receitaReal: 0,
+      comissao: 0,
+      comissaoSeSobreReceitaReal: 0,
+    },
+  );
+
+  const aMais = total.comissao - total.comissaoSeSobreReceitaReal;
+
+  return { ...total, aMaisQueSobreReceitaReal: aMais, projecaoAnual: aMais * 12 };
 }

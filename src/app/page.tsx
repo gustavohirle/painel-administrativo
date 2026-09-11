@@ -12,7 +12,7 @@ import { RodapeDemonstracao } from "@/components/RodapeDemonstracao";
 import { obterFonteDePedidos, obterRepositorioCadastros } from "@/data";
 import { periodoDoMes } from "@/data/source";
 import { modoDemonstracao, PERCENTUAL_COMISSAO_PADRAO } from "@/lib/config";
-import { montarDemonstrativo } from "@/lib/costing";
+import { cruzarMarcasComContratos, montarDemonstrativo } from "@/lib/costing";
 import { apurarImpostos } from "@/lib/impostos";
 import {
   inteiro,
@@ -73,6 +73,9 @@ export default async function PaginaPainel({
 
   const reconciliacao = reconciliar(pedidosDoMes);
   const marcas = agruparPorMarca(pedidosDoMes, PERCENTUAL_COMISSAO_PADRAO);
+  // O simulador precisa saber a base de calculo de cada contrato -- sem isso
+  // ele mostraria a comissao numa base que aquele influencer nao usa.
+  const marcasComContrato = cruzarMarcasComContratos(marcas, influencers);
   const metodos = agruparPorMetodoPagamento(pedidosDoMes);
   const evolucao = evolucaoMensal(todosOsPedidos, 6);
   const sinais = calcularSinaisAdicionais(pedidosDoMes, carrinhos, todosOsPedidos);
@@ -148,11 +151,10 @@ export default async function PaginaPainel({
 
         <Cartao
           titulo="Comissao de influencers: simulador de base"
-          descricao="Compare a comissao calculada sobre o faturamento bruto com a mesma comissao calculada sobre a receita real. Ajuste o percentual para testar cenarios."
+          descricao="Cada marca aparece na base de calculo do proprio contrato, ao lado do que a mesma comissao daria sobre a receita real. Ajuste o percentual para testar cenarios."
         >
           <AreaComissao
-            reconciliacao={reconciliacao}
-            marcas={marcas}
+            marcas={marcasComContrato}
             percentualInicial={PERCENTUAL_COMISSAO_PADRAO}
           />
         </Cartao>

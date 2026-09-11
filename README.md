@@ -143,6 +143,25 @@ Cada pedido entra em **exatamente uma** categoria de dedução, seguindo a
 precedência `cancelado > reembolsado > não pago > recebido`. Sem isso, um
 pedido cancelado e pendente seria contado duas vezes e a cascata não fecharia.
 
+### Comissões
+
+Cada contrato escolhe uma **base de cálculo**: faturamento bruto, dinheiro
+recebido, ou receita real (recebido sem o frete). O simulador do painel mostra
+cada marca na base do **próprio** contrato — exibir a comissão sobre a receita
+real de quem tem contrato sobre o bruto seria um número que ninguém paga e
+ninguém recebe. A célula da linha sobre a qual o percentual incide fica
+destacada.
+
+Ao lado vem a mesma comissão calculada sobre a receita real, e a **diferença**
+entre as duas. A diferença é o que a base sobre o bruto acrescenta ao incidir
+também sobre pedido cancelado, pedido reembolsado, boleto nunca pago e frete —
+valores que entram na conta da comissão mas não entraram no caixa. Não é erro
+de contrato: é o que está em jogo na escolha da base, e a tela diz isso com
+essas palavras.
+
+O percentual é editável para testar cenários. Ele não altera o cadastro: o
+raio-x do resultado continua usando o percentual de cada contrato.
+
 ### Kits
 
 A Nuvemshop entrega o kit como **um** produto — ela não decompõe. O cadastro de

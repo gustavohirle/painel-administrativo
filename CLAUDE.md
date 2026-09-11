@@ -204,20 +204,48 @@ Precedência obrigatória para não contar o mesmo pedido duas vezes:
 
 ### 5.2 Comissão de influencer (simulador)
 
+**A base é sempre a do contrato daquele influencer. O percentual é editável.**
+
 ```
-comissão paga hoje    = pct × bruto
-comissão sobre real   = pct × receita real
-diferença mensal      = comissão paga hoje − comissão sobre real
-projeção anual        = diferença mensal × 12
+comissão da marca        = pct × valor da base do contrato dela
+comissão sobre real      = pct × receita real da marca
+diferença mensal         = comissão do contrato − comissão sobre real
+projeção anual           = diferença mensal × 12
 ```
 
-O percentual é **editável na tela**, não constante no código. O contrato varia
-por marca e o cliente vai querer testar cenários na hora.
+Exibir a comissão sobre a receita real de quem tem contrato sobre o bruto seria
+um número que **não existe em lugar nenhum** — ninguém paga e ninguém recebe
+aquilo. Por isso cada linha mostra só a base que o contrato usa, e a célula
+correspondente (bruto, recebido ou receita real) ganha realce: é ali que o
+percentual incide.
+
+A comparação com a receita real continua, mas como **coluna ao lado**. Ela some
+quando o contrato já é sobre a receita real — ali não há duas bases para
+comparar, e um zero pareceria um valor calculado. Entra um traço.
+
+O percentual vem do **simulador**, não do contrato: o cliente vai querer testar
+cenários na reunião. Quando ele foge do percentual cadastrado, a linha mostra
+`contrato: 25%` em texto pequeno — senão o número da tela contradiz o cadastro
+sem dizer por quê.
+
+**A palavra "diferença" é definida na própria tela**, num parágrafo fixo acima
+da tabela. O cliente perguntou o que aquilo era: um rótulo sozinho não responde,
+e a explicação tem que caber onde o número aparece.
+
+Marca sem influencer ativo vinculado cai em `BASE_SEM_CONTRATO` = `bruto`, que é
+o que se pratica hoje. Assumir a base mais favorável à empresa mostraria uma
+comissão **menor** do que a que ele efetivamente paga.
+
+O cruzamento marca × contrato roda no servidor (`cruzarMarcasComContratos`); o
+navegador só multiplica quando o percentual muda (`aplicarPercentualNosContratos`).
+São duas funções puras em `costing.ts`, e é por isso que o simulador responde na
+hora e sem internet.
 
 ### 5.3 Por marca
 
-Tabela com uma linha por marca: bruto, recebido, % não pago, receita real,
-comissão hoje, comissão sobre real, diferença. Ordenada pela diferença.
+Uma linha por marca: marca e influencer, **base do contrato**, bruto, recebido,
+% não pago, receita real, comissão, a mesma comissão sobre a receita real, e a
+diferença. Ordenada pela diferença, desempatando pela comissão.
 
 Destaque visual quando `% não pago > 20%` — indica público de baixa qualidade
 ou excesso de boleto, e é um insight de venda.
@@ -281,7 +309,12 @@ ativo/inativo. Influencer inativo não entra em nenhum cálculo, nem de comissã
 nem de imposto.
 
 Um influencer por marca. Dois influencers na mesma marca tornariam ambíguo o
-regime dos produtos dela — o primeiro ativo manda.
+regime dos produtos dela — o primeiro ativo manda. A mesma regra resolve a base
+de comissão no simulador da 5.2.
+
+Os rótulos e as explicações de cada base (`ROTULO_BASE`, `EXPLICACAO_BASE`) moram
+em `types/dominio.ts`, não nos componentes: duas telas falam da mesma base, e
+textos diferentes para a mesma coisa fariam parecer que são duas contas.
 
 ### 5.10 Impostos
 
