@@ -168,28 +168,35 @@ frete           = soma de shipping_cost_customer dos pedidos recebidos
 receita real    = recebido − frete
 ```
 
-Exibida como **uma barra horizontal única, dividida em fatias proporcionais** —
-não como cascata. É o herói da tela.
+Exibida como **gráfico de pizza**, com nove fatias. É o herói da tela.
 
 A cascata foi tentada e descartada: com a cadeia completa (ver 5.8) ela vira
 onze barras em degrau, com os rótulos em alturas diferentes e os textos de
-apoio se sobrepondo. Fica ilegível justamente numa tela de reunião, que é onde
-ela precisa funcionar.
+apoio se sobrepondo. Ilegível justamente numa tela de reunião, que é onde ela
+precisa funcionar.
 
-A barra única só é possível porque as parcelas **fecham exatamente** no bruto:
+A pizza só fecha porque as parcelas **somam exatamente** o bruto:
 
 ```
-bruto = não pago + cancelado + reembolsado + frete
-      + impostos + fabricação + comissões + lucro operacional
+bruto = não pago + cancelado + reembolsado + frete + impostos + DIFAL
+      + fabricação + comissões + lucro operacional
 ```
 
-Se mexer nessa conta, a barra deixa de fechar — e é o primeiro lugar onde o
-erro aparece. Os subtotais que a cascata dava de graça (recebido, receita real)
-entram como duas réguas finas acima da barra: sem elas, os dois números que
-sustentam a conversa sobre comissão sumiriam do gráfico.
+Se mexer nessa conta, a pizza deixa de fechar — e é o primeiro lugar onde o
+erro aparece.
 
-Feita em HTML/CSS, não em SVG: larguras percentuais são nativas, o texto é
-texto de verdade e não há geometria para desalinhar.
+O **DIFAL é fatia própria**, separada dos demais impostos, porque é devido ao
+estado de DESTINO e não ao de origem — decisão diferente, conversa diferente.
+`dre.totalImpostos` já inclui o DIFAL, então a fatia "Impostos" é a subtração
+dos dois.
+
+A fatia do lucro sai do círculo (explodida) e os subtotais que a leitura
+sequencial dava de graça — recebido e receita real — entram como dois números
+abaixo da legenda: sem eles, os dois valores que sustentam a conversa sobre a
+base da comissão sumiriam do gráfico.
+
+Fatia abaixo de 4% não recebe percentual dentro dela; o número fica na legenda
+e no tooltip.
 
 Precedência obrigatória para não contar o mesmo pedido duas vezes:
 `cancelado > reembolsado/estornado > não pago > recebido`. Está implementada em

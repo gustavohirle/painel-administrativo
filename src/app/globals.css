@@ -38,6 +38,9 @@
   --color-reembolsado: #b54708;
   --color-frete: #64748b;
   --color-imposto: #7c3aed;
+  /* Mesma familia do imposto, bem mais escuro: o DIFAL e um pedaco do ICMS,
+     e as duas fatias ficam lado a lado na pizza. */
+  --color-difal: #4c1d95;
   --color-custo: #0369a1;
   --color-comissao: #be185d;
 

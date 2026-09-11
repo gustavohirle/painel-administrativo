@@ -141,7 +141,7 @@ export default async function PaginaPainel({
 
         <Cartao
           titulo="Para onde vai cada real faturado"
-          descricao="O que nunca entrou, o frete, os impostos, o custo de fabricacao, as comissoes -- e o que sobra."
+          descricao="O que nunca entrou, o frete, os impostos, o DIFAL, o custo de fabricacao, as comissoes -- e o que sobra."
         >
           <ComposicaoFaturamento dre={dre} />
         </Cartao>
