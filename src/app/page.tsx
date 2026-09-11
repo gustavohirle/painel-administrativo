@@ -137,10 +137,10 @@ export default async function PaginaPainel({
         </div>
 
         <Cartao
-          titulo="Do faturamento ao dinheiro que sobra"
-          descricao="Cada degrau mostra quanto do faturamento nao chega ao caixa e por que."
+          titulo="Do faturamento ao lucro"
+          descricao="Cada degrau tira um pedaco: o que nunca entrou, o frete, os impostos, o custo de fabricacao e as comissoes. O que sobra esta na ponta."
         >
-          <CascataFaturamento reconciliacao={reconciliacao} />
+          <CascataFaturamento dre={dre} />
         </Cartao>
 
         <Cartao

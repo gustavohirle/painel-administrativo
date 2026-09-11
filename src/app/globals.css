@@ -25,11 +25,21 @@
   /* Faturamento bruto: neutro-serio, nunca comemorativo. */
   --color-bruto: #334155;
 
-  /* Deducoes, em ordem de gravidade. */
+  /*
+   * Deducoes.
+   *
+   * As tres primeiras sao dinheiro que NUNCA entrou, e por isso ficam na
+   * familia quente/vermelha. Da receita real em diante e dinheiro que entrou e
+   * saiu -- cada uma ganha um matiz proprio, bem separado dos vizinhos, porque
+   * na cascata elas aparecem lado a lado.
+   */
   --color-naopago: #b42318;
   --color-cancelado: #c4320a;
   --color-reembolsado: #b54708;
-  --color-frete: #7a5af8;
+  --color-frete: #64748b;
+  --color-imposto: #7c3aed;
+  --color-custo: #0369a1;
+  --color-comissao: #be185d;
 
   --color-alerta-fundo: #fef3f2;
   --color-alerta-borda: #fecdca;

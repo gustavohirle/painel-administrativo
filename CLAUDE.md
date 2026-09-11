@@ -168,7 +168,14 @@ frete           = soma de shipping_cost_customer dos pedidos recebidos
 receita real    = recebido − frete
 ```
 
-Exibida como cascata descendente. É o herói da tela.
+Exibida como cascata descendente, e a cascata **não para na receita real** —
+ela segue até o lucro operacional, descontando impostos, custo de fabricação e
+comissões (ver 5.8). É o herói da tela.
+
+Os percentuais de apoio são todos medidos sobre o **faturamento bruto**, e não
+sobre a etapa anterior: numa cascata a leitura natural é "quanto do bolo
+inicial cada pedaço leva", e bases diferentes a cada coluna exigiriam escrever
+qual era a base — texto que não cabe em onze colunas.
 
 Precedência obrigatória para não contar o mesmo pedido duas vezes:
 `cancelado > reembolsado/estornado > não pago > recebido`. Está implementada em
