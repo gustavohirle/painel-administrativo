@@ -49,7 +49,7 @@ verificam que os totais da base de demonstração batem com o cenário esperado.
 | Rota | Perfil | O que faz |
 |---|---|---|
 | `/entrar` | — | Login. Em modo demonstração, mostra as credenciais de teste |
-| `/` | dono | Cascata do faturamento **ao lucro**, raio-x do resultado, carga tributária, simulador de comissão, meios de pagamento, evolução de 6 meses |
+| `/` | dono | Composição do faturamento (para onde vai cada real), raio-x do resultado, carga tributária, simulador de comissão, meios de pagamento, evolução de 6 meses |
 | `/custos` | dono, estoque | Custo de fabricação por produto/variante. Preço de venda e margem só para o dono |
 | `/comissoes` | dono | Influencers: contrato de comissão **e** regime tributário de cada marca |
 | `/impostos` | dono | Catálogo dos tributos que podem incidir sobre um produto, por regime, e a apuração marca a marca |

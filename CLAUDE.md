@@ -168,14 +168,28 @@ frete           = soma de shipping_cost_customer dos pedidos recebidos
 receita real    = recebido − frete
 ```
 
-Exibida como cascata descendente, e a cascata **não para na receita real** —
-ela segue até o lucro operacional, descontando impostos, custo de fabricação e
-comissões (ver 5.8). É o herói da tela.
+Exibida como **uma barra horizontal única, dividida em fatias proporcionais** —
+não como cascata. É o herói da tela.
 
-Os percentuais de apoio são todos medidos sobre o **faturamento bruto**, e não
-sobre a etapa anterior: numa cascata a leitura natural é "quanto do bolo
-inicial cada pedaço leva", e bases diferentes a cada coluna exigiriam escrever
-qual era a base — texto que não cabe em onze colunas.
+A cascata foi tentada e descartada: com a cadeia completa (ver 5.8) ela vira
+onze barras em degrau, com os rótulos em alturas diferentes e os textos de
+apoio se sobrepondo. Fica ilegível justamente numa tela de reunião, que é onde
+ela precisa funcionar.
+
+A barra única só é possível porque as parcelas **fecham exatamente** no bruto:
+
+```
+bruto = não pago + cancelado + reembolsado + frete
+      + impostos + fabricação + comissões + lucro operacional
+```
+
+Se mexer nessa conta, a barra deixa de fechar — e é o primeiro lugar onde o
+erro aparece. Os subtotais que a cascata dava de graça (recebido, receita real)
+entram como duas réguas finas acima da barra: sem elas, os dois números que
+sustentam a conversa sobre comissão sumiriam do gráfico.
+
+Feita em HTML/CSS, não em SVG: larguras percentuais são nativas, o texto é
+texto de verdade e não há geometria para desalinhar.
 
 Precedência obrigatória para não contar o mesmo pedido duas vezes:
 `cancelado > reembolsado/estornado > não pago > recebido`. Está implementada em

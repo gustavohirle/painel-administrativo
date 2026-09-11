@@ -1,6 +1,6 @@
 import { Cabecalho } from "@/components/Cabecalho";
 import { Cartao, NumeroDestaque } from "@/components/Cartao";
-import { CascataFaturamento } from "@/components/CascataFaturamento";
+import { ComposicaoFaturamento } from "@/components/ComposicaoFaturamento";
 import { AreaComissao } from "@/components/AreaComissao";
 import { CargaTributaria } from "@/components/CargaTributaria";
 import { DemonstrativoResultado } from "@/components/DemonstrativoResultado";
@@ -137,10 +137,10 @@ export default async function PaginaPainel({
         </div>
 
         <Cartao
-          titulo="Do faturamento ao lucro"
-          descricao="Cada degrau tira um pedaco: o que nunca entrou, o frete, os impostos, o custo de fabricacao e as comissoes. O que sobra esta na ponta."
+          titulo="Para onde vai cada real faturado"
+          descricao="O que nunca entrou, o frete, os impostos, o custo de fabricacao, as comissoes -- e o que sobra."
         >
-          <CascataFaturamento dre={dre} />
+          <ComposicaoFaturamento dre={dre} />
         </Cartao>
 
         <Cartao
