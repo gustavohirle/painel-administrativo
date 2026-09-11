@@ -21,10 +21,16 @@
 
 import { paraNumero, type Pedido } from "@/types/nuvemshop";
 import type { Influencer } from "@/types/dominio";
-import type { EsferaImposto, Imposto, RegimeTributario } from "@/types/fiscal";
+import type {
+  AliquotaEstado,
+  EsferaImposto,
+  Imposto,
+  RegimeTributario,
+} from "@/types/fiscal";
 import { REGIME_SEM_INFLUENCER } from "@/lib/config";
 import { chaveProduto, type ChaveProduto, type Produto } from "@/types/produto";
 import { razaoSegura } from "@/lib/format";
+import { apurarDifal, somarDifal, type ResultadoDifal } from "@/lib/difal";
 import { chaveMes, pedidosRecebidos, reconciliar } from "@/lib/metrics";
 import {
   apurarSimples,
@@ -196,6 +202,14 @@ export interface ApuracaoDeUmInfluencer {
   simples: ApuracaoSimples | null;
   monitorTeto: MonitorTeto | null;
 
+  /**
+   * DIFAL desta marca, aberto por estado de destino.
+   *
+   * Ja entra em `linhas` como uma linha unica; este campo existe para a tela
+   * poder mostrar de quais estados o valor veio.
+   */
+  difal: ResultadoDifal;
+
   /** Tributos que somam, fora da guia unica. */
   linhas: LinhaImposto[];
   /** Quebra do que ha dentro do DAS. Detalhamento: NAO soma. */
@@ -234,6 +248,9 @@ export interface ResultadoImpostos {
   temImpostoNaoConfirmado: boolean;
   /** `true` se algum regime tem tributo relevante desativado. */
   temTributoDoRegimeInativo: boolean;
+
+  /** DIFAL consolidado de todas as marcas, por estado de destino. */
+  difal: ResultadoDifal;
 }
 
 /** Receita por imposto marcado, dentro de um conjunto de pedidos. */
@@ -263,12 +280,14 @@ function apurarGrupo(
   identidade: { influencerId: string | null; nome: string; marca: string },
   fiscal: {
     regime: RegimeTributario;
+    uf: string;
     rbt12Manual: number | null;
   },
   pedidosDoMes: Pedido[],
   pedidosHistorico: Pedido[],
   indice: IndiceProdutos,
   impostos: Imposto[],
+  aliquotasEstaduais: AliquotaEstado[],
 ): ApuracaoDeUmInfluencer {
   const baseReceita = reconciliar(pedidosDoMes).recebido;
   const doRegime = impostosDoRegime(impostos, fiscal.regime);
@@ -276,6 +295,13 @@ function apurarGrupo(
 
   const noSimples = fiscal.regime === "simples_nacional";
   const rbt12 = calcularRBT12(pedidosHistorico, fiscal.rbt12Manual);
+
+  /*
+   * Optante do Simples nao recolhe DIFAL como remetente -- o STF suspendeu a
+   * exigencia na ADI 5464. A apuracao roda mesmo assim, com valor zerado, para
+   * a tela poder mostrar a distribuicao por estado das marcas do Simples.
+   */
+  const difal = apurarDifal(pedidosDoMes, aliquotasEstaduais, fiscal.uf, !noSimples);
   const simples = noSimples ? apurarSimples(rbt12.valor, baseReceita) : null;
   const monitorTeto = noSimples ? monitorarTeto(rbt12.valor) : null;
 
@@ -310,6 +336,21 @@ function apurarGrupo(
       valor: (base * imposto.aliquota) / 100,
       confirmado: imposto.confirmadoPeloContador,
       porProduto: imposto.aplicacaoPorProduto,
+    });
+  }
+
+  if (difal.total > 0) {
+    linhas.push({
+      impostoId: `difal-${identidade.influencerId ?? "geral"}`,
+      sigla: "DIFAL",
+      nome: "Diferencial de aliquota de ICMS",
+      esfera: "estadual",
+      // Aliquota media efetiva: o DIFAL nao tem uma so, ele varia por destino.
+      aliquota: (difal.total / (difal.baseInterestadual || 1)) * 100,
+      base: difal.baseInterestadual,
+      valor: difal.total,
+      confirmado: !difal.temEstadoNaoConfirmado,
+      porProduto: false,
     });
   }
 
@@ -356,6 +397,7 @@ function apurarGrupo(
     rbt12,
     simples,
     monitorTeto,
+    difal,
     linhas: linhas.sort((a, b) => b.valor - a.valor),
     detalheDoDAS,
     inativosDoRegime,
@@ -376,6 +418,7 @@ export function apurarImpostos(
   produtos: Produto[],
   impostos: Imposto[],
   influencers: Influencer[],
+  aliquotasEstaduais: AliquotaEstado[] = [],
 ): ResultadoImpostos {
   const indice = indexarProdutos(produtos);
 
@@ -408,12 +451,14 @@ export function apurarImpostos(
         // Sem influencer nao ha regime proprio: cai no padrao ate alguem
         // vincular a marca a um influencer.
         regime: influencer?.regime ?? REGIME_SEM_INFLUENCER,
+        uf: influencer?.uf ?? "GO",
         rbt12Manual: influencer?.rbt12Manual ?? null,
       },
       doMes,
       historico,
       indice,
       impostos,
+      aliquotasEstaduais,
     );
   });
 
@@ -452,6 +497,10 @@ export function apurarImpostos(
     ),
     temTributoDoRegimeInativo: porInfluencer.some(
       (a) => a.inativosDoRegime.length > 0,
+    ),
+    difal: somarDifal(
+      porInfluencer.map((a) => a.difal),
+      porInfluencer[0]?.difal.ufOrigem ?? "GO",
     ),
   };
 }

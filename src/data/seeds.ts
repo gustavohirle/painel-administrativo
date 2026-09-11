@@ -13,7 +13,8 @@ import { unidadesConsumidas } from "@/lib/estoque";
 import { idsSugeridosPorRegime, indexarProdutos } from "@/lib/impostos";
 import { chaveMes, filtrarPorMes, mesesDisponiveis } from "@/lib/metrics";
 import type { CustoProduto, Influencer } from "@/types/dominio";
-import type { Imposto } from "@/types/fiscal";
+import type { AliquotaEstado, Imposto } from "@/types/fiscal";
+import { ESTADOS } from "@/types/estados";
 import {
   chaveProduto,
   type ComponenteKit,
@@ -424,6 +425,31 @@ export function impostosIniciais(): Imposto[] {
   ];
 
   return base.map((imposto) => ({ ...imposto, atualizadoEm: agora }));
+}
+
+// ---------------------------------------------------------------------------
+// DIFAL: aliquota interna de cada estado
+// ---------------------------------------------------------------------------
+
+/**
+ * Um registro por estado, semeado com a tabela de `types/estados.ts`.
+ *
+ * Nenhum nasce confirmado. Varios estados mexeram nas suas aliquotas entre
+ * 2023 e 2025, algumas ja embutem fundo de combate a pobreza e outras nao --
+ * a tela avisa "a confirmar" em cada um ate alguem conferir com o contador.
+ */
+export function aliquotasEstaduaisIniciais(): AliquotaEstado[] {
+  const agora = AGORA();
+
+  return ESTADOS.map((estado) => ({
+    uf: estado.uf,
+    nome: estado.nome,
+    aliquotaInterna: estado.aliquotaInterna,
+    ativo: true,
+    confirmadoPeloContador: false,
+    observacao: null,
+    atualizadoEm: agora,
+  }));
 }
 
 // ---------------------------------------------------------------------------

@@ -16,11 +16,13 @@
 import type {
   CarrinhoAbandonado,
   Cliente,
+  EnderecoEntrega,
   MetodoPagamento,
   MotivoCancelamento,
   Pedido,
   ProdutoDoPedido,
 } from "@/types/nuvemshop";
+import type { UF } from "@/types/estados";
 import { MARCAS, type MarcaCatalogo } from "@/data/catalogo";
 
 // ---------------------------------------------------------------------------
@@ -150,6 +152,44 @@ const GATEWAYS: Record<MetodoPagamento, string> = {
   other: "Outro",
 };
 
+/**
+ * Para onde as vendas vao, em peso relativo.
+ *
+ * Aproxima a distribuicao do e-commerce brasileiro -- Sudeste concentrando
+ * mais da metade -- com Goias puxado para cima, porque a fabrica e de la e
+ * venda local sempre pesa mais. Essa distribuicao e o que faz o DIFAL ter
+ * sentido: e a mistura de aliquotas internas de destino que define a conta.
+ */
+const DESTINOS: Array<{ uf: UF; cidade: string; cep: string; peso: number }> = [
+  { uf: "SP", cidade: "Sao Paulo", cep: "01000", peso: 26 },
+  { uf: "RJ", cidade: "Rio de Janeiro", cep: "20000", peso: 10 },
+  { uf: "MG", cidade: "Belo Horizonte", cep: "30000", peso: 9 },
+  { uf: "GO", cidade: "Goiania", cep: "74000", peso: 7 },
+  { uf: "PR", cidade: "Curitiba", cep: "80000", peso: 6 },
+  { uf: "RS", cidade: "Porto Alegre", cep: "90000", peso: 5.5 },
+  { uf: "BA", cidade: "Salvador", cep: "40000", peso: 5 },
+  { uf: "SC", cidade: "Florianopolis", cep: "88000", peso: 4.5 },
+  { uf: "PE", cidade: "Recife", cep: "50000", peso: 3.5 },
+  { uf: "CE", cidade: "Fortaleza", cep: "60000", peso: 3 },
+  { uf: "DF", cidade: "Brasilia", cep: "70000", peso: 3 },
+  { uf: "ES", cidade: "Vitoria", cep: "29000", peso: 2 },
+  { uf: "PA", cidade: "Belem", cep: "66000", peso: 2 },
+  { uf: "MT", cidade: "Cuiaba", cep: "78000", peso: 1.8 },
+  { uf: "MS", cidade: "Campo Grande", cep: "79000", peso: 1.5 },
+  { uf: "MA", cidade: "Sao Luis", cep: "65000", peso: 1.5 },
+  { uf: "PB", cidade: "Joao Pessoa", cep: "58000", peso: 1.2 },
+  { uf: "RN", cidade: "Natal", cep: "59000", peso: 1.2 },
+  { uf: "AL", cidade: "Maceio", cep: "57000", peso: 1 },
+  { uf: "AM", cidade: "Manaus", cep: "69000", peso: 1 },
+  { uf: "PI", cidade: "Teresina", cep: "64000", peso: 0.9 },
+  { uf: "SE", cidade: "Aracaju", cep: "49000", peso: 0.7 },
+  { uf: "RO", cidade: "Porto Velho", cep: "76800", peso: 0.6 },
+  { uf: "TO", cidade: "Palmas", cep: "77000", peso: 0.5 },
+  { uf: "AC", cidade: "Rio Branco", cep: "69900", peso: 0.3 },
+  { uf: "AP", cidade: "Macapa", cep: "68900", peso: 0.3 },
+  { uf: "RR", cidade: "Boa Vista", cep: "69300", peso: 0.2 },
+];
+
 const MOTIVOS_CANCELAMENTO: MotivoCancelamento[] = [
   "customer",
   "customer",
@@ -206,6 +246,23 @@ function escolherMetodo(rnd: Random, marca: MarcaCatalogo): MetodoPagamento {
       marca.mixPagamento.boleto,
     ],
   );
+}
+
+function sortearEndereco(rnd: Random): EnderecoEntrega {
+  const destino = sortearPonderado(
+    rnd,
+    DESTINOS,
+    DESTINOS.map((d) => d.peso),
+  );
+
+  return {
+    // Nome por extenso de proposito: e assim que a Nuvemshop costuma devolver,
+    // e obriga o `normalizarUF` a ser exercitado tambem na demonstracao.
+    province: destino.uf,
+    city: destino.cidade,
+    zipcode: `${destino.cep.slice(0, 5)}-${String(inteiroEntre(rnd, 0, 999)).padStart(3, "0")}`,
+    country: "BR",
+  };
 }
 
 function montarItens(
@@ -394,6 +451,7 @@ export function gerarBaseDemonstracao(
           installments: metodo === "credit_card" ? sortearPonderado(rnd, [1, 2, 3, 6, 12], [40, 15, 20, 15, 10]) : 1,
         },
         cancel_reason: cancelReason,
+        shipping_address: sortearEndereco(rnd),
         customer: {
           id: cliente.id,
           name: cliente.name,

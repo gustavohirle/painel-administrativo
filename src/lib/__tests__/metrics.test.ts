@@ -42,6 +42,7 @@ function pedido(parcial: Partial<Pedido> = {}): Pedido {
       installments: 1,
     },
     cancel_reason: null,
+    shipping_address: { province: "SP", city: "Sao Paulo", zipcode: "01000-000", country: "BR" },
     customer: {
       id: 1,
       name: "Cliente Teste",

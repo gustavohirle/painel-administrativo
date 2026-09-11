@@ -11,7 +11,12 @@
 
 import type { CustoProduto, EntradaCustoProduto } from "@/types/dominio";
 import type { EntradaInfluencer, Influencer } from "@/types/dominio";
-import type { EntradaImposto, Imposto } from "@/types/fiscal";
+import type {
+  AliquotaEstado,
+  EntradaAliquotaEstado,
+  EntradaImposto,
+  Imposto,
+} from "@/types/fiscal";
 import type {
   ContagemEstoque,
   EntradaContagemEstoque,
@@ -37,6 +42,11 @@ export interface RepositorioCadastros {
   listarImpostos(): Promise<Imposto[]>;
   salvarImposto(entrada: EntradaImposto, id?: string): Promise<Imposto>;
   removerImposto(id: string): Promise<void>;
+
+  // --- DIFAL: aliquota interna de cada estado -----------------------------
+  listarAliquotasEstaduais(): Promise<AliquotaEstado[]>;
+  /** Chave e a UF: salvar duas vezes o mesmo estado atualiza, nao duplica. */
+  salvarAliquotaEstadual(entrada: EntradaAliquotaEstado): Promise<AliquotaEstado>;
 
   // --- Produtos e kits ----------------------------------------------------
   listarProdutos(): Promise<Produto[]>;

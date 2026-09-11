@@ -66,6 +66,8 @@ export type Area =
   | "fiscal"
   | "usuarios";
 
+// DIFAL e parte da area fiscal: quem ve imposto ve o diferencial de aliquota.
+
 const PERMISSOES: Record<PerfilUsuario, Area[]> = {
   // O dono ve tudo.
   dono: ["financeiro", "custos", "produtos", "estoque", "fiscal", "usuarios"],

@@ -49,6 +49,7 @@ function pedido(itens: ProdutoDoPedido[], parcial: Partial<Pedido> = {}): Pedido
     gateway_name: "Mercado Pago",
     payment_details: { method: "credit_card", credit_card_company: "visa", installments: 1 },
     cancel_reason: null,
+    shipping_address: { province: "SP", city: "Sao Paulo", zipcode: "01000-000", country: "BR" },
     customer: {
       id: 1,
       name: "Cliente",

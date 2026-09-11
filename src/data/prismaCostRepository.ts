@@ -20,8 +20,10 @@ import type {
   Influencer,
 } from "@/types/dominio";
 import type {
+  AliquotaEstado,
   AnexoSimples,
   BaseIncidencia,
+  EntradaAliquotaEstado,
   EntradaImposto,
   EsferaImposto,
   Imposto,
@@ -298,6 +300,50 @@ export class RepositorioPostgres implements RepositorioCadastros {
       ),
       prisma.imposto.delete({ where: { id } }),
     ]);
+  }
+
+  // --- DIFAL --------------------------------------------------------------
+
+  async listarAliquotasEstaduais(): Promise<AliquotaEstado[]> {
+    const linhas = await prisma.aliquotaEstado.findMany({ orderBy: { uf: "asc" } });
+    return linhas.map((linha) => ({
+      uf: linha.uf,
+      nome: linha.nome,
+      aliquotaInterna: decimalParaNumero(linha.aliquotaInterna),
+      ativo: linha.ativo,
+      confirmadoPeloContador: linha.confirmadoPeloContador,
+      observacao: linha.observacao,
+      atualizadoEm: linha.atualizadoEm.toISOString(),
+    }));
+  }
+
+  async salvarAliquotaEstadual(
+    entrada: EntradaAliquotaEstado,
+  ): Promise<AliquotaEstado> {
+    const dados = {
+      nome: entrada.nome,
+      aliquotaInterna: entrada.aliquotaInterna,
+      ativo: entrada.ativo,
+      confirmadoPeloContador: entrada.confirmadoPeloContador,
+      observacao: entrada.observacao,
+    };
+
+    // A UF e a chave primaria: upsert garante um registro por estado.
+    const linha = await prisma.aliquotaEstado.upsert({
+      where: { uf: entrada.uf.toUpperCase() },
+      create: { uf: entrada.uf.toUpperCase(), ...dados },
+      update: dados,
+    });
+
+    return {
+      uf: linha.uf,
+      nome: linha.nome,
+      aliquotaInterna: decimalParaNumero(linha.aliquotaInterna),
+      ativo: linha.ativo,
+      confirmadoPeloContador: linha.confirmadoPeloContador,
+      observacao: linha.observacao,
+      atualizadoEm: linha.atualizadoEm.toISOString(),
+    };
   }
 
   // --- Produtos e kits ----------------------------------------------------

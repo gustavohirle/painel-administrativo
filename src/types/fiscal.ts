@@ -91,6 +91,32 @@ export interface Imposto {
 
 export type EntradaImposto = Omit<Imposto, "id" | "atualizadoEm">;
 
+/**
+ * Aliquota interna de ICMS de um estado, editavel.
+ *
+ * E o que define o DIFAL: numa venda interestadual ao consumidor final, a
+ * diferenca entre a aliquota interna do DESTINO e a interestadual vai para o
+ * estado de destino.
+ *
+ * Semeado com a tabela de `types/estados.ts` e editavel na tela, porque esses
+ * numeros mudam com frequencia -- varios estados mexeram nas suas entre 2023 e
+ * 2025 -- e porque alguns ja embutem fundo de combate a pobreza e outros nao.
+ */
+export interface AliquotaEstado {
+  /** Sigla do estado. E a chave: um registro por UF. */
+  uf: string;
+  nome: string;
+  /** Aliquota interna modal, em percentual. */
+  aliquotaInterna: number;
+  /** Desmarcado tira o estado do calculo do DIFAL. */
+  ativo: boolean;
+  confirmadoPeloContador: boolean;
+  observacao: string | null;
+  atualizadoEm: string;
+}
+
+export type EntradaAliquotaEstado = Omit<AliquotaEstado, "atualizadoEm">;
+
 // ---------------------------------------------------------------------------
 // Simples Nacional -- Anexo II (Industria)
 // ---------------------------------------------------------------------------

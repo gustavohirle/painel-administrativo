@@ -121,6 +121,28 @@ model Imposto {
   @@index([ativo])
 }
 
+/// Aliquota interna de ICMS de um estado -- e o que define o DIFAL.
+///
+/// Numa venda interestadual ao consumidor final, a diferenca entre esta
+/// aliquota e a interestadual vai para o estado de destino.
+model AliquotaEstado {
+  /// Sigla do estado. E a chave: um registro por UF.
+  uf   String @id
+  nome String
+
+  /// Aliquota interna modal, em percentual.
+  aliquotaInterna Decimal @db.Decimal(6, 3)
+
+  ativo Boolean @default(true)
+
+  /// Comeca false. A tela avisa enquanto ninguem confirmou.
+  confirmadoPeloContador Boolean @default(false)
+
+  observacao String?
+
+  atualizadoEm DateTime @updatedAt
+}
+
 /// Cadastro de produto: vinculo fiscal, composicao de kit e identidade.
 model Produto {
   id String @id @default(cuid())

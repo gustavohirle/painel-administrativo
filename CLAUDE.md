@@ -344,6 +344,41 @@ cosmético é zero).
 Toda alíquota carrega `confirmadoPeloContador`, que começa `false` e aparece
 na tela como aviso. O painel nunca apresenta número fiscal como definitivo.
 
+### 5.10.1 DIFAL de ICMS
+
+Na venda interestadual ao consumidor final — que é o caso de uma loja
+Nuvemshop — o ICMS se parte em dois: a alíquota **interestadual** fica na
+origem, e a diferença entre a **interna do destino** e a interestadual vai para
+o estado de destino. Essa diferença é o DIFAL.
+
+```
+DIFAL = valor da operação × (alíquota interna do destino − interestadual)
+```
+
+O estado de destino vem de `shipping_address.province` do pedido. A Nuvemshop
+devolve ora a sigla, ora o nome por extenso, com ou sem acento —
+`normalizarUF` resolve num lugar só; sem isso o mesmo estado vira três linhas
+no relatório.
+
+**Alíquota interestadual** (Resolução do Senado 22/1989): 12% em toda operação,
+caindo para 7% **somente** quando a origem está no Sul ou Sudeste (exceto ES) e
+o destino está no Norte, Nordeste, Centro-Oeste ou ES. De Goiás, portanto, é
+sempre 12%.
+
+Três regras que mudam o resultado e são fáceis de errar:
+
+1. **Venda dentro do próprio estado não tem DIFAL.** Só operação interestadual.
+2. **Optante do Simples não recolhe DIFAL como remetente** (STF, ADI 5464).
+   Como o regime é por influencer, isso sai de graça: marca no Simples fica
+   fora da conta, mas continua aparecendo na distribuição por estado.
+3. **A apuração oficial usa base dupla** (o imposto entra na própria base). O
+   painel **não** faz esse gross-up, então o valor fica um pouco abaixo do
+   devido. Está dito na tela.
+
+As 27 alíquotas internas vêm semeadas de `types/estados.ts` e são editáveis em
+`/difal`. Nenhuma nasce confirmada: vários estados mexeram nas suas entre 2023
+e 2025, e algumas já embutem fundo de combate à pobreza enquanto outras não.
+
 ### 5.11 Cadastro de produtos e kits
 
 A Nuvemshop sabe o que vendeu e por quanto. Ela **não** sabe de quem é o

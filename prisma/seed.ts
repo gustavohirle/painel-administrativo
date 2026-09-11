@@ -12,6 +12,7 @@
 
 import { RepositorioPostgres } from "@/data/prismaCostRepository";
 import {
+  aliquotasEstaduaisIniciais,
   contagensIniciais,
   custosIniciais,
   impostosIniciais,
@@ -35,6 +36,19 @@ async function main() {
     impostosSalvos.push(await repositorio.salvarImposto(entrada, existente?.id));
   }
   console.log(`impostos: ${impostosSalvos.length}`);
+
+  // --- Aliquotas estaduais (DIFAL) -----------------------------------------
+  const aliquotas = aliquotasEstaduaisIniciais();
+  const jaExistem = await repositorio.listarAliquotasEstaduais();
+  for (const aliquota of aliquotas) {
+    // Nao sobrescreve estado ja confirmado: o contador pode ter ajustado.
+    if (jaExistem.some((a) => a.uf === aliquota.uf && a.confirmadoPeloContador)) {
+      continue;
+    }
+    const { atualizadoEm: _em, ...entrada } = aliquota;
+    await repositorio.salvarAliquotaEstadual(entrada);
+  }
+  console.log(`aliquotas estaduais: ${aliquotas.length}`);
 
   // --- Influencers ---------------------------------------------------------
   // Antes dos produtos: o produto herda os impostos do regime do influencer.

@@ -24,13 +24,19 @@ export default async function PaginaImpostos({
   const fonte = obterFonteDePedidos();
   const repositorio = await obterRepositorioCadastros();
 
-  const [todosOsPedidos, impostosCadastrados, produtos, influencers] =
-    await Promise.all([
-      fonte.listarPedidos(),
-      repositorio.listarImpostos(),
-      repositorio.listarProdutos(),
-      repositorio.listarInfluencers(),
-    ]);
+  const [
+    todosOsPedidos,
+    impostosCadastrados,
+    produtos,
+    influencers,
+    aliquotasEstaduais,
+  ] = await Promise.all([
+    fonte.listarPedidos(),
+    repositorio.listarImpostos(),
+    repositorio.listarProdutos(),
+    repositorio.listarInfluencers(),
+    repositorio.listarAliquotasEstaduais(),
+  ]);
 
   const meses = mesesDisponiveis(todosOsPedidos);
   const mesSelecionado =
@@ -43,6 +49,7 @@ export default async function PaginaImpostos({
     produtos,
     impostosCadastrados,
     influencers,
+    aliquotasEstaduais,
   );
 
   // Quantos produtos marcaram cada imposto -- liga o catalogo ao cadastro.

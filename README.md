@@ -53,6 +53,7 @@ verificam que os totais da base de demonstração batem com o cenário esperado.
 | `/custos` | dono, estoque | Custo de fabricação por produto/variante. Preço de venda e margem só para o dono |
 | `/comissoes` | dono | Influencers: contrato de comissão **e** regime tributário de cada marca |
 | `/impostos` | dono | Catálogo dos tributos que podem incidir sobre um produto, por regime, e a apuração marca a marca |
+| `/difal` | dono | Alíquota interna de cada estado (editável) e o DIFAL apurado por destino |
 | `/produtos` | dono, estoque | Influencer dono, NCM e composição dos kits. Os impostos vêm do regime do influencer |
 | `/estoque` | dono, estoque | Saldo por item e registro de contagens |
 
@@ -174,6 +175,20 @@ no cadastro do produto já traz os tributos daquele regime marcados.
 No Simples, a alíquota que se paga é a **efetiva** — a da tabela menos a parcela
 a deduzir. O que está dentro da guia única nunca soma no total; a quebra por
 tributo é só leitura.
+
+### DIFAL
+
+Na venda interestadual ao consumidor final, a diferença entre a alíquota
+interna do estado de destino e a interestadual vai para aquele estado. O painel
+lê o estado de `shipping_address.province` de cada pedido, calcula pedido a
+pedido e soma no custo tributário.
+
+As 27 alíquotas vêm preenchidas e editáveis. Venda dentro do próprio estado não
+gera DIFAL, e **optante do Simples não recolhe como remetente** (STF, ADI 5464)
+— as vendas dessas marcas aparecem na distribuição por estado, com valor zerado.
+
+O cálculo **não** faz o gross-up de base dupla que a apuração oficial usa, então
+o valor fica um pouco abaixo do devido. A tela diz isso.
 
 O painel acompanha os dois limites do regime por marca: o sublimite estadual de
 ICMS (R$ 3,6 mi) e o teto (R$ 4,8 mi). Tributo do regime que está sem alíquota

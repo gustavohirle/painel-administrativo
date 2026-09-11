@@ -28,7 +28,12 @@ import type {
   EntradaInfluencer,
   Influencer,
 } from "@/types/dominio";
-import type { EntradaImposto, Imposto } from "@/types/fiscal";
+import type {
+  AliquotaEstado,
+  EntradaAliquotaEstado,
+  EntradaImposto,
+  Imposto,
+} from "@/types/fiscal";
 import type {
   ContagemEstoque,
   EntradaContagemEstoque,
@@ -38,6 +43,7 @@ import type {
 import type { Usuario } from "@/types/usuario";
 import { novoId, type RepositorioCadastros } from "@/data/repositorio";
 import {
+  aliquotasEstaduaisIniciais,
   contagensIniciais,
   custosIniciais,
   impostosIniciais,
@@ -53,6 +59,7 @@ interface Estado {
   custos: CustoProduto[];
   influencers: Influencer[];
   impostos: Imposto[];
+  aliquotasEstaduais: AliquotaEstado[];
   produtos: Produto[];
   contagens: ContagemEstoque[];
   usuarios: Usuario[];
@@ -82,6 +89,7 @@ async function estadoInicial(): Promise<Estado> {
     custos: custosIniciais(),
     influencers,
     impostos,
+    aliquotasEstaduais: aliquotasEstaduaisIniciais(),
     produtos,
     contagens: contagensIniciais(produtos),
     usuarios: await usuariosIniciais(),
@@ -111,6 +119,10 @@ async function completar(lido: Partial<Estado>): Promise<Estado> {
     custos: Array.isArray(lido.custos) ? lido.custos : inicial.custos,
     influencers,
     impostos,
+    aliquotasEstaduais:
+      Array.isArray(lido.aliquotasEstaduais) && lido.aliquotasEstaduais.length > 0
+        ? lido.aliquotasEstaduais
+        : inicial.aliquotasEstaduais,
     produtos,
     contagens: Array.isArray(lido.contagens)
       ? lido.contagens
@@ -262,6 +274,33 @@ export class RepositorioDemonstracao implements RepositorioCadastros {
       impostosIds: p.impostosIds.filter((i) => i !== id),
     }));
     await gravar(estado);
+  }
+
+  // --- DIFAL --------------------------------------------------------------
+
+  async listarAliquotasEstaduais(): Promise<AliquotaEstado[]> {
+    const estado = await carregar();
+    return estado.aliquotasEstaduais.sort((a, b) => a.uf.localeCompare(b.uf));
+  }
+
+  async salvarAliquotaEstadual(
+    entrada: EntradaAliquotaEstado,
+  ): Promise<AliquotaEstado> {
+    const estado = await carregar();
+    const uf = entrada.uf.toUpperCase();
+    const indice = estado.aliquotasEstaduais.findIndex((a) => a.uf === uf);
+
+    const registro: AliquotaEstado = {
+      ...entrada,
+      uf,
+      atualizadoEm: new Date().toISOString(),
+    };
+
+    if (indice >= 0) estado.aliquotasEstaduais[indice] = registro;
+    else estado.aliquotasEstaduais.push(registro);
+
+    await gravar(estado);
+    return registro;
   }
 
   // --- Produtos e kits ----------------------------------------------------

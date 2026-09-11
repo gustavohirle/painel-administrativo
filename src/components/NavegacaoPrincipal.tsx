@@ -10,6 +10,7 @@ const ITENS: Array<{ href: string; rotulo: string; area: Area }> = [
   { href: "/custos", rotulo: "Custos", area: "custos" },
   { href: "/comissoes", rotulo: "Comissoes", area: "financeiro" },
   { href: "/impostos", rotulo: "Impostos", area: "fiscal" },
+  { href: "/difal", rotulo: "DIFAL", area: "fiscal" },
   { href: "/produtos", rotulo: "Produtos", area: "produtos" },
   { href: "/estoque", rotulo: "Estoque", area: "estoque" },
 ];

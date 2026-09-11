@@ -71,6 +71,21 @@ export interface ProdutoDoPedido {
   sku: string | null;
 }
 
+/**
+ * Endereco de entrega.
+ *
+ * `province` e o que interessa aqui: e o estado de destino, e e ele que define
+ * a aliquota interna usada no DIFAL. A Nuvemshop devolve ora a sigla ("SP"),
+ * ora o nome por extenso ("Sao Paulo") -- normalize com `normalizarUF` antes
+ * de usar.
+ */
+export interface EnderecoEntrega {
+  province: string | null;
+  city: string | null;
+  zipcode: string | null;
+  country: string | null;
+}
+
 /** Detalhes do pagamento. */
 export interface DetalhesPagamento {
   method: MetodoPagamento | null;
@@ -106,6 +121,8 @@ export interface Pedido {
   payment_details: DetalhesPagamento;
   cancel_reason: MotivoCancelamento | null;
   customer: Cliente;
+  /** `null` em pedido sem entrega cadastrada (carrinho abandonado, retirada). */
+  shipping_address: EnderecoEntrega | null;
   products: ProdutoDoPedido[];
   /**
    * NAO faz parte da API oficial da Nuvemshop.
