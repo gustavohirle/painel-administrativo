@@ -11,7 +11,7 @@
 
 import type { CustoProduto, EntradaCustoProduto } from "@/types/dominio";
 import type { EntradaInfluencer, Influencer } from "@/types/dominio";
-import type { ConfiguracaoFiscal, EntradaImposto, Imposto } from "@/types/fiscal";
+import type { EntradaImposto, Imposto } from "@/types/fiscal";
 import type {
   ContagemEstoque,
   EntradaContagemEstoque,
@@ -37,11 +37,6 @@ export interface RepositorioCadastros {
   listarImpostos(): Promise<Imposto[]>;
   salvarImposto(entrada: EntradaImposto, id?: string): Promise<Imposto>;
   removerImposto(id: string): Promise<void>;
-
-  obterConfiguracaoFiscal(): Promise<ConfiguracaoFiscal>;
-  salvarConfiguracaoFiscal(
-    config: Omit<ConfiguracaoFiscal, "atualizadoEm">,
-  ): Promise<ConfiguracaoFiscal>;
 
   // --- Produtos e kits ----------------------------------------------------
   listarProdutos(): Promise<Produto[]>;

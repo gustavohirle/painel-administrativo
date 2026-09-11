@@ -20,12 +20,11 @@ import type {
   Influencer,
 } from "@/types/dominio";
 import type {
+  AnexoSimples,
   BaseIncidencia,
-  ConfiguracaoFiscal,
   EntradaImposto,
   EsferaImposto,
   Imposto,
-  AnexoSimples,
   RegimeTributario,
 } from "@/types/fiscal";
 import type {
@@ -37,7 +36,6 @@ import type {
   Produto,
 } from "@/types/produto";
 import type { PerfilUsuario, Usuario } from "@/types/usuario";
-import { configuracaoFiscalInicial } from "@/data/seeds";
 import type { RepositorioCadastros } from "@/data/repositorio";
 import { prisma } from "@/lib/prisma";
 
@@ -46,8 +44,6 @@ function decimalParaNumero(valor: Prisma.Decimal | number | null): number {
   if (valor === null) return 0;
   return typeof valor === "number" ? valor : Number(valor.toString());
 }
-
-const ID_CONFIGURACAO = "unica";
 
 // ---------------------------------------------------------------------------
 // Mapeadores
@@ -302,49 +298,6 @@ export class RepositorioPostgres implements RepositorioCadastros {
       ),
       prisma.imposto.delete({ where: { id } }),
     ]);
-  }
-
-  async obterConfiguracaoFiscal(): Promise<ConfiguracaoFiscal> {
-    const linha = await prisma.configuracaoFiscal.findUnique({
-      where: { id: ID_CONFIGURACAO },
-    });
-
-    if (!linha) return configuracaoFiscalInicial();
-
-    return {
-      regime: linha.regime as RegimeTributario,
-      anexoSimples: linha.anexoSimples as AnexoSimples,
-      uf: linha.uf,
-      rbt12Manual:
-        linha.rbt12Manual === null ? null : decimalParaNumero(linha.rbt12Manual),
-      atualizadoEm: linha.atualizadoEm.toISOString(),
-    };
-  }
-
-  async salvarConfiguracaoFiscal(
-    config: Omit<ConfiguracaoFiscal, "atualizadoEm">,
-  ): Promise<ConfiguracaoFiscal> {
-    const dados = {
-      regime: config.regime,
-      anexoSimples: config.anexoSimples,
-      uf: config.uf,
-      rbt12Manual: config.rbt12Manual,
-    };
-
-    const linha = await prisma.configuracaoFiscal.upsert({
-      where: { id: ID_CONFIGURACAO },
-      create: { id: ID_CONFIGURACAO, ...dados },
-      update: dados,
-    });
-
-    return {
-      regime: linha.regime as RegimeTributario,
-      anexoSimples: linha.anexoSimples as AnexoSimples,
-      uf: linha.uf,
-      rbt12Manual:
-        linha.rbt12Manual === null ? null : decimalParaNumero(linha.rbt12Manual),
-      atualizadoEm: linha.atualizadoEm.toISOString(),
-    };
   }
 
   // --- Produtos e kits ----------------------------------------------------

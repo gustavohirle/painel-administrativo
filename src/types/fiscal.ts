@@ -91,20 +91,6 @@ export interface Imposto {
 
 export type EntradaImposto = Omit<Imposto, "id" | "atualizadoEm">;
 
-/** Configuracao fiscal da empresa. Uma so, global. */
-export interface ConfiguracaoFiscal {
-  regime: RegimeTributario;
-  anexoSimples: AnexoSimples;
-  /** UF da empresa. Muda aliquota interna de ICMS e beneficios estaduais. */
-  uf: string;
-  /**
-   * Receita bruta dos ultimos 12 meses, informada manualmente.
-   * `null` = o painel calcula a partir do historico de pedidos.
-   */
-  rbt12Manual: number | null;
-  atualizadoEm: string;
-}
-
 // ---------------------------------------------------------------------------
 // Simples Nacional -- Anexo II (Industria)
 // ---------------------------------------------------------------------------

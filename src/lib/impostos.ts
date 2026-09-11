@@ -21,12 +21,8 @@
 
 import { paraNumero, type Pedido } from "@/types/nuvemshop";
 import type { Influencer } from "@/types/dominio";
-import type {
-  ConfiguracaoFiscal,
-  EsferaImposto,
-  Imposto,
-  RegimeTributario,
-} from "@/types/fiscal";
+import type { EsferaImposto, Imposto, RegimeTributario } from "@/types/fiscal";
+import { REGIME_SEM_INFLUENCER } from "@/lib/config";
 import { chaveProduto, type ChaveProduto, type Produto } from "@/types/produto";
 import { razaoSegura } from "@/lib/format";
 import { chaveMes, pedidosRecebidos, reconciliar } from "@/lib/metrics";
@@ -380,7 +376,6 @@ export function apurarImpostos(
   produtos: Produto[],
   impostos: Imposto[],
   influencers: Influencer[],
-  configPadrao: ConfiguracaoFiscal,
 ): ResultadoImpostos {
   const indice = indexarProdutos(produtos);
 
@@ -410,8 +405,10 @@ export function apurarImpostos(
         marca,
       },
       {
-        regime: influencer?.regime ?? configPadrao.regime,
-        rbt12Manual: influencer?.rbt12Manual ?? configPadrao.rbt12Manual,
+        // Sem influencer nao ha regime proprio: cai no padrao ate alguem
+        // vincular a marca a um influencer.
+        regime: influencer?.regime ?? REGIME_SEM_INFLUENCER,
+        rbt12Manual: influencer?.rbt12Manual ?? null,
       },
       doMes,
       historico,

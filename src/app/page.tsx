@@ -52,14 +52,12 @@ export default async function PaginaPainel({
     influencers,
     impostosCadastrados,
     produtos,
-    configFiscal,
   ] = await Promise.all([
     fonte.listarPedidos(),
     repositorio.listarCustos(),
     repositorio.listarInfluencers(),
     repositorio.listarImpostos(),
     repositorio.listarProdutos(),
-    repositorio.obterConfiguracaoFiscal(),
   ]);
 
   const meses = mesesDisponiveis(todosOsPedidos);
@@ -82,7 +80,6 @@ export default async function PaginaPainel({
     produtos,
     impostosCadastrados,
     influencers,
-    configFiscal,
   );
 
   const dre = montarDemonstrativo(pedidosDoMes, custos, influencers, {

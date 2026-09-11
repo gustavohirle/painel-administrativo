@@ -121,25 +121,6 @@ model Imposto {
   @@index([ativo])
 }
 
-/// Configuracao fiscal da empresa. Registro unico, com `id` fixo.
-model ConfiguracaoFiscal {
-  /// Sempre "unica": e um singleton, nao uma colecao.
-  id String @id @default("unica")
-
-  /// "simples_nacional" | "lucro_presumido" | "lucro_real"
-  regime String @default("simples_nacional")
-
-  /// Anexo do Simples. Industria e o II.
-  anexoSimples String @default("II")
-
-  uf String @default("GO")
-
-  /// Receita bruta de 12 meses informada a mao. NULL = calcular do historico.
-  rbt12Manual Decimal? @db.Decimal(14, 2)
-
-  atualizadoEm DateTime @updatedAt
-}
-
 /// Cadastro de produto: vinculo fiscal, composicao de kit e identidade.
 model Produto {
   id String @id @default(cuid())

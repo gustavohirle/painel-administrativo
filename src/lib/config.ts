@@ -89,5 +89,15 @@ export function lojasNuvemshop(): LojaNuvemshop[] {
   return [];
 }
 
+/**
+ * Regime usado quando uma marca ainda nao tem influencer vinculado.
+ *
+ * NAO existe "o regime da empresa": cada influencer tem a sua operacao, com o
+ * seu enquadramento. Esta constante e so o que fazer com a sobra -- pedidos de
+ * uma marca que ninguem vinculou ainda. Assim que o influencer for cadastrado,
+ * o regime dele manda.
+ */
+export const REGIME_SEM_INFLUENCER = "lucro_presumido" as const;
+
 /** Percentual de comissao usado como ponto de partida na tela. */
 export const PERCENTUAL_COMISSAO_PADRAO = 30;

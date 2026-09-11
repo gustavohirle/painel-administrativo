@@ -52,7 +52,7 @@ verificam que os totais da base de demonstração batem com o cenário esperado.
 | `/` | dono | Cascata do faturamento, raio-x do resultado, carga tributária, simulador de comissão, meios de pagamento, evolução de 6 meses |
 | `/custos` | dono, estoque | Custo de fabricação por produto/variante. Preço de venda e margem só para o dono |
 | `/comissoes` | dono | Influencers: contrato de comissão **e** regime tributário de cada marca |
-| `/impostos` | dono | Apuração marca a marca, cadastro de tributos por regime, monitor dos limites do Simples |
+| `/impostos` | dono | Catálogo dos tributos que podem incidir sobre um produto, por regime, e a apuração marca a marca |
 | `/produtos` | dono, estoque | Influencer dono, NCM e composição dos kits. Os impostos vêm do regime do influencer |
 | `/estoque` | dono, estoque | Saldo por item e registro de contagens |
 
@@ -158,10 +158,15 @@ Assim o cálculo é idempotente: recarregar a página não derruba o estoque.
 
 ### Impostos
 
-**O regime é do influencer, não da empresa toda.** Cada marca é uma operação
-separada: as menores cabem no Simples Nacional, as maiores passariam do teto e
-ficam no Lucro Presumido. A apuração é marca a marca, com RBT12 próprio —
-somar as cinco jogaria uma empresa pequena numa faixa que não é a dela.
+**O regime é do influencer, não da empresa toda** — não há configuração global
+de regime. Cada marca é uma operação separada: as menores cabem no Simples
+Nacional, as maiores passariam do teto e ficam no Lucro Presumido. A apuração é
+marca a marca, com RBT12 próprio — somar as cinco jogaria uma empresa pequena
+numa faixa que não é a dela.
+
+A aba `/impostos` é o **catálogo dos tributos possíveis sobre um produto**,
+organizado pelo regime em que cada um vale, já cadastrado com os básicos e
+editável. O regime de cada marca se edita em `/comissoes`.
 
 A cadeia é **produto → influencer → regime → impostos**. Escolher o influencer
 no cadastro do produto já traz os tributos daquele regime marcados.

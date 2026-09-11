@@ -13,7 +13,7 @@ import { unidadesConsumidas } from "@/lib/estoque";
 import { idsSugeridosPorRegime, indexarProdutos } from "@/lib/impostos";
 import { chaveMes, filtrarPorMes, mesesDisponiveis } from "@/lib/metrics";
 import type { CustoProduto, Influencer } from "@/types/dominio";
-import type { ConfiguracaoFiscal, Imposto } from "@/types/fiscal";
+import type { Imposto } from "@/types/fiscal";
 import {
   chaveProduto,
   type ComponenteKit,
@@ -343,20 +343,22 @@ export function impostosIniciais(): Imposto[] {
       sigla: "ICMS",
       esfera: "estadual",
       baseIncidencia: "receita",
-      aliquota: 0,
+      // Estimativa de ponto de partida, NAO apuracao -- ver a observacao.
+      aliquota: 10,
       regimes: ["lucro_presumido", "lucro_real"],
       percentualPresuncao: null,
       deducaoMensal: null,
       dentroDoDAS: false,
       aplicacaoPorProduto: true,
-      ativo: false,
+      ativo: true,
       confirmadoPeloContador: false,
       observacao:
-        "FICA DE FORA DA CONTA ATE SER PREENCHIDO. Nao ha aliquota unica que " +
-        "sirva: a venda interna de Goias, a interestadual e o DIFAL tem " +
-        "aliquotas diferentes, e o valor devido e liquido dos creditos de " +
-        "materia-prima, que este painel nao modela. Peca ao contador a " +
-        "aliquota EFETIVA sobre a receita e informe aqui.",
+        "ESTIMATIVA, TROQUE PELA EFETIVA DO CONTADOR. Nao existe aliquota " +
+        "unica que sirva: a venda interna de Goias, a interestadual e o DIFAL " +
+        "tem aliquotas diferentes, e o valor devido e liquido dos creditos de " +
+        "materia-prima, que este painel nao modela. Os 10% sao a ordem de " +
+        "grandeza tipica de uma industria de cosmeticos vendendo direto ao " +
+        "consumidor -- o numero certo vem da apuracao.",
     },
     {
       id: "imposto-ipi",
@@ -364,17 +366,21 @@ export function impostosIniciais(): Imposto[] {
       sigla: "IPI",
       esfera: "federal",
       baseIncidencia: "receita",
+      // Zero e o ponto de partida honesto: boa parte dos NCM de cosmetico e
+      // isenta ou tributada a zero. Perfumaria pode ser bem mais alta.
       aliquota: 0,
       regimes: ["lucro_presumido", "lucro_real"],
       percentualPresuncao: null,
       deducaoMensal: null,
       dentroDoDAS: false,
       aplicacaoPorProduto: true,
-      ativo: false,
+      ativo: true,
       confirmadoPeloContador: false,
       observacao:
-        "A aliquota depende do NCM de cada produto na tabela TIPI, e varia " +
-        "bastante dentro de cosmeticos. No Simples o IPI ja esta na guia unica.",
+        "A aliquota depende do NCM de cada produto na tabela TIPI e varia " +
+        "bastante dentro de cosmeticos -- boa parte fica em zero, perfumaria " +
+        "pode passar de 20%. Informe por produto conforme o NCM. No Simples o " +
+        "IPI ja esta dentro da guia unica.",
     },
 
     // ------------------------------------------------------- LUCRO REAL
@@ -418,16 +424,6 @@ export function impostosIniciais(): Imposto[] {
   ];
 
   return base.map((imposto) => ({ ...imposto, atualizadoEm: agora }));
-}
-
-export function configuracaoFiscalInicial(): ConfiguracaoFiscal {
-  return {
-    regime: "simples_nacional",
-    anexoSimples: "II",
-    uf: "GO",
-    rbt12Manual: null,
-    atualizadoEm: AGORA(),
-  };
 }
 
 // ---------------------------------------------------------------------------

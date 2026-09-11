@@ -28,7 +28,7 @@ import type {
   EntradaInfluencer,
   Influencer,
 } from "@/types/dominio";
-import type { ConfiguracaoFiscal, EntradaImposto, Imposto } from "@/types/fiscal";
+import type { EntradaImposto, Imposto } from "@/types/fiscal";
 import type {
   ContagemEstoque,
   EntradaContagemEstoque,
@@ -38,7 +38,6 @@ import type {
 import type { Usuario } from "@/types/usuario";
 import { novoId, type RepositorioCadastros } from "@/data/repositorio";
 import {
-  configuracaoFiscalInicial,
   contagensIniciais,
   custosIniciais,
   impostosIniciais,
@@ -54,7 +53,6 @@ interface Estado {
   custos: CustoProduto[];
   influencers: Influencer[];
   impostos: Imposto[];
-  configuracaoFiscal: ConfiguracaoFiscal;
   produtos: Produto[];
   contagens: ContagemEstoque[];
   usuarios: Usuario[];
@@ -84,7 +82,6 @@ async function estadoInicial(): Promise<Estado> {
     custos: custosIniciais(),
     influencers,
     impostos,
-    configuracaoFiscal: configuracaoFiscalInicial(),
     produtos,
     contagens: contagensIniciais(produtos),
     usuarios: await usuariosIniciais(),
@@ -114,7 +111,6 @@ async function completar(lido: Partial<Estado>): Promise<Estado> {
     custos: Array.isArray(lido.custos) ? lido.custos : inicial.custos,
     influencers,
     impostos,
-    configuracaoFiscal: lido.configuracaoFiscal ?? inicial.configuracaoFiscal,
     produtos,
     contagens: Array.isArray(lido.contagens)
       ? lido.contagens
@@ -266,19 +262,6 @@ export class RepositorioDemonstracao implements RepositorioCadastros {
       impostosIds: p.impostosIds.filter((i) => i !== id),
     }));
     await gravar(estado);
-  }
-
-  async obterConfiguracaoFiscal(): Promise<ConfiguracaoFiscal> {
-    return (await carregar()).configuracaoFiscal;
-  }
-
-  async salvarConfiguracaoFiscal(
-    config: Omit<ConfiguracaoFiscal, "atualizadoEm">,
-  ): Promise<ConfiguracaoFiscal> {
-    const estado = await carregar();
-    estado.configuracaoFiscal = { ...config, atualizadoEm: new Date().toISOString() };
-    await gravar(estado);
-    return estado.configuracaoFiscal;
   }
 
   // --- Produtos e kits ----------------------------------------------------

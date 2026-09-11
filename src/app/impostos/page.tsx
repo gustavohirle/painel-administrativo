@@ -1,10 +1,7 @@
 import { Cabecalho } from "@/components/Cabecalho";
 import { Cartao } from "@/components/Cartao";
 import { CargaTributaria } from "@/components/CargaTributaria";
-import {
-  FormularioConfiguracaoFiscal,
-  GestaoImpostos,
-} from "@/components/GestaoImpostos";
+import { GestaoImpostos } from "@/components/GestaoImpostos";
 import { RodapeDemonstracao } from "@/components/RodapeDemonstracao";
 
 import { obterFonteDePedidos, obterRepositorioCadastros } from "@/data";
@@ -27,13 +24,12 @@ export default async function PaginaImpostos({
   const fonte = obterFonteDePedidos();
   const repositorio = await obterRepositorioCadastros();
 
-  const [todosOsPedidos, impostosCadastrados, produtos, influencers, configFiscal] =
+  const [todosOsPedidos, impostosCadastrados, produtos, influencers] =
     await Promise.all([
       fonte.listarPedidos(),
       repositorio.listarImpostos(),
       repositorio.listarProdutos(),
       repositorio.listarInfluencers(),
-      repositorio.obterConfiguracaoFiscal(),
     ]);
 
   const meses = mesesDisponiveis(todosOsPedidos);
@@ -47,8 +43,30 @@ export default async function PaginaImpostos({
     produtos,
     impostosCadastrados,
     influencers,
-    configFiscal,
   );
+
+  // Quantos produtos marcaram cada imposto -- liga o catalogo ao cadastro.
+  const usoPorImposto: Record<string, number> = {};
+  for (const produto of produtos) {
+    if (!produto.ativo) continue;
+    for (const id of produto.impostosIds) {
+      usoPorImposto[id] = (usoPorImposto[id] ?? 0) + 1;
+    }
+  }
+
+  // Valor apurado por imposto, somando as marcas. Sai da propria apuracao
+  // para nao divergir do que a tela de baixo mostra.
+  const valorPorImposto: Record<string, number> = {};
+  for (const apuracao of resultado.porInfluencer) {
+    for (const linha of apuracao.linhas) {
+      valorPorImposto[linha.impostoId] =
+        (valorPorImposto[linha.impostoId] ?? 0) + linha.valor;
+    }
+  }
+
+  const operacoes = influencers
+    .filter((i) => i.ativo)
+    .map((i) => ({ marca: i.marca, nome: i.nome, regime: i.regime }));
 
   return (
     <div className="min-h-screen">
@@ -62,11 +80,13 @@ export default async function PaginaImpostos({
       <main className="mx-auto max-w-[1400px] space-y-6 px-6 py-7">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-tinta xl:text-3xl">
-            Impostos
+            Impostos sobre os produtos
           </h1>
-          <p className="mt-1 max-w-3xl text-sm text-tinta-media">
-            Cada influencer tem o proprio regime, e a apuracao e feita marca a
-            marca. O regime de cada um se edita no cadastro de comissoes.
+          <p className="mt-1 max-w-3xl text-sm leading-relaxed text-tinta-media">
+            O catalogo de tributos que podem incidir sobre um produto, ja
+            cadastrado com os basicos e editavel. Quem define qual conjunto vale
+            para cada item e o <strong>regime do influencer dono</strong> — e
+            esse regime se edita no cadastro de comissoes, marca a marca.
             Referencia: {mesAnoLongo(mesSelecionado)}.
           </p>
         </div>
@@ -76,36 +96,32 @@ export default async function PaginaImpostos({
             Confirme as aliquotas com o contador antes de usar para apurar
           </p>
           <p className="mt-1 max-w-4xl text-sm leading-relaxed text-tinta-media">
-            A tabela do Simples Nacional usada aqui e a oficial do Anexo II, mas
-            o enquadramento no anexo, a segregacao de receitas e cada tributo
-            recolhido por fora dependem do NCM, do destino da venda e de
-            beneficios fiscais estaduais. O painel serve para enxergar a ordem de
-            grandeza e simular cenarios -- nao substitui a apuracao.
+            A tabela do Simples Nacional usada aqui e a oficial do Anexo II, e as
+            aliquotas de PIS, COFINS, IRPJ e CSLL do Lucro Presumido sao as
+            legais. Ja o ICMS e o IPI dependem do NCM, do destino da venda e dos
+            creditos de insumo -- o que vem preenchido e ponto de partida, nao
+            apuracao. Tudo marcado como &quot;a confirmar&quot; precisa passar
+            pelo contador.
           </p>
         </div>
 
         <Cartao
-          titulo="Regime padrao"
-          descricao="Vale apenas para marcas que ainda nao tem influencer vinculado. O regime de cada marca fica no cadastro do influencer."
-        >
-          <FormularioConfiguracaoFiscal config={configFiscal} />
-        </Cartao>
-
-        <Cartao
-          titulo="Apuracao do mes"
-          descricao="Quanto do que entrou vira imposto, marca a marca, e o acompanhamento dos limites de quem esta no Simples."
-        >
-          <CargaTributaria resultado={resultado} />
-        </Cartao>
-
-        <Cartao
-          titulo="Cadastro de impostos"
-          descricao="Cada tributo vale para um ou mais regimes. E dessa lista que o cadastro de produto se preenche sozinho."
+          titulo="Impostos que podem incidir sobre um produto"
+          descricao="Organizados pelo regime em que valem. No cadastro do produto, escolher o influencer ja traz marcados os do regime dele."
         >
           <GestaoImpostos
             impostos={impostosCadastrados}
-            baseReceita={resultado.baseReceita}
+            usoPorImposto={usoPorImposto}
+            operacoes={operacoes}
+            valorPorImposto={valorPorImposto}
           />
+        </Cartao>
+
+        <Cartao
+          titulo="Apuracao do mes, marca a marca"
+          descricao="Cada influencer no seu regime, com o acompanhamento dos limites de quem esta no Simples."
+        >
+          <CargaTributaria resultado={resultado} />
         </Cartao>
 
         <RodapeDemonstracao demonstracao={modoDemonstracao()} />

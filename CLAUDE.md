@@ -270,8 +270,17 @@ A cadeia é: **produto → influencer → regime → impostos**. Trocar o influe
 de um produto troca o conjunto de tributos que incide sobre ele, e o formulário
 faz isso na hora.
 
-A configuração global sobrou apenas como *fallback* para marcas ainda sem
-influencer vinculado.
+**Não existe configuração de regime da empresa** — esse conceito foi removido
+por inteiro (tipo, tela, tabela e repositório). Marca sem influencer vinculado
+cai em `REGIME_SEM_INFLUENCER`, uma constante em `lib/config.ts`, até alguém
+vincular.
+
+A aba `/impostos` é um **catálogo dos tributos que podem incidir sobre um
+produto**, organizado pelo regime em que cada um vale — não um seletor de
+regime. Cada seção mostra quais marcas estão naquele regime, e a coluna
+"apurado no mês" vem da própria apuração, não de uma multiplicação sobre a
+receita consolidada (um imposto por produto incide só sobre os produtos
+marcados; usar o consolidado superestimava).
 
 No Simples:
 
@@ -302,6 +311,14 @@ base presumida — sem ela, seria cobrado desde o primeiro real.
 **Tributo do regime que está inativo não some em silêncio.** Ele volta em
 `inativosDoRegime` e a tela diz "o ICMS não está nesta conta", em vez de exibir
 um total menor sem explicar por quê.
+
+Os tributos vêm **já cadastrados com os básicos e editáveis**. PIS, COFINS,
+IRPJ e CSLL do Presumido usam as alíquotas legais e nascem confirmados. ICMS
+nasce ativo com 10% e **`confirmadoPeloContador: false`** — é ordem de grandeza
+típica de indústria de cosmético em D2C, não apuração: a alíquota real depende
+do destino da venda e é líquida de créditos de insumo, que o painel não modela.
+IPI nasce ativo em 0%, que é o ponto de partida honesto (boa parte dos NCM de
+cosmético é zero).
 
 Toda alíquota carrega `confirmadoPeloContador`, que começa `false` e aparece
 na tela como aviso. O painel nunca apresenta número fiscal como definitivo.

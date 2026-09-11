@@ -12,7 +12,6 @@
 
 import { RepositorioPostgres } from "@/data/prismaCostRepository";
 import {
-  configuracaoFiscalInicial,
   contagensIniciais,
   custosIniciais,
   impostosIniciais,
@@ -36,11 +35,6 @@ async function main() {
     impostosSalvos.push(await repositorio.salvarImposto(entrada, existente?.id));
   }
   console.log(`impostos: ${impostosSalvos.length}`);
-
-  // --- Configuracao fiscal -------------------------------------------------
-  const { atualizadoEm: _config, ...config } = configuracaoFiscalInicial();
-  await repositorio.salvarConfiguracaoFiscal(config);
-  console.log("configuracao fiscal: ok");
 
   // --- Influencers ---------------------------------------------------------
   // Antes dos produtos: o produto herda os impostos do regime do influencer.
