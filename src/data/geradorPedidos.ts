@@ -10,7 +10,7 @@
  *
  * Cenario alvo do mes mais recente (CLAUDE.md secao 6):
  *   ~8.400 pedidos | bruto ~R$ 3,14 mi | nao pago ~14% | cancelado ~5%
- *   reembolsado ~1,3% | frete ~4,7% do recebido | 5 marcas | 6 meses
+ *   reembolsado ~1,3% | frete R$ 19 fixo por pedido | 5 marcas | 6 meses
  */
 
 import type {
@@ -116,8 +116,22 @@ const TAXA_NAO_PAGAMENTO: Record<"credit_card" | "pix" | "boleto", number> = {
 const TAXA_CANCELAMENTO = 0.05;
 const TAXA_REEMBOLSO = 0.016;
 
-/** Fracao dos pedidos com frete gratis (promocao acima de X reais). */
-const FRACAO_FRETE_GRATIS = 0.48;
+/**
+ * Frete por compra, em reais. Valor fixo, igual para todo pedido.
+ *
+ * Ja foi de tres jeitos e vale registrar por que este e o atual:
+ *
+ * - R$ 22 a R$ 46 sorteado, com 48% dos pedidos em frete gratis;
+ * - proporcional a mercadoria, calibrado para dar 30% do recebido -- que
+ *   inflava o faturamento bruto em 39%, porque frete entra no `total` do
+ *   pedido, e com isso inflava tambem a comissao de quem tem contrato sobre o
+ *   bruto, ao ponto de o mes fechar no prejuizo;
+ * - fixo, que e o que esta valendo.
+ *
+ * Fixo tem a vantagem de nao interagir com o ticket: mexer no valor do pedido
+ * nao mexe na proporcao do frete, e a conta do painel fica previsivel.
+ */
+const FRETE_POR_PEDIDO = 19;
 
 /** Fracao dos pedidos com cupom de desconto. */
 const FRACAO_COM_DESCONTO = 0.35;
@@ -248,6 +262,38 @@ function escolherMetodo(rnd: Random, marca: MarcaCatalogo): MetodoPagamento {
   );
 }
 
+/**
+ * Grafias que a API pode devolver para o mesmo meio de pagamento.
+ *
+ * Mesma ideia do estado por extenso logo abaixo: a base de demonstracao varia
+ * a grafia DE PROPOSITO, para que `normalizarMetodoPagamento` seja exercitado
+ * fora do teste unitario. Se a normalizacao quebrar, o painel passa a mostrar
+ * "Credit Card" e "credit_card" como dois meios distintos, com duas taxas --
+ * e isso aparece na tela, nao so numa assercao.
+ *
+ * Todas as variantes abaixo normalizam para o mesmo metodo canonico, entao a
+ * distribuicao do cenario (cartao ~58%, Pix ~26%, boleto ~16%) nao muda.
+ */
+const GRAFIAS_DO_METODO: Record<string, string[]> = {
+  credit_card: ["credit_card", "Credit_Card", "CREDIT CARD", "credit-card", "creditCard"],
+  pix: ["pix", "PIX", " Pix "],
+  boleto: ["boleto", "Boleto", "BOLETO", "ticket", "bank_slip"],
+};
+
+/**
+ * Escolhe uma das grafias do metodo, SEM consumir o gerador aleatorio.
+ *
+ * Usa o id do pedido de proposito: puxar um `rnd()` aqui deslocaria toda a
+ * sequencia seguinte e mudaria os totais do cenario documentado -- foi o que
+ * aconteceu na primeira versao, que derrubou o bruto de R$ 3,14 mi para
+ * R$ 3,12 mi sem ninguem ter mexido em valor nenhum.
+ */
+function grafiaDoMetodo(id: number, metodo: string): string {
+  const variantes = GRAFIAS_DO_METODO[metodo];
+  if (!variantes || variantes.length === 0) return metodo;
+  return variantes[id % variantes.length] ?? metodo;
+}
+
 function sortearEndereco(rnd: Random): EnderecoEntrega {
   const destino = sortearPonderado(
     rnd,
@@ -355,13 +401,19 @@ export function gerarBaseDemonstracao(
       const desconto =
         rnd() < FRACAO_COM_DESCONTO ? subtotal * numeroEntre(rnd, 0.05, 0.15) : 0;
 
-      // Frete gratis acima de certo valor e promocao comum: o cliente nao paga,
-      // mas a loja paga a transportadora do mesmo jeito.
-      const freteGratis = rnd() < FRACAO_FRETE_GRATIS;
-      const freteCliente = freteGratis ? 0 : numeroEntre(rnd, 22, 46);
-      const freteLoja = numeroEntre(rnd, 19, 39);
+      const mercadoria = subtotal - desconto;
 
-      const total = subtotal - desconto + freteCliente;
+      /*
+       * Frete fixo: todo pedido paga o mesmo, sem sorteio e sem frete gratis.
+       *
+       * `shipping_cost_owner` recebe o mesmo valor -- ele nao aparece em
+       * metrica nenhuma do painel, e com um frete fixo cobrado do cliente a
+       * leitura menos surpreendente e a de repasse direto do custo.
+       */
+      const freteCliente = FRETE_POR_PEDIDO;
+      const freteLoja = FRETE_POR_PEDIDO;
+
+      const total = mercadoria + freteCliente;
 
       // --- Desfecho do pedido -------------------------------------------
       // A ordem espelha a precedencia de `classificarPedido`: cancelamento
@@ -446,7 +498,8 @@ export function gerarBaseDemonstracao(
         shipping_cost_owner: dinheiro(freteLoja),
         gateway_name: GATEWAYS[metodo],
         payment_details: {
-          method: metodo,
+          // Grafia variada de proposito -- ver `GRAFIAS_DO_METODO`.
+          method: grafiaDoMetodo(pedidoId, metodo) as Pedido["payment_details"]["method"],
           credit_card_company: metodo === "credit_card" ? "visa" : null,
           installments: metodo === "credit_card" ? sortearPonderado(rnd, [1, 2, 3, 6, 12], [40, 15, 20, 15, 10]) : 1,
         },

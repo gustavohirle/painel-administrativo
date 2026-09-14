@@ -100,7 +100,7 @@ export type EntradaImposto = Omit<Imposto, "id" | "atualizadoEm">;
  *
  * Semeado com a tabela de `types/estados.ts` e editavel na tela, porque esses
  * numeros mudam com frequencia -- varios estados mexeram nas suas entre 2023 e
- * 2025 -- e porque alguns ja embutem fundo de combate a pobreza e outros nao.
+ * 2025 -- e porque alguns ja embutem fundo de combate à pobreza e outros nao.
  */
 export interface AliquotaEstado {
   /** Sigla do estado. E a chave: um registro por UF. */
@@ -205,3 +205,10 @@ export const TETO_SIMPLES_NACIONAL = 4_800_000;
  * cresce -- por isso o painel monitora os dois limites.
  */
 export const SUBLIMITE_ICMS_SIMPLES = 3_600_000;
+
+/** Nome do regime na tela. */
+export const ROTULO_REGIME: Record<RegimeTributario, string> = {
+  simples_nacional: "Simples Nacional",
+  lucro_presumido: "Lucro Presumido",
+  lucro_real: "Lucro Real",
+};

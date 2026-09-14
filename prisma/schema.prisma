@@ -125,6 +125,30 @@ model Imposto {
 ///
 /// Numa venda interestadual ao consumidor final, a diferenca entre esta
 /// aliquota e a interestadual vai para o estado de destino.
+/// Taxa da plataforma / gateway por meio de pagamento.
+/// NAO e tributo: e preco de servico, e sai direto do que cai na conta.
+model TaxaPlataforma {
+  /// `credit_card`, `pix`, `boleto`... E a chave: um registro por meio.
+  metodo String @id
+
+  /// Percentual sobre o valor do pedido.
+  percentual Decimal @db.Decimal(6, 3)
+
+  /// Valor fixo por transacao, em reais. Boleto costuma cobrar assim.
+  valorFixo Decimal @default(0) @db.Decimal(10, 2)
+
+  /// "bruto" (todo pedido criado) ou "recebido" (so os pagos).
+  base String @default("bruto")
+
+  ativa Boolean @default(true)
+
+  /// Comeca false. A tela avisa enquanto ninguem conferiu na fatura.
+  confirmadaNaFatura Boolean @default(false)
+
+  observacao   String?
+  atualizadoEm DateTime @updatedAt
+}
+
 model AliquotaEstado {
   /// Sigla do estado. E a chave: um registro por UF.
   uf   String @id
@@ -227,4 +251,80 @@ model Usuario {
   atualizadoEm DateTime @updatedAt
 
   @@index([ativo])
+}
+
+/// Ordem de fabricacao pedida pelo marketing e assinada pela fabrica.
+///
+/// Diferente de todo o resto deste schema, este registro NAO e um cadastro
+/// editavel: uma vez aprovada, a ordem congela e o PDF assinado fica gravado
+/// em bytes. Um documento que muda depois de assinado nao prova nada.
+model OrdemFabricacao {
+  id String @id @default(cuid())
+
+  /// "OF-2026-0007". Sequencial por ano -- e o numero que se fala no telefone.
+  numero String @unique
+
+  /// Array de { chave, nome, sku, quantidade }. O nome e COPIADO no momento do
+  /// pedido: renomear o produto depois nao pode alterar o que foi assinado.
+  itens Json @default("[]")
+
+  /// Data de calendario, sem hora: o dia em que o produto tem que estar pronto.
+  dataLancamento DateTime @db.Date
+
+  observacao String?
+
+  /// "aguardando" | "aprovada" | "recusada" | "cancelada"
+  situacao String @default("aguardando")
+
+  /// Token do link de assinatura: 32 bytes aleatorios em base64url.
+  /// O link E a credencial -- o responsavel pela fabricacao nao tem conta.
+  token String @unique
+
+  /// { nome, papel, tracos, assinadoEm, ip, agente }. Os tracos da assinatura
+  /// sao vetor normalizado de 0 a 1, nao imagem.
+  solicitante Json
+  aprovador   Json?
+
+  motivoRecusa String?
+
+  /// O PDF congelado, em bytes. So existe depois da aprovacao.
+  documento    Bytes?
+  /// SHA-256 dos bytes acima, para conferir integridade do download.
+  documentoSha String?
+  /// SHA-256 do conteudo canonico -- este sai IMPRESSO dentro do PDF.
+  hashConteudo String?
+  documentoEm  DateTime?
+
+  criadoEm  DateTime  @default(now())
+  /// Quando saiu de "aguardando". NULL enquanto esta aberta.
+  fechadoEm DateTime?
+
+  @@index([situacao])
+  @@index([criadoEm])
+}
+
+/// O que um influencer custa alem da comissao: produto enviado, viagem, cache,
+/// anuncio. A comissao NAO mora aqui -- ela e calculada dos pedidos e do
+/// contrato; so se grava o que nao sai de conta nenhuma.
+model DespesaInfluencer {
+  id           String   @id @default(cuid())
+  /// NULL = despesa COMPARTILHADA (o operacional, por exemplo): gravada uma
+  /// vez com o valor total e dividida na leitura pelo faturamento bruto de
+  /// cada marca no mes. A parte de cada influencer nunca e gravada.
+  influencerId String?
+
+  /// Data de calendario, sem hora. E ela que decide o mes em que a despesa
+  /// sai do lucro.
+  data DateTime @db.Date
+
+  /// "operacional" | "produto_enviado" | "viagem" | "cache" | "anuncio" | "outros"
+  categoria String
+  descricao String
+  valor     Decimal @db.Decimal(12, 2)
+
+  criadoEm     DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
+
+  @@index([influencerId])
+  @@index([data])
 }

@@ -17,7 +17,7 @@ const percentualDigitado = z.preprocess((entrada) => {
   if (limpo === "") return 0;
   const n = Number(limpo);
   return Number.isFinite(n) ? n : Number.NaN;
-}, z.number({ invalid_type_error: "Aliquota invalida" }).min(0, "Nao pode ser negativa").max(100, "Nao pode passar de 100%"));
+}, z.number({ invalid_type_error: "Alíquota inválida" }).min(0, "Não pode ser negativa").max(100, "Não pode passar de 100%"));
 
 const booleano = z.preprocess(
   (v) => v === "on" || v === "true" || v === true,
@@ -38,7 +38,7 @@ const numeroOpcional = z.preprocess((entrada) => {
   if (limpo === "") return null;
   const n = Number(limpo);
   return Number.isFinite(n) ? n : Number.NaN;
-}, z.number({ invalid_type_error: "Valor invalido" }).min(0).nullable());
+}, z.number({ invalid_type_error: "Valor inválido" }).min(0).nullable());
 
 const esquemaImposto = z.object({
   id: z.string().optional(),
@@ -108,7 +108,7 @@ export async function salvarImposto(
   revalidatePath("/impostos");
   revalidatePath("/");
   revalidatePath("/produtos");
-  revalidatePath("/comissoes");
+  revalidatePath("/influencers");
 
   return { ok: true, mensagem: `Imposto "${entrada.sigla}" salvo.` };
 }
@@ -120,7 +120,7 @@ export async function removerImposto(
   await exigirArea("fiscal");
 
   const id = String(formData.get("id") ?? "");
-  if (!id) return { ok: false, mensagem: "Imposto nao encontrado." };
+  if (!id) return { ok: false, mensagem: "Imposto não encontrado." };
 
   try {
     const repositorio = await obterRepositorioCadastros();
@@ -138,4 +138,81 @@ export async function removerImposto(
   revalidatePath("/");
   revalidatePath("/produtos");
   return { ok: true, mensagem: "Imposto removido." };
+}
+
+// ---------------------------------------------------------------------------
+// Taxas de plataforma
+// ---------------------------------------------------------------------------
+
+/**
+ * Valor em reais digitado por humano brasileiro: "3,49" e "3.49" sao a mesma
+ * coisa, e "R$ 3,49" tambem.
+ */
+const reaisDigitados = z.preprocess((entrada) => {
+  if (typeof entrada !== "string") return entrada;
+  const limpo = entrada
+    .replace(/[R$\s]/g, "")
+    .replace(/\.(?=\d{3}(\D|$))/g, "")
+    .replace(",", ".");
+  if (limpo === "") return 0;
+  const n = Number(limpo);
+  return Number.isFinite(n) ? n : Number.NaN;
+}, z.number({ invalid_type_error: "Valor inválido" }).min(0, "Não pode ser negativo"));
+
+const esquemaTaxa = z.object({
+  metodo: z.string().trim().min(1, "Informe o meio de pagamento").max(40),
+  percentual: percentualDigitado,
+  valorFixo: reaisDigitados,
+  base: z.enum(["bruto", "recebido"]),
+  ativa: booleano,
+  confirmadaNaFatura: booleano,
+  observacao: z.string().trim().max(600).nullable().optional(),
+});
+
+export async function salvarTaxaPlataforma(
+  _anterior: EstadoFormulario,
+  formData: FormData,
+): Promise<EstadoFormulario> {
+  await exigirArea("fiscal");
+
+  const analise = esquemaTaxa.safeParse({
+    metodo: formData.get("metodo"),
+    percentual: formData.get("percentual") ?? "0",
+    valorFixo: formData.get("valorFixo") ?? "0",
+    base: formData.get("base") ?? "bruto",
+    ativa: formData.get("ativa") ?? "false",
+    confirmadaNaFatura: formData.get("confirmadaNaFatura") ?? "false",
+    observacao: formData.get("observacao") || null,
+  });
+
+  if (!analise.success) {
+    return {
+      ok: false,
+      mensagem: analise.error.issues[0]?.message ?? "Confira os campos.",
+    };
+  }
+
+  const entrada = analise.data;
+
+  try {
+    const repositorio = await obterRepositorioCadastros();
+    await repositorio.salvarTaxaPlataforma({
+      ...entrada,
+      observacao: entrada.observacao ?? null,
+    });
+  } catch (erro) {
+    return {
+      ok: false,
+      mensagem: `Nao foi possivel salvar: ${
+        erro instanceof Error ? erro.message : "erro desconhecido"
+      }`,
+    };
+  }
+
+  // A taxa entra na DRE e na pizza: o painel inteiro muda junto.
+  revalidatePath("/impostos");
+  revalidatePath("/");
+  revalidatePath("/relatorios");
+
+  return { ok: true, mensagem: "Taxa salva." };
 }

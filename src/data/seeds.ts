@@ -12,7 +12,7 @@ import { novoId } from "@/data/repositorio";
 import { unidadesConsumidas } from "@/lib/estoque";
 import { idsSugeridosPorRegime, indexarProdutos } from "@/lib/impostos";
 import { chaveMes, filtrarPorMes, mesesDisponiveis } from "@/lib/metrics";
-import type { CustoProduto, Influencer } from "@/types/dominio";
+import type { CustoProduto, DespesaInfluencer, Influencer } from "@/types/dominio";
 import type { AliquotaEstado, Imposto } from "@/types/fiscal";
 import { ESTADOS } from "@/types/estados";
 import {
@@ -22,7 +22,15 @@ import {
   type Produto,
 } from "@/types/produto";
 import type { Usuario } from "@/types/usuario";
+import type { TaxaPlataforma } from "@/types/plataforma";
 import { criarHashSenha } from "@/lib/auth";
+import { gerarDocumento } from "@/lib/ordens";
+import type {
+  AssinaturaOrdem,
+  ItemOrdem,
+  OrdemFabricacao,
+  PapelAssinatura,
+} from "@/types/ordemFabricacao";
 
 const AGORA = () => new Date().toISOString();
 
@@ -125,12 +133,12 @@ export function influencersIniciais(): Influencer[] {
       uf: "GO",
       rbt12Manual: null,
       ativo: true,
-      observacao: "Contrato anual, renovacao em janeiro.",
+      observacao: "Contrato anual, renovação em janeiro.",
     },
     {
       id: "influencer-luma",
       nome: "Bianca Reis",
-      marca: "Luma Cosmeticos",
+      marca: "Luma Cosméticos",
       percentual: 30,
       baseComissao: "bruto",
       // A maior das cinco: ~R$ 9 mi/ano.
@@ -146,14 +154,14 @@ export function influencersIniciais(): Influencer[] {
       nome: "Camila Prado",
       marca: "Verte Natural",
       percentual: 25,
-      baseComissao: "recebido",
+      baseComissao: "bruto",
       // ~R$ 2,8 mi/ano: cabe no Simples, dentro do sublimite de ICMS.
       regime: "simples_nacional",
       anexoSimples: "II",
       uf: "GO",
       rbt12Manual: null,
       ativo: true,
-      observacao: "Percentual menor e base sobre o recebido, negociados na renovacao.",
+      observacao: "Percentual menor, negociado na renovação.",
     },
     {
       id: "influencer-nitro",
@@ -167,7 +175,7 @@ export function influencersIniciais(): Influencer[] {
       uf: "GO",
       rbt12Manual: null,
       ativo: true,
-      observacao: "Publico jovem, muito boleto.",
+      observacao: "Público jovem, muito boleto.",
     },
     {
       id: "influencer-petra",
@@ -196,7 +204,7 @@ export function influencersIniciais(): Influencer[] {
  * Impostos recolhidos POR FORA da guia unica.
  *
  * O que esta DENTRO do DAS (IRPJ, CSLL, PIS, COFINS, CPP, IPI e ICMS) nao e
- * cadastrado aqui: a repartição vem da tabela oficial do Anexo II e aparece na
+ * cadastrado aqui: a reparticao vem da tabela oficial do Anexo II e aparece na
  * apuracao. Cadastra-los tambem faria o painel somar o mesmo tributo duas vezes.
  *
  * Todos comecam INATIVOS, e essa e a leitura correta para uma industria no
@@ -210,7 +218,7 @@ export function impostosIniciais(): Imposto[] {
     // ----------------------------------------------------------- SIMPLES
     {
       id: "imposto-icms-st",
-      nome: "ICMS Substituicao Tributaria",
+      nome: "ICMS Substituição Tributária",
       sigla: "ICMS-ST",
       esfera: "estadual",
       baseIncidencia: "receita",
@@ -223,14 +231,14 @@ export function impostosIniciais(): Imposto[] {
       ativo: false,
       confirmadoPeloContador: false,
       observacao:
-        "Incide quando a fabrica vende para revenda e assume a condicao de " +
+        "Incide quando a fábrica vende para revenda e assume a condição de " +
         "substituta. Na venda direta ao consumidor final pela loja, que e o " +
         "caso deste painel, normalmente nao se aplica. A aliquota efetiva " +
         "depende da MVA do produto e da UF de destino -- peca ao contador.",
     },
     {
       id: "imposto-fundeinfra",
-      nome: "Fundo de Infraestrutura de Goias",
+      nome: "Fundo de Infraestrutura de Goiás",
       sigla: "FUNDEINFRA",
       esfera: "estadual",
       baseIncidencia: "receita",
@@ -243,7 +251,7 @@ export function impostosIniciais(): Imposto[] {
       ativo: false,
       confirmadoPeloContador: false,
       observacao:
-        "Contribuicao estadual de Goias, ligada a operacoes com beneficio " +
+        "Contribuição estadual de Goiás, ligada a operações com benefício " +
         "fiscal. Confirme com o contador se a operacao da fabrica esta " +
         "alcancada antes de ativar.",
     },
@@ -264,7 +272,7 @@ export function impostosIniciais(): Imposto[] {
       ativo: true,
       confirmadoPeloContador: true,
       observacao:
-        "Aliquota legal do regime cumulativo. No Simples o PIS ja esta dentro " +
+        "Alíquota legal do regime cumulativo. No Simples o PIS já esta dentro " +
         "da guia unica, por isso ele nao aparece la.",
     },
     {
@@ -281,7 +289,7 @@ export function impostosIniciais(): Imposto[] {
       aplicacaoPorProduto: false,
       ativo: true,
       confirmadoPeloContador: true,
-      observacao: "Aliquota legal do regime cumulativo.",
+      observacao: "Alíquota legal do regime cumulativo.",
     },
     {
       id: "imposto-irpj",
@@ -299,7 +307,7 @@ export function impostosIniciais(): Imposto[] {
       ativo: true,
       confirmadoPeloContador: true,
       observacao:
-        "15% sobre a base presumida de 8% da receita, que e a presuncao da " +
+        "15% sobre a base presumida de 8% da receita, que e a presunção da " +
         "atividade industrial.",
     },
     {
@@ -318,7 +326,7 @@ export function impostosIniciais(): Imposto[] {
       ativo: true,
       confirmadoPeloContador: true,
       observacao:
-        "10% sobre a parte da base presumida que exceder R$ 20 mil no mes. " +
+        "10% sobre a parte da base presumida que exceder R$ 20 mil no mês. " +
         "Sem a deducao mensal, seria cobrado desde o primeiro real.",
     },
     {
@@ -340,7 +348,7 @@ export function impostosIniciais(): Imposto[] {
     },
     {
       id: "imposto-icms",
-      nome: "ICMS proprio",
+      nome: "ICMS próprio",
       sigla: "ICMS",
       esfera: "estadual",
       baseIncidencia: "receita",
@@ -354,7 +362,7 @@ export function impostosIniciais(): Imposto[] {
       ativo: true,
       confirmadoPeloContador: false,
       observacao:
-        "ESTIMATIVA, TROQUE PELA EFETIVA DO CONTADOR. Nao existe aliquota " +
+        "ESTIMATIVA, TROQUE PELA EFETIVA DO CONTADOR. Não existe alíquota " +
         "unica que sirva: a venda interna de Goias, a interestadual e o DIFAL " +
         "tem aliquotas diferentes, e o valor devido e liquido dos creditos de " +
         "materia-prima, que este painel nao modela. Os 10% sao a ordem de " +
@@ -378,7 +386,7 @@ export function impostosIniciais(): Imposto[] {
       ativo: true,
       confirmadoPeloContador: false,
       observacao:
-        "A aliquota depende do NCM de cada produto na tabela TIPI e varia " +
+        "A alíquota depende do NCM de cada produto na tabela TIPI e varia " +
         "bastante dentro de cosmeticos -- boa parte fica em zero, perfumaria " +
         "pode passar de 20%. Informe por produto conforme o NCM. No Simples o " +
         "IPI ja esta dentro da guia unica.",
@@ -387,7 +395,7 @@ export function impostosIniciais(): Imposto[] {
     // ------------------------------------------------------- LUCRO REAL
     {
       id: "imposto-pis-nao-cumulativo",
-      nome: "PIS/Pasep nao cumulativo",
+      nome: "PIS/Pasep não cumulativo",
       sigla: "PIS n/c",
       esfera: "federal",
       baseIncidencia: "receita",
@@ -400,13 +408,13 @@ export function impostosIniciais(): Imposto[] {
       ativo: false,
       confirmadoPeloContador: false,
       observacao:
-        "Aliquota cheia. No regime nao cumulativo ha credito sobre insumos, " +
+        "Alíquota cheia. No regime não cumulativo ha crédito sobre insumos, " +
         "que este painel nao modela -- o valor devido e menor. Informe a " +
         "aliquota efetiva liquida de creditos antes de ativar.",
     },
     {
       id: "imposto-cofins-nao-cumulativa",
-      nome: "COFINS nao cumulativa",
+      nome: "COFINS não cumulativa",
       sigla: "COFINS n/c",
       esfera: "federal",
       baseIncidencia: "receita",
@@ -419,7 +427,7 @@ export function impostosIniciais(): Imposto[] {
       ativo: false,
       confirmadoPeloContador: false,
       observacao:
-        "Aliquota cheia, sem os creditos sobre insumos. Mesma ressalva do PIS " +
+        "Alíquota cheia, sem os créditos sobre insumos. Mesma ressalva do PIS " +
         "nao cumulativo.",
     },
   ];
@@ -435,9 +443,49 @@ export function impostosIniciais(): Imposto[] {
  * Um registro por estado, semeado com a tabela de `types/estados.ts`.
  *
  * Nenhum nasce confirmado. Varios estados mexeram nas suas aliquotas entre
- * 2023 e 2025, algumas ja embutem fundo de combate a pobreza e outras nao --
+ * 2023 e 2025, algumas ja embutem fundo de combate à pobreza e outras nao --
  * a tela avisa "a confirmar" em cada um ate alguem conferir com o contador.
  */
+/**
+ * Taxas de plataforma semeadas, por meio de pagamento.
+ *
+ * Ordem de grandeza publica da Nuvemshop / Nuvem Pago, NAO o contrato do
+ * cliente: o percentual real muda com o plano, com o volume e com a
+ * antecipacao de recebiveis. Por isso todas nascem com
+ * `confirmadaNaFatura: false` e a tela avisa -- mesma regra do ICMS.
+ *
+ * O boleto e o caso interessante: percentual baixo e um fixo por transacao.
+ * Num pedido de R$ 40 esse fixo sozinho passa de 8%, o que nenhuma leitura de
+ * "1% de taxa" revelaria.
+ */
+export function taxasPlataformaIniciais(): TaxaPlataforma[] {
+  const agora = AGORA();
+
+  /*
+   * Todas nascem com base `bruto` -- a taxa da Nuvemshop e cobrada sobre o
+   * pedido criado. Trocar para `recebido` e decisao de quem le a fatura: ha
+   * gateway que so tarifa transacao aprovada, e ai a diferenca e grande.
+   */
+  const base: Array<
+    Omit<TaxaPlataforma, "atualizadoEm" | "ativa" | "confirmadaNaFatura" | "base">
+  > = [
+    { metodo: "credit_card", percentual: 4.99, valorFixo: 0, observacao: "Cartão a vista, sem antecipação." },
+    { metodo: "debit_card", percentual: 3.49, valorFixo: 0, observacao: null },
+    { metodo: "pix", percentual: 1.99, valorFixo: 0, observacao: null },
+    { metodo: "boleto", percentual: 1.99, valorFixo: 3.49, observacao: "O fixo por boleto pesa mais que o percentual em pedido pequeno." },
+    { metodo: "wire_transfer", percentual: 0, valorFixo: 0, observacao: "Transferencia direta não passa pelo gateway." },
+    { metodo: "other", percentual: 2.99, valorFixo: 0, observacao: null },
+  ];
+
+  return base.map((t) => ({
+    ...t,
+    base: "bruto" as const,
+    ativa: true,
+    confirmadaNaFatura: false,
+    atualizadoEm: agora,
+  }));
+}
+
 export function aliquotasEstaduaisIniciais(): AliquotaEstado[] {
   const agora = AGORA();
 
@@ -690,3 +738,226 @@ export async function usuariosIniciais(): Promise<Usuario[]> {
 }
 
 export { novoId };
+
+// ---------------------------------------------------------------------------
+// Ordens de fabricacao
+// ---------------------------------------------------------------------------
+
+/**
+ * Token FIXO da ordem que nasce aguardando assinatura.
+ *
+ * Existe por dois motivos, os dois de demonstracao:
+ *
+ * 1. Na reuniao da para abrir o link de assinatura sem antes criar uma ordem.
+ * 2. `npm run celular --rota /assinar/<token>` consegue auditar a tela publica,
+ *    que de outro modo seria inalcancavel -- o token de verdade e aleatorio.
+ *
+ * Nao ha risco: isto so e semeado em modo demonstracao. Em `FONTE_DADOS=live`
+ * as ordens comecam vazias e todo token vem de `randomBytes(32)`.
+ */
+export const TOKEN_ORDEM_DEMO = "demonstracao-aguardando-assinatura-do-gerente";
+
+/** Dia relativo a hoje, em "aaaa-mm-dd". A demonstracao nunca parece velha. */
+function diaRelativo(dias: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() + dias);
+  return d.toISOString().slice(0, 10);
+}
+
+function instanteRelativo(dias: number, hora: number, minuto: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() + dias);
+  d.setHours(hora, minuto, 0, 0);
+  return d.toISOString();
+}
+
+/**
+ * Rabisco deterministico, para as assinaturas semeadas parecerem assinatura.
+ *
+ * Sao duas polilinhas em coordenadas de 0 a 1 -- o mesmo formato que sai do
+ * quadro de assinatura do navegador. Geradas por seno em vez de sorteadas
+ * porque o painel inteiro e deterministico: os mesmos numeros toda vez que
+ * abre (secao 6).
+ */
+function rabisco(semente: number): number[][] {
+  // Varias voltas por unidade de largura e o que faz o olho ler "cursiva" em
+  // vez de "grafico". Duas frequencias somadas, uma grande e uma pequena,
+  // evitam a regularidade de onda que denuncia a formula.
+  const corpo: number[] = [];
+  for (let i = 0; i <= 110; i++) {
+    const t = i / 110;
+    corpo.push(
+      0.05 + t * 0.84,
+      0.52 -
+        Math.sin(t * Math.PI * 6.5 + semente) * 0.3 * (1 - t * 0.25) -
+        Math.sin(t * Math.PI * 15 + semente * 3) * 0.09 -
+        Math.sin(t * Math.PI * 2 + semente) * 0.08,
+    );
+  }
+
+  // O segundo traco e a rubrica por baixo, que quase toda assinatura tem.
+  const corte: number[] = [];
+  for (let i = 0; i <= 18; i++) {
+    const t = i / 18;
+    corte.push(0.08 + t * 0.8, 0.88 - t * 0.16 - Math.sin(t * Math.PI) * 0.07);
+  }
+
+  return [corpo, corte];
+}
+
+function assinaturaSemeada(
+  nome: string,
+  papel: PapelAssinatura,
+  assinadoEm: string,
+  semente: number,
+  ip: string,
+): AssinaturaOrdem {
+  return {
+    nome,
+    papel,
+    tracos: rabisco(semente),
+    assinadoEm,
+    ip,
+    agente: "Mozilla/5.0 (Linux; Android 14) demonstracao",
+  };
+}
+
+/**
+ * Duas ordens semeadas: uma esperando assinatura, uma ja assinada.
+ *
+ * A tela precisa das duas para se explicar sozinha. So com a primeira, o
+ * arquivo de documentos fica vazio e ninguem ve o PDF; so com a segunda, nao
+ * ha o que assinar na demonstracao.
+ */
+export function ordensIniciais(produtos: Produto[]): OrdemFabricacao[] {
+  const disponiveis = produtos.filter((p) => !p.ehKit && p.ativo);
+  const item = (indice: number, quantidade: number): ItemOrdem | null => {
+    const produto = disponiveis[indice];
+    if (!produto) return null;
+    return {
+      chave: produto.chave,
+      nome: produto.nome,
+      sku: produto.sku,
+      quantidade,
+    };
+  };
+
+  const naFila = [item(0, 2400), item(1, 1200)].filter((i): i is ItemOrdem => i !== null);
+  const assinada = [item(2, 5000)].filter((i): i is ItemOrdem => i !== null);
+
+  // Sem produto cadastrado nao ha ordem que faca sentido.
+  if (naFila.length === 0 || assinada.length === 0) return [];
+
+  const aguardando: OrdemFabricacao = {
+    id: "ordem-demo-aguardando",
+    numero: `OF-${new Date().getFullYear()}-0001`,
+    itens: naFila,
+    dataLancamento: diaRelativo(26),
+    observacao:
+      "Lançamento da campanha de primavera. O influencer grava no dia 20, precisa do produto na mao antes.",
+    situacao: "aguardando",
+    solicitante: assinaturaSemeada(
+      "Marina Alves",
+      "solicitante",
+      instanteRelativo(-3, 14, 22),
+      0.7,
+      "189.4.22.7",
+    ),
+    aprovador: null,
+    motivoRecusa: null,
+    token: TOKEN_ORDEM_DEMO,
+    criadoEm: instanteRelativo(-3, 14, 22),
+    fechadoEm: null,
+    documento: null,
+  };
+
+  const aprovada: OrdemFabricacao = {
+    id: "ordem-demo-aprovada",
+    numero: `OF-${new Date().getFullYear()}-0002`,
+    itens: assinada,
+    dataLancamento: diaRelativo(11),
+    observacao: "Reposição para o combo de lançamento.",
+    situacao: "aprovada",
+    solicitante: assinaturaSemeada(
+      "Marina Alves",
+      "solicitante",
+      instanteRelativo(-19, 9, 5),
+      0.7,
+      "189.4.22.7",
+    ),
+    aprovador: assinaturaSemeada(
+      "Carlos Mendes",
+      "aprovador",
+      instanteRelativo(-19, 16, 40),
+      2.1,
+      "177.223.44.178",
+    ),
+    motivoRecusa: null,
+    token: "demonstracao-ordem-ja-assinada-somente-leitura",
+    criadoEm: instanteRelativo(-19, 9, 5),
+    fechadoEm: instanteRelativo(-19, 16, 40),
+    documento: null,
+  };
+
+  // O PDF e gerado agora, uma vez, e gravado com a ordem -- exatamente o que
+  // acontece quando alguem assina de verdade. Semear a ordem sem o documento
+  // deixaria o botao "Baixar PDF" sem arquivo na demonstracao.
+  aprovada.documento = gerarDocumento(aprovada, {
+    demonstracao: true,
+    geradoEm: new Date(aprovada.fechadoEm ?? Date.now()),
+  });
+
+  return [aguardando, aprovada];
+}
+
+// ---------------------------------------------------------------------------
+// Despesas de influencer
+// ---------------------------------------------------------------------------
+
+/**
+ * "aaaa-mm-dd" de um dia do mes corrente, ou de meses atras, em hora local.
+ *
+ * Relativo ao calendario pelo mesmo motivo das ordens: a base de pedidos
+ * acompanha o mes atual, e uma despesa com data fixa cairia fora dela quando a
+ * demonstracao fosse aberta em outro mes.
+ */
+function diaDoMes(mesesAtras: number, dia: number): string {
+  const hoje = new Date();
+  const d = new Date(hoje.getFullYear(), hoje.getMonth() - mesesAtras, dia);
+  const dois = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${dois(d.getMonth() + 1)}-${dois(d.getDate())}`;
+}
+
+/** Despesa operacional do mes, compartilhada entre os influencers. */
+export const OPERACIONAL_MENSAL = 60_000;
+
+/** Meses da base de demonstracao que recebem o operacional semeado. */
+const MESES_DA_BASE = 6;
+
+/**
+ * Despesas semeadas: so o OPERACIONAL, R$ 60 mil por mes, compartilhado.
+ *
+ * Um registro por mes da base, gravado uma vez com o valor total e sem dono. A
+ * parte de cada influencer sai de `ratearDespesas`, pelo faturamento bruto da
+ * marca no mes. As despesas avulsas de exemplo sairam a pedido do cliente: na
+ * grade de cada influencer fica a comissao e a parte dele no operacional.
+ *
+ * Um registro por mes, e nao recorrencia automatica: a regra continua sendo
+ * "o que esta na grade e o que foi cadastrado" (secao 5.16).
+ */
+export function despesasInfluencerIniciais(): DespesaInfluencer[] {
+  const agora = AGORA();
+
+  return Array.from({ length: MESES_DA_BASE }, (_, mesesAtras) => {
+    const data = diaDoMes(mesesAtras, 1);
+    return {
+      id: `despesa-operacional-${data.slice(0, 7)}`,
+      influencerId: null,
+      data,
+      categoria: "operacional" as const,
+      descricao: "Operacional",
+      valor: OPERACIONAL_MENSAL,
+      atualizadoEm: agora,
+    };
+  });
+}

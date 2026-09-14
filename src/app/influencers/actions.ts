@@ -13,7 +13,7 @@ const percentualDigitado = z.preprocess((entrada) => {
   if (limpo === "") return Number.NaN;
   const n = Number(limpo);
   return Number.isFinite(n) ? n : Number.NaN;
-}, z.number({ invalid_type_error: "Informe um percentual" }).min(0, "Nao pode ser negativo").max(100, "Nao pode passar de 100%"));
+}, z.number({ invalid_type_error: "Informe um percentual" }).min(0, "Não pode ser negativo").max(100, "Não pode passar de 100%"));
 
 /** Receita de 12 meses digitada a mao. Vazio = calcular do historico. */
 const rbt12Digitado = z.preprocess((entrada) => {
@@ -25,7 +25,7 @@ const rbt12Digitado = z.preprocess((entrada) => {
   if (limpo === "") return null;
   const n = Number(limpo);
   return Number.isFinite(n) ? n : Number.NaN;
-}, z.number({ invalid_type_error: "Receita de 12 meses invalida" }).min(0).nullable());
+}, z.number({ invalid_type_error: "Receita de 12 meses inválida" }).min(0).nullable());
 
 const esquemaInfluencer = z.object({
   id: z.string().optional(),
@@ -33,12 +33,12 @@ const esquemaInfluencer = z.object({
   marca: z.string().trim().min(1, "Selecione a marca").max(120),
   percentual: percentualDigitado,
   baseComissao: z.enum(["bruto", "recebido", "receitaReal"], {
-    errorMap: () => ({ message: "Base de calculo invalida" }),
+    errorMap: () => ({ message: "Base de cálculo inválida" }),
   }),
   // O regime mora no influencer: cada marca e uma operacao separada, com o
   // seu proprio enquadramento. E dele que sai o imposto de cada produto.
   regime: z.enum(["simples_nacional", "lucro_presumido", "lucro_real"], {
-    errorMap: () => ({ message: "Regime tributario invalido" }),
+    errorMap: () => ({ message: "Regime tributário inválido" }),
   }),
   anexoSimples: z.enum(["I", "II", "III", "IV", "V"]),
   uf: z.string().trim().length(2, "UF tem 2 letras").toUpperCase(),
@@ -95,7 +95,7 @@ export async function salvarInfluencer(
 
   // A comissao entra na DRE: o painel principal muda junto.
   // Mudar o regime muda o imposto de todos os produtos deste influencer.
-  revalidatePath("/comissoes");
+  revalidatePath("/influencers");
   revalidatePath("/impostos");
   revalidatePath("/produtos");
   revalidatePath("/");
@@ -110,7 +110,7 @@ export async function removerInfluencer(
   await exigirArea("financeiro");
 
   const id = String(formData.get("id") ?? "");
-  if (!id) return { ok: false, mensagem: "Contrato nao encontrado." };
+  if (!id) return { ok: false, mensagem: "Contrato não encontrado." };
 
   try {
     const repositorio = await obterRepositorioCadastros();
@@ -124,7 +124,7 @@ export async function removerInfluencer(
     };
   }
 
-  revalidatePath("/comissoes");
+  revalidatePath("/influencers");
   revalidatePath("/");
   return { ok: true, mensagem: "Contrato removido." };
 }

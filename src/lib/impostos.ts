@@ -9,8 +9,10 @@
  *
  * Tres decisoes que valem ser lidas antes de mexer aqui:
  *
- * 1. A base e o RECEBIDO, nao o faturado. Pedido cancelado nao gera receita
- *    tributavel, e boleto nunca pago tambem nao, no regime de caixa.
+ * 1. A base e a RECEITA REAL: o recebido, sem o frete. Pedido cancelado nao
+ *    gera receita tributavel, e boleto nunca pago tambem nao, no regime de
+ *    caixa. O frete fica de fora por decisao do cliente: ele e cobrado por fora
+ *    (produto de R$ 100 + R$ 19 de frete) e vai para a transportadora.
  *
  * 2. O que esta DENTRO do DAS nunca soma no total. A guia unica ja e um valor
  *    fechado; a quebra por tributo existe so para leitura.
@@ -86,7 +88,7 @@ export function produtoDoItem(
 /**
  * Impostos que incidem automaticamente num regime.
  *
- * E o que faz o cadastro de produto se preencher sozinho: escolhido o
+ * É o que faz o cadastro de produto se preencher sozinho: escolhido o
  * influencer, o painel sabe o regime dele e ja marca estes. Continuam
  * editaveis -- o cadastro sugere, quem entende decide.
  */
@@ -148,7 +150,8 @@ export function calcularRBT12(
 
   const meses = [...porMes.keys()].sort((a, b) => b.localeCompare(a)).slice(0, 12);
   const soma = meses.reduce(
-    (total, mes) => total + reconciliar(porMes.get(mes)!).recebido,
+    // Receita sem frete, a mesma base do imposto do mes.
+    (total, mes) => total + reconciliar(porMes.get(mes)!).receitaReal,
     0,
   );
 
@@ -289,7 +292,8 @@ function apurarGrupo(
   impostos: Imposto[],
   aliquotasEstaduais: AliquotaEstado[],
 ): ApuracaoDeUmInfluencer {
-  const baseReceita = reconciliar(pedidosDoMes).recebido;
+  // Receita real: recebido sem o frete cobrado do cliente (decisao 1 no topo).
+  const baseReceita = reconciliar(pedidosDoMes).receitaReal;
   const doRegime = impostosDoRegime(impostos, fiscal.regime);
   const porImposto = receitaPorImposto(pedidosDoMes, indice);
 

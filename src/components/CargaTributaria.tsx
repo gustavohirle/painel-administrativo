@@ -39,19 +39,19 @@ export function CargaTributaria({
       <div className="grid gap-5 lg:grid-cols-3">
         <div className="rounded-lg border border-borda bg-fundo px-5 py-4">
           <p className="text-xs font-semibold uppercase tracking-wider text-tinta-fraca">
-            Imposto no mes
+            Imposto no mês
           </p>
           <p className="numerico mt-1 text-3xl font-semibold text-tinta">
             {moedaRedonda(resultado.totalSobreVenda)}
           </p>
           <p className="mt-1 text-sm text-tinta-media">
-            {percentual(resultado.cargaSobreReceita)} do que foi recebido
+            {percentual(resultado.cargaSobreReceita)} da receita sem frete
           </p>
         </div>
 
         <div className="rounded-lg border border-borda bg-fundo px-5 py-4">
           <p className="text-xs font-semibold uppercase tracking-wider text-tinta-fraca">
-            Operacoes apuradas
+            Operações apuradas
           </p>
           <p className="numerico mt-1 text-3xl font-semibold text-tinta">
             {inteiro(resultado.porInfluencer.length)}
@@ -69,7 +69,7 @@ export function CargaTributaria({
             {moedaRedonda(resultado.baseReceita)}
           </p>
           <p className="mt-1 text-sm text-tinta-media">
-            Somente o que entrou em caixa
+            O que entrou em caixa, sem o frete cobrado do cliente
           </p>
         </div>
       </div>
@@ -80,10 +80,10 @@ export function CargaTributaria({
             Ha tributo do regime fora desta conta
           </p>
           <p className="mt-1 max-w-4xl text-sm leading-relaxed text-tinta-media">
-            Alguns tributos que incidem nestes regimes estao sem aliquota
-            informada, e por isso nao entram no total acima. Eles aparecem
-            listados em cada operacao abaixo. O imposto real e maior que o
-            exibido enquanto isso nao for preenchido.
+            Alguns tributos que incidem nestes regimes estão sem alíquota
+            informada, e por isso não entram no total acima. Eles aparecem
+            listados em cada operação abaixo. O imposto real é maior que o
+            exibido enquanto isso não for preenchido.
           </p>
         </div>
       )}
@@ -91,7 +91,7 @@ export function CargaTributaria({
       {consolidado.length > 0 && (
         <div>
           <h3 className="mb-3 text-base font-semibold text-tinta">
-            O que e recolhido, somando todas as marcas
+            O que é recolhido, somando todas as marcas
           </h3>
           <div className="space-y-2.5">
             {consolidado.map((linha) => (
@@ -122,8 +122,8 @@ export function CargaTributaria({
           Marca a marca
         </h3>
         <p className="mb-4 text-sm text-tinta-media">
-          Cada influencer tem a sua operacao e o seu regime. O enquadramento e
-          editado no cadastro de comissoes.
+          Cada influencer tem a sua operação e o seu regime. O enquadramento é
+          editado no cadastro de comissões.
         </p>
 
         <div className="space-y-4">
@@ -143,8 +143,8 @@ export function CargaTributaria({
             <strong className="numerico text-tinta">
               {moeda(resultado.receitaSemCadastro)}
             </strong>{" "}
-            de receita no mes. Sem cadastro nao ha influencer dono, e sem
-            influencer nao ha regime -- impostos que dependem do produto nao
+            de receita no mês. Sem cadastro não há influencer dono, e sem
+            influencer não há regime -- impostos que dependem do produto não
             incidem sobre eles.
           </p>
           <Link
@@ -192,7 +192,7 @@ function CartaoDaOperacao({ apuracao }: { apuracao: ApuracaoDeUmInfluencer }) {
 
           <div className="text-right">
             <p className="text-xs font-semibold uppercase tracking-wider text-tinta-fraca">
-              Imposto no mes
+              Imposto no mês
             </p>
             <p className="numerico text-xl font-semibold text-tinta">
               {moeda(apuracao.total)}
@@ -268,7 +268,7 @@ function CartaoDaOperacao({ apuracao }: { apuracao: ApuracaoDeUmInfluencer }) {
       {apuracao.detalheDoDAS.length > 0 && (
         <details className="mt-3 border-t border-borda pt-3">
           <summary className="cursor-pointer text-sm font-medium text-tinta-media hover:text-tinta">
-            O que ha dentro da guia unica (detalhamento, nao soma)
+            O que há dentro da guia única (detalhamento, não soma)
           </summary>
           <div className="mt-3 flex flex-wrap gap-x-6 gap-y-2">
             {apuracao.detalheDoDAS.map((linha) => (
@@ -294,7 +294,7 @@ function CartaoDaOperacao({ apuracao }: { apuracao: ApuracaoDeUmInfluencer }) {
             {apuracao.inativosDoRegime.map((i) => i.sigla).join(", ")}
           </p>
           <p className="mt-1 text-xs leading-relaxed text-tinta-media">
-            Incidem neste regime, mas estao sem aliquota informada no cadastro
+            Incidem neste regime, mas estão sem alíquota informada no cadastro
             fiscal. O imposto real desta marca e maior que o exibido.
           </p>
         </div>

@@ -96,7 +96,7 @@ describe("normalizarUF", () => {
   it("aceita o nome por extenso, com ou sem acento", () => {
     // A Nuvemshop devolve `province` ora como sigla, ora por extenso. Sem
     // normalizar, o mesmo estado viraria tres linhas no relatorio.
-    expect(normalizarUF("São Paulo")).toBe("SP");
+    expect(normalizarUF("S\u00e3o Paulo")).toBe("SP");
     expect(normalizarUF("Sao Paulo")).toBe("SP");
     expect(normalizarUF("ESPIRITO SANTO")).toBe("ES");
     expect(normalizarUF("Distrito Federal")).toBe("DF");
@@ -228,7 +228,7 @@ describe("apurarDifal", () => {
 
   it("agrupa o mesmo estado escrito de formas diferentes", () => {
     const r = apurarDifal(
-      [pedido("SP"), pedido("São Paulo"), pedido("sao paulo")],
+      [pedido("SP"), pedido("S\u00e3o Paulo"), pedido("sao paulo")],
       TODAS,
       "GO",
     );

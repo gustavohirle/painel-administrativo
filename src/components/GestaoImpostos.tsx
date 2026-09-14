@@ -100,10 +100,10 @@ export function GestaoImpostos({
     <div className="space-y-7">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <p className="max-w-3xl text-sm leading-relaxed text-tinta-media">
-          Estes sao os tributos que podem incidir sobre um produto. Cada um vale
+          Estes são os tributos que podem incidir sobre um produto. Cada um vale
           para um ou mais regimes; no cadastro do produto, escolher o influencer
-          ja traz marcados os do regime dele. As aliquotas vem preenchidas com os
-          valores basicos e sao editaveis.
+          já traz marcados os do regime dele. As alíquotas vêm preenchidas com os
+          valores básicos e são editáveis.
         </p>
         <button
           type="button"
@@ -175,7 +175,7 @@ function SecaoDoRegime({
           </h3>
           <p className="text-sm text-tinta-media">
             {regime === null
-              ? "Nao entram em nenhum calculo enquanto nao tiverem regime."
+              ? "Não entram em nenhum cálculo enquanto não tiverem regime."
               : marcas.length === 0
                 ? "Nenhuma marca neste regime hoje."
                 : `${marcas.length} marca(s): ${marcas.map((m) => m.marca).join(", ")}`}
@@ -194,21 +194,21 @@ function SecaoDoRegime({
         </p>
       ) : (
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[900px] border-collapse text-sm">
+          <table className="tabela-ancorada w-full min-w-[900px] border-collapse text-sm">
             <thead>
               <tr className="border-b border-borda text-left text-xs uppercase tracking-wider text-tinta-fraca">
                 <th className="py-2 pr-4 font-semibold">Imposto</th>
-                <th className="py-2 pr-4 text-right font-semibold">Aliquota</th>
+                <th className="py-2 pr-4 text-right font-semibold">Alíquota</th>
                 <th className="py-2 pr-4 font-semibold">Incide sobre</th>
                 <th className="py-2 pr-4 text-right font-semibold">Produtos</th>
                 <th
                   className="py-2 pr-4 text-right font-semibold"
-                  title="Valor apurado neste mes, somando as marcas que estao neste regime."
+                  title="Valor apurado neste mês, somando as marcas que estão neste regime."
                 >
-                  Apurado no mes
+                  Apurado no mês
                 </th>
-                <th className="py-2 pr-4 font-semibold">Situacao</th>
-                <th className="py-2 text-right font-semibold">Acao</th>
+                <th className="py-2 pr-4 font-semibold">Situação</th>
+                <th className="py-2 text-right font-semibold">Ação</th>
               </tr>
             </thead>
             <tbody>
@@ -235,7 +235,7 @@ function SecaoDoRegime({
                         <p className="text-xs text-tinta-fraca">{imposto.nome}</p>
                         {imposto.regimes.length > 1 && regime && (
                           <p className="mt-0.5 text-xs text-tinta-fraca">
-                            vale tambem em{" "}
+                            vale também em{" "}
                             {imposto.regimes
                               .filter((r) => r !== regime)
                               .map((r) => ROTULO_REGIME_CURTO[r])
@@ -283,7 +283,7 @@ function SecaoDoRegime({
                           </span>
                           {!imposto.confirmadoPeloContador && (
                             <span
-                              title="A aliquota ainda nao foi confirmada com o contador."
+                              title="A alíquota ainda não foi confirmada com o contador."
                               className="rounded-full border border-alerta-borda bg-alerta-fundo px-2.5 py-0.5 text-xs font-semibold text-naopago"
                             >
                               a confirmar
@@ -322,11 +322,13 @@ function SecaoDoRegime({
                     {aberto && (
                       <tr>
                         <td colSpan={7} className="p-0 pb-4">
+<div className="linha-de-edicao">
                           <FormularioImposto
                             imposto={imposto}
                             aoFechar={() => setEditando(null)}
                           />
-                        </td>
+                        </div>
+</td>
                       </tr>
                     )}
                   </Fragment>
@@ -417,7 +419,7 @@ function FormularioImposto({
             Em quais regimes este tributo incide
           </legend>
           <p className="mb-3 text-xs leading-relaxed text-tinta-media">
-            E o que faz o cadastro de produto se preencher sozinho: escolhido o
+            É o que faz o cadastro de produto se preencher sozinho: escolhido o
             influencer, o painel marca os impostos do regime dele.
           </p>
 
@@ -441,7 +443,7 @@ function FormularioImposto({
 
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <label className="block">
-            <span className="text-sm font-medium text-tinta">Aliquota</span>
+            <span className="text-sm font-medium text-tinta">Alíquota</span>
             <div className="mt-1 flex items-center gap-2 rounded-lg border border-borda-forte bg-superficie px-3 py-2 focus-within:border-tinta">
               <input
                 name="aliquota"
@@ -467,7 +469,7 @@ function FormularioImposto({
           </label>
 
           <label className="block">
-            <span className="text-sm font-medium text-tinta">Presuncao</span>
+            <span className="text-sm font-medium text-tinta">Presunção</span>
             <div className="mt-1 flex items-center gap-2 rounded-lg border border-borda-forte bg-superficie px-3 py-2 focus-within:border-tinta">
               <input
                 name="percentualPresuncao"
@@ -486,7 +488,7 @@ function FormularioImposto({
           </label>
 
           <label className="block">
-            <span className="text-sm font-medium text-tinta">Deducao mensal</span>
+            <span className="text-sm font-medium text-tinta">Dedução mensal</span>
             <div className="mt-1 flex items-center gap-2 rounded-lg border border-borda-forte bg-superficie px-3 py-2 focus-within:border-tinta">
               <span className="text-sm font-medium text-tinta-fraca">R$</span>
               <input
@@ -507,9 +509,9 @@ function FormularioImposto({
 
         {base === "lucro" && (
           <p className="text-xs leading-relaxed text-tinta-fraca">
-            Base = presuncao x receita, menos a deducao mensal. O adicional de
-            IRPJ, por exemplo, e 10% sobre 8% da receita que exceder R$ 20 mil no
-            mes -- sem a deducao seria cobrado desde o primeiro real.
+            Base = presunção x receita, menos a dedução mensal. O adicional de
+            IRPJ, por exemplo, é 10% sobre 8% da receita que exceder R$ 20 mil no
+            mês -- sem a dedução seria cobrado desde o primeiro real.
           </p>
         )}
 
@@ -540,7 +542,7 @@ function FormularioImposto({
               className="mt-0.5 h-4 w-4 accent-[var(--color-tinta)]"
             />
             <span className="text-sm font-medium text-tinta">
-              Ativo (entra no calculo do painel)
+              Ativo (entra no cálculo do painel)
             </span>
           </label>
 
@@ -553,11 +555,11 @@ function FormularioImposto({
             />
             <span>
               <span className="block text-sm font-medium text-tinta">
-                Aliquota confirmada pelo contador
+                Alíquota confirmada pelo contador
               </span>
               <span className="block text-xs text-tinta-media">
                 Enquanto estiver desmarcado, o painel exibe o aviso de que o
-                numero ainda e estimativa.
+                número ainda é estimativa.
               </span>
             </span>
           </label>

@@ -24,7 +24,9 @@ import path from "node:path";
 
 import type {
   CustoProduto,
+  DespesaInfluencer,
   EntradaCustoProduto,
+  EntradaDespesaInfluencer,
   EntradaInfluencer,
   Influencer,
 } from "@/types/dominio";
@@ -35,6 +37,14 @@ import type {
   Imposto,
 } from "@/types/fiscal";
 import type {
+  EntradaOrdem,
+  OrdemFabricacao,
+} from "@/types/ordemFabricacao";
+import type {
+  EntradaTaxaPlataforma,
+  TaxaPlataforma,
+} from "@/types/plataforma";
+import type {
   ContagemEstoque,
   EntradaContagemEstoque,
   EntradaProduto,
@@ -42,8 +52,12 @@ import type {
 } from "@/types/produto";
 import type { Usuario } from "@/types/usuario";
 import { novoId, type RepositorioCadastros } from "@/data/repositorio";
+import { novoToken, proximoNumero, tokenConfere } from "@/lib/ordens";
 import {
   aliquotasEstaduaisIniciais,
+  despesasInfluencerIniciais,
+  ordensIniciais,
+  taxasPlataformaIniciais,
   contagensIniciais,
   custosIniciais,
   impostosIniciais,
@@ -58,10 +72,13 @@ const ARQUIVO = path.join(PASTA, "cadastros.json");
 interface Estado {
   custos: CustoProduto[];
   influencers: Influencer[];
+  despesasInfluencer: DespesaInfluencer[];
   impostos: Imposto[];
   aliquotasEstaduais: AliquotaEstado[];
+  taxasPlataforma: TaxaPlataforma[];
   produtos: Produto[];
   contagens: ContagemEstoque[];
+  ordens: OrdemFabricacao[];
   usuarios: Usuario[];
 }
 
@@ -90,8 +107,11 @@ async function estadoInicial(): Promise<Estado> {
     influencers,
     impostos,
     aliquotasEstaduais: aliquotasEstaduaisIniciais(),
+    taxasPlataforma: taxasPlataformaIniciais(),
     produtos,
     contagens: contagensIniciais(produtos),
+    ordens: ordensIniciais(produtos),
+    despesasInfluencer: despesasInfluencerIniciais(),
     usuarios: await usuariosIniciais(),
   };
 }
@@ -104,33 +124,51 @@ async function estadoInicial(): Promise<Estado> {
  * property of undefined" em vez de simplesmente semear o que falta.
  */
 async function completar(lido: Partial<Estado>): Promise<Estado> {
-  const inicial = await estadoInicial();
+  /*
+   * O estado inicial so e montado se alguma chave FALTAR -- e no maximo uma
+   * vez por leitura.
+   *
+   * A versao anterior o montava sempre, antes de olhar o arquivo. Como esta
+   * funcao roda em TODA leitura (ver o topo do arquivo), cada chamada ao
+   * repositorio recalculava contagens de estoque sobre 45 mil pedidos e o
+   * scrypt das senhas: ~52 ms por chamada, e uma pagina faz umas nove. Eram
+   * ~225 ms de espera em cada troca de aba para produzir um objeto que era
+   * jogado fora, porque o arquivo ja tinha todas as chaves.
+   */
+  let inicialPendente: Promise<Estado> | null = null;
+  const inicial = () => (inicialPendente ??= estadoInicial());
 
-  const impostos = Array.isArray(lido.impostos) ? lido.impostos : inicial.impostos;
-  const influencers =
-    Array.isArray(lido.influencers) && lido.influencers.length > 0
-      ? lido.influencers
-      : inicial.influencers;
-  const produtos = Array.isArray(lido.produtos)
+  const temLista = <T,>(valor: T[] | undefined): valor is T[] => Array.isArray(valor);
+  const temItens = <T,>(valor: T[] | undefined): valor is T[] =>
+    Array.isArray(valor) && valor.length > 0;
+
+  const impostos = temLista(lido.impostos) ? lido.impostos : (await inicial()).impostos;
+  const influencers = temItens(lido.influencers)
+    ? lido.influencers
+    : (await inicial()).influencers;
+  const produtos = temLista(lido.produtos)
     ? lido.produtos
     : produtosIniciais(impostos, influencers);
 
   return {
-    custos: Array.isArray(lido.custos) ? lido.custos : inicial.custos,
+    custos: temLista(lido.custos) ? lido.custos : (await inicial()).custos,
     influencers,
     impostos,
-    aliquotasEstaduais:
-      Array.isArray(lido.aliquotasEstaduais) && lido.aliquotasEstaduais.length > 0
-        ? lido.aliquotasEstaduais
-        : inicial.aliquotasEstaduais,
+    aliquotasEstaduais: temItens(lido.aliquotasEstaduais)
+      ? lido.aliquotasEstaduais
+      : (await inicial()).aliquotasEstaduais,
+    taxasPlataforma: temItens(lido.taxasPlataforma)
+      ? lido.taxasPlataforma
+      : (await inicial()).taxasPlataforma,
     produtos,
-    contagens: Array.isArray(lido.contagens)
-      ? lido.contagens
-      : contagensIniciais(produtos),
-    usuarios:
-      Array.isArray(lido.usuarios) && lido.usuarios.length > 0
-        ? lido.usuarios
-        : inicial.usuarios,
+    contagens: temLista(lido.contagens) ? lido.contagens : contagensIniciais(produtos),
+    // Sem `length > 0` aqui: uma base em que todas as ordens foram apagadas
+    // de proposito nao pode ressuscita-las a cada leitura.
+    ordens: temLista(lido.ordens) ? lido.ordens : (await inicial()).ordens,
+    despesasInfluencer: temLista(lido.despesasInfluencer)
+      ? lido.despesasInfluencer
+      : (await inicial()).despesasInfluencer,
+    usuarios: temItens(lido.usuarios) ? lido.usuarios : (await inicial()).usuarios,
   };
 }
 
@@ -238,6 +276,50 @@ export class RepositorioDemonstracao implements RepositorioCadastros {
   async removerInfluencer(id: string): Promise<void> {
     const estado = await carregar();
     estado.influencers = estado.influencers.filter((i) => i.id !== id);
+    // As despesas vao junto: sem o influencer elas nao aparecem em tela
+    // nenhuma, e continuariam descontando do lucro sem ninguem ver de onde.
+    estado.despesasInfluencer = (estado.despesasInfluencer ?? []).filter(
+      (d) => d.influencerId !== id,
+    );
+    await gravar(estado);
+  }
+
+  // --- Despesas de influencer ---------------------------------------------
+
+  async listarDespesasInfluencer(): Promise<DespesaInfluencer[]> {
+    const estado = await carregar();
+    // Mais recente primeiro; no mesmo dia, a ultima alterada em cima.
+    return [...(estado.despesasInfluencer ?? [])].sort(
+      (a, b) => b.data.localeCompare(a.data) || b.atualizadoEm.localeCompare(a.atualizadoEm),
+    );
+  }
+
+  async salvarDespesaInfluencer(
+    entrada: EntradaDespesaInfluencer,
+    id?: string,
+  ): Promise<DespesaInfluencer> {
+    const estado = await carregar();
+    estado.despesasInfluencer ??= [];
+
+    const indice = id ? estado.despesasInfluencer.findIndex((d) => d.id === id) : -1;
+    if (id && indice < 0) throw new Error("Despesa não encontrada.");
+
+    const registro: DespesaInfluencer = {
+      ...entrada,
+      id: indice >= 0 ? estado.despesasInfluencer[indice]!.id : novoId("despesa"),
+      atualizadoEm: new Date().toISOString(),
+    };
+
+    if (indice >= 0) estado.despesasInfluencer[indice] = registro;
+    else estado.despesasInfluencer.push(registro);
+
+    await gravar(estado);
+    return registro;
+  }
+
+  async removerDespesaInfluencer(id: string): Promise<void> {
+    const estado = await carregar();
+    estado.despesasInfluencer = (estado.despesasInfluencer ?? []).filter((d) => d.id !== id);
     await gravar(estado);
   }
 
@@ -299,6 +381,41 @@ export class RepositorioDemonstracao implements RepositorioCadastros {
     if (indice >= 0) estado.aliquotasEstaduais[indice] = registro;
     else estado.aliquotasEstaduais.push(registro);
 
+    await gravar(estado);
+    return registro;
+  }
+
+  // --- Taxas de plataforma ------------------------------------------------
+
+  async listarTaxasPlataforma(): Promise<TaxaPlataforma[]> {
+    const estado = await carregar();
+    /*
+     * Base antiga nao tem o campo: um `.demo-data` gravado antes desta versao
+     * traria `undefined` e a tela quebraria no `.map`. Semeia sob demanda.
+     */
+    if (!estado.taxasPlataforma?.length) {
+      estado.taxasPlataforma = taxasPlataformaIniciais();
+      await gravar(estado);
+    }
+    return estado.taxasPlataforma;
+  }
+
+  async salvarTaxaPlataforma(
+    entrada: EntradaTaxaPlataforma,
+  ): Promise<TaxaPlataforma> {
+    const estado = await carregar();
+    const lista = estado.taxasPlataforma ?? taxasPlataformaIniciais();
+    const indice = lista.findIndex((t) => t.metodo === entrada.metodo);
+
+    const registro: TaxaPlataforma = {
+      ...entrada,
+      atualizadoEm: new Date().toISOString(),
+    };
+
+    if (indice >= 0) lista[indice] = registro;
+    else lista.push(registro);
+
+    estado.taxasPlataforma = lista;
     await gravar(estado);
     return registro;
   }
@@ -365,6 +482,67 @@ export class RepositorioDemonstracao implements RepositorioCadastros {
     const estado = await carregar();
     estado.contagens = estado.contagens.filter((c) => c.id !== id);
     await gravar(estado);
+  }
+
+  // --- Ordens de fabricacao -----------------------------------------------
+
+  async listarOrdens(): Promise<OrdemFabricacao[]> {
+    const estado = await carregar();
+    // Base gravada antes desta versao nao tem o campo. Mesma protecao das
+    // taxas de plataforma -- so que aqui nao ha o que semear: comeca vazia.
+    const ordens = estado.ordens ?? [];
+    // Mais recente primeiro: a lista se le de cima para baixo.
+    return [...ordens].sort((a, b) => b.criadoEm.localeCompare(a.criadoEm));
+  }
+
+  async buscarOrdemPorId(id: string): Promise<OrdemFabricacao | null> {
+    const estado = await carregar();
+    return (estado.ordens ?? []).find((o) => o.id === id) ?? null;
+  }
+
+  async buscarOrdemPorToken(token: string): Promise<OrdemFabricacao | null> {
+    if (!token) return null;
+    const estado = await carregar();
+    // `tokenConfere` e nao `===`: a busca varre a lista, e uma comparacao
+    // curta-circuitada vaza pelo tempo quantos caracteres estavam certos.
+    return (estado.ordens ?? []).find((o) => tokenConfere(token, o.token)) ?? null;
+  }
+
+  async criarOrdem(entrada: EntradaOrdem): Promise<OrdemFabricacao> {
+    const estado = await carregar();
+    estado.ordens ??= [];
+
+    const registro: OrdemFabricacao = {
+      id: novoId("ordem"),
+      numero: proximoNumero(estado.ordens),
+      itens: entrada.itens,
+      dataLancamento: entrada.dataLancamento,
+      observacao: entrada.observacao,
+      situacao: "aguardando",
+      solicitante: entrada.solicitante,
+      aprovador: null,
+      motivoRecusa: null,
+      token: novoToken(),
+      criadoEm: new Date().toISOString(),
+      fechadoEm: null,
+      documento: null,
+    };
+
+    estado.ordens.push(registro);
+    await gravar(estado);
+    return registro;
+  }
+
+  async gravarOrdem(ordem: OrdemFabricacao): Promise<OrdemFabricacao> {
+    const estado = await carregar();
+    estado.ordens ??= [];
+
+    const indice = estado.ordens.findIndex((o) => o.id === ordem.id);
+    if (indice < 0) throw new Error("Ordem nao encontrada.");
+
+    estado.ordens[indice] = ordem;
+    await gravar(estado);
+    return ordem;
   }
 
   // --- Usuarios -----------------------------------------------------------

@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 
 import { obterRepositorioCadastros } from "@/data";
+import { exigirHttpsNoCookie } from "@/lib/config";
 import {
   criarTokenSessao,
   DURACAO_SESSAO_SEGUNDOS,
@@ -15,7 +16,7 @@ import { ROTA_INICIAL } from "@/types/usuario";
 import type { EstadoFormulario } from "@/types/formulario";
 
 const esquema = z.object({
-  usuario: z.string().trim().min(1, "Informe o usuario").max(80),
+  usuario: z.string().trim().min(1, "Informe o usuário").max(80),
   senha: z.string().min(1, "Informe a senha").max(200),
 });
 
@@ -26,7 +27,7 @@ const esquema = z.object({
  * so falta a senha. A resposta e sempre a mesma, custe o que custar em
  * simpatia.
  */
-const RECUSA = "Usuario ou senha invalidos.";
+const RECUSA = "Usuário ou senha inválidos.";
 
 export async function entrar(
   _anterior: EstadoFormulario,
@@ -63,7 +64,7 @@ export async function entrar(
   jar.set(NOME_COOKIE_SESSAO, criarTokenSessao(usuario.id, usuario.perfil), {
     httpOnly: true,
     sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
+    secure: exigirHttpsNoCookie(),
     path: "/",
     maxAge: DURACAO_SESSAO_SEGUNDOS,
   });

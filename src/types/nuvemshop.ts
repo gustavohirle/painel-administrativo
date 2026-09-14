@@ -37,6 +37,78 @@ export type MetodoPagamento =
   | "wire_transfer"
   | "other";
 
+/**
+ * Chave usada quando o pedido nao informa meio de pagamento.
+ *
+ * Vale um valor proprio, e nao `other`: "nao informado" e uma lacuna de dado,
+ * enquanto `other` e uma escolha de pagamento. Misturar os dois cobraria a
+ * taxa de "outros" sobre um pedido do qual nao se sabe nada.
+ */
+export const METODO_NAO_INFORMADO = "nao_informado";
+
+/**
+ * Apelidos conhecidos -> metodo canonico.
+ *
+ * A API devolve `payment_details.method` como texto livre, e o painel nunca
+ * viu o payload real do cliente. Variacao de caixa e de separador e resolvida
+ * pela normalizacao; as equivalencias SEMANTICAS abaixo sao hipotese razoavel,
+ * nao fato verificado -- ao ligar `FONTE_DADOS=live`, confira a aba de taxas:
+ * metodo que chegar com nome desconhecido aparece la, com a taxa em branco.
+ * E o unico lugar a mexer quando isso acontecer.
+ */
+const APELIDOS_DE_METODO: Record<string, MetodoPagamento> = {
+  credit: "credit_card",
+  creditcard: "credit_card",
+  debit: "debit_card",
+  debitcard: "debit_card",
+  // A Nuvemshop ja chamou boleto de "ticket" em versoes antigas da API.
+  ticket: "boleto",
+  bank_slip: "boleto",
+  bankslip: "boleto",
+  transfer: "wire_transfer",
+  bank_transfer: "wire_transfer",
+  banktransfer: "wire_transfer",
+  cash: "other",
+};
+
+const METODOS_CANONICOS = new Set<string>([
+  "credit_card",
+  "boleto",
+  "pix",
+  "debit_card",
+  "wire_transfer",
+  "other",
+]);
+
+/**
+ * Meio de pagamento do pedido, normalizado.
+ *
+ * Mesmo papel que `normalizarUF` faz para o estado (secao 5.10.1): a API varia
+ * a grafia e, sem um lugar unico para resolver isso, o mesmo meio viraria
+ * varias linhas no relatorio e varias taxas no calculo.
+ *
+ * Valor desconhecido NAO vira `other`. Ele passa adiante com o proprio nome,
+ * normalizado, para aparecer na tabela de taxas como lacuna declarada. Dobrar
+ * para `other` cobraria a taxa de "outros" sobre um meio que ninguem cadastrou
+ * -- um numero plausivel e inventado, que e o que a secao 8 proibe.
+ */
+export function normalizarMetodoPagamento(
+  bruto: string | null | undefined,
+): string {
+  if (!bruto) return METODO_NAO_INFORMADO;
+
+  const limpo = bruto.trim().toLowerCase().replace(/[\s-]+/g, "_");
+  if (limpo === "") return METODO_NAO_INFORMADO;
+
+  if (METODOS_CANONICOS.has(limpo)) return limpo;
+  return APELIDOS_DE_METODO[limpo] ?? limpo;
+}
+
+/** Meio de pagamento de um pedido, ja normalizado. */
+export function metodoDoPedido(pedido: Pedido): string {
+  return normalizarMetodoPagamento(pedido.payment_details?.method);
+}
+
 /** Motivo do cancelamento. */
 export type MotivoCancelamento = "customer" | "fraud" | "inventory" | "other";
 

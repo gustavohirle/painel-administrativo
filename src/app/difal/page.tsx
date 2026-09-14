@@ -78,24 +78,24 @@ export default async function PaginaDifal({
             DIFAL de ICMS
           </h1>
           <p className="mt-1 max-w-3xl text-sm leading-relaxed text-tinta-media">
-            Na venda interestadual ao consumidor final, a diferenca entre a
-            aliquota interna do estado de destino e a interestadual vai para
-            aquele estado. O painel calcula isso pedido a pedido, pelo endereco
-            de entrega, e soma no custo tributario. Referencia:{" "}
+            Na venda interestadual ao consumidor final, a diferença entre a
+            alíquota interna do estado de destino e a interestadual vai para
+            aquele estado. O painel calcula isso pedido a pedido, pelo endereço
+            de entrega, e soma no custo tributário. Referência:{" "}
             {mesAnoLongo(mesSelecionado)}.
           </p>
         </div>
 
         <div className="rounded-xl border border-alerta-borda bg-alerta-fundo px-6 py-5">
           <p className="text-sm font-semibold text-naopago">
-            As aliquotas vem preenchidas, mas nenhuma esta confirmada
+            As alíquotas vêm preenchidas, mas nenhuma está confirmada
           </p>
           <p className="mt-1 max-w-4xl text-sm leading-relaxed text-tinta-media">
-            Varios estados mexeram nas suas aliquotas internas entre 2023 e 2025,
-            e algumas ja embutem fundo de combate a pobreza enquanto outras nao.
-            Alem disso, a apuracao oficial usa base dupla -- o imposto entra na
-            propria base de calculo -- e este painel <strong>nao faz</strong> esse
-            ajuste, entao o valor exibido fica um pouco <strong>abaixo</strong> do
+            Vários estados mexeram nas suas alíquotas internas entre 2023 e 2025,
+            e algumas já embutem fundo de combate à pobreza enquanto outras não.
+            Além disso, a apuração oficial usa base dupla -- o imposto entra na
+            própria base de cálculo -- e este painel <strong>não faz</strong> esse
+            ajuste, então o valor exibido fica um pouco <strong>abaixo</strong> do
             devido. Confirme estado a estado com o contador e marque como
             confirmado.
           </p>
@@ -103,9 +103,9 @@ export default async function PaginaDifal({
 
         <div className="grid gap-4 rounded-xl border border-borda bg-superficie px-6 py-5 shadow-[0_1px_2px_rgba(16,24,40,0.05)] sm:grid-cols-2 xl:grid-cols-4">
           <NumeroDestaque
-            rotulo="DIFAL no mes"
+            rotulo="DIFAL no mês"
             valor={moedaRedonda(difal.total)}
-            apoio={`${percentual(difal.cargaSobreReceita)} do que foi recebido`}
+            apoio={`${percentual(difal.cargaSobreReceita)} da receita sem frete`}
             cor="var(--color-imposto)"
           />
           <NumeroDestaque
@@ -128,7 +128,7 @@ export default async function PaginaDifal({
         {(noSimples.length > 0 || difal.pedidosSemEstado > 0) && (
           <div className="rounded-xl border border-borda bg-superficie px-6 py-5">
             <p className="text-sm font-semibold text-tinta">
-              O que esta e o que nao esta nesta conta
+              O que está e o que não está nesta conta
             </p>
             <ul className="mt-2 space-y-1.5 text-sm leading-relaxed text-tinta-media">
               {recolhem.length > 0 && (
@@ -139,10 +139,10 @@ export default async function PaginaDifal({
               )}
               {noSimples.length > 0 && (
                 <li>
-                  <strong className="text-tinta">Nao recolhem:</strong>{" "}
+                  <strong className="text-tinta">Não recolhem:</strong>{" "}
                   {noSimples.map((a) => a.marca).join(", ")} — optante do Simples
-                  Nacional nao recolhe DIFAL na condicao de remetente, conforme
-                  decisao do STF na ADI 5464. As vendas delas aparecem na tabela,
+                  Nacional não recolhe DIFAL na condição de remetente, conforme
+                  decisão do STF na ADI 5464. As vendas delas aparecem na tabela,
                   mas com DIFAL zerado.
                 </li>
               )}
@@ -153,7 +153,7 @@ export default async function PaginaDifal({
                   <strong className="numerico">
                     {moeda(difal.receitaSemEstado)}
                   </strong>{" "}
-                  — ficam de fora do calculo.
+                  — ficam de fora do cálculo.
                 </li>
               )}
             </ul>
@@ -162,14 +162,14 @@ export default async function PaginaDifal({
 
         <Cartao
           titulo="Para quais estados vai o DIFAL"
-          descricao="Os maiores destinos do mes, pelo endereco de entrega de cada pedido."
+          descricao="Os maiores destinos do mês, pelo endereço de entrega de cada pedido."
         >
           <DifalPorEstado porEstado={difal.porEstado} total={difal.total} />
         </Cartao>
 
         <Cartao
-          titulo="Aliquota interna de cada estado"
-          descricao="Ja preenchidas e editaveis. O DIFAL e a diferenca entre a interna do destino e a interestadual."
+          titulo="Alíquota interna de cada estado"
+          descricao="Já preenchidas e editáveis. O DIFAL é a diferença entre a interna do destino e a interestadual."
         >
           <GestaoDifal
             aliquotas={aliquotasEstaduais}

@@ -84,10 +84,10 @@ export default async function PaginaProdutos({
             Produtos
           </h1>
           <p className="mt-1 max-w-3xl text-sm text-tinta-media">
-            A lista chega da Nuvemshop. O que se cadastra aqui e o que ela nao
-            sabe: de qual influencer o produto e, o NCM, e de que componentes um
-            kit e feito. Os impostos vem sozinhos, do regime tributario do
-            influencer dono. Referencia: {mesAnoLongo(mesSelecionado)}.
+            A lista chega da Nuvemshop. O que se cadastra aqui é o que ela não
+            sabe: de qual influencer o produto é, o NCM, e de que componentes um
+            kit é feito. Os impostos vêm sozinhos, do regime tributário do
+            influencer dono. Referência: {mesAnoLongo(mesSelecionado)}.
           </p>
         </div>
 
@@ -105,7 +105,7 @@ export default async function PaginaProdutos({
           <NumeroDestaque
             rotulo="Sem influencer vinculado"
             valor={inteiro(semDono.length)}
-            apoio="Sem dono nao ha regime, e sem regime nao ha imposto"
+            apoio="Sem dono não há regime, e sem regime não há imposto"
             cor={semDono.length > 0 ? "var(--color-naopago)" : "var(--color-real)"}
           />
           <NumeroDestaque

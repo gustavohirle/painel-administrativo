@@ -28,7 +28,7 @@ export default async function PaginaEntrar() {
               Painel Administrativo
             </h1>
             <p className="mt-1 text-sm text-tinta-media">
-              Entre para ver o resultado da operacao.
+              Entre para ver o resultado da operação.
             </p>
           </div>
           {demo && <SeloDemonstracao />}

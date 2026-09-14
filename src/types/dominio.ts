@@ -48,6 +48,10 @@ export function custoUnitarioTotal(custo: CustoProduto): number {
  *                  cancelado e boleto nunca pago. E como o cliente paga hoje.
  * `recebido`    -- percentual sobre o dinheiro que efetivamente entrou.
  * `receitaReal` -- percentual sobre o recebido menos o frete.
+ *
+ * Em NENHUMA base entra o frete: ele e cobrado do cliente por fora e vai para
+ * a transportadora. Com isso `recebido` e `receitaReal` dao o mesmo valor --
+ * as duas continuam existindo para nao invalidar contratos ja cadastrados.
  */
 export type BaseComissao = "bruto" | "recebido" | "receitaReal";
 
@@ -66,9 +70,10 @@ export const ROTULO_BASE: Record<BaseComissao, string> = {
 
 export const EXPLICACAO_BASE: Record<BaseComissao, string> = {
   bruto:
-    "Inclui pedidos cancelados, reembolsados e boletos que nunca foram pagos.",
-  recebido: "Somente pedidos efetivamente pagos, incluindo o frete cobrado.",
-  receitaReal: "Pedidos pagos, descontando o frete cobrado do cliente.",
+    "Todos os pedidos criados, inclusive cancelados, reembolsados e boletos que nunca foram pagos. O frete cobrado do cliente não entra.",
+  recebido:
+    "Somente pedidos efetivamente pagos, sem o frete cobrado do cliente — na prática, o mesmo valor da receita real.",
+  receitaReal: "Pedidos pagos, sem o frete cobrado do cliente.",
 };
 
 /**
@@ -113,3 +118,95 @@ export type EntradaCustoProduto = Omit<CustoProduto, "id" | "atualizadoEm">;
 
 /** Entrada para criar/editar um influencer. */
 export type EntradaInfluencer = Omit<Influencer, "id" | "atualizadoEm">;
+
+// ---------------------------------------------------------------------------
+// Despesas de influencer
+// ---------------------------------------------------------------------------
+
+/**
+ * O que um influencer custa ALEM da comissao: produto enviado para gravar,
+ * viagem para um evento, cache fixo, anuncio impulsionado.
+ *
+ * Antes disso o painel so enxergava a comissao, e o lucro operacional saia
+ * maior do que o verdadeiro: o dinheiro gasto com o influencer existia, so nao
+ * estava em lugar nenhum. A comissao continua CALCULADA (secao 5.2) e nunca e
+ * gravada aqui; so se cadastra o que nao sai de conta nenhuma.
+ *
+ * Despesa e avulsa e pertence a um mes pela data. Um cache fixo mensal e
+ * cadastrado uma vez em cada mes. Recorrencia automatica foi descartada de
+ * proposito: o que esta na grade e o que foi gasto, sem regra escondida.
+ */
+export const CATEGORIAS_DESPESA = [
+  "operacional",
+  "produto_enviado",
+  "viagem",
+  "cache",
+  "anuncio",
+  "outros",
+] as const;
+
+export type CategoriaDespesa = (typeof CATEGORIAS_DESPESA)[number];
+
+export const ROTULO_CATEGORIA_DESPESA: Record<CategoriaDespesa, string> = {
+  operacional: "Operacional",
+  produto_enviado: "Produto enviado",
+  viagem: "Viagem e hospedagem",
+  cache: "Cachê",
+  anuncio: "Anúncio impulsionado",
+  outros: "Outros",
+};
+
+export interface DespesaInfluencer {
+  id: string;
+  /**
+   * Dono da despesa. `null` = COMPARTILHADA: gravada uma vez, com o valor
+   * total, e dividida entre os influencers pelo faturamento sem frete de cada
+   * marca no mes (`ratearDespesas`, em costing.ts). A parte de cada um nunca e
+   * gravada, pelo mesmo motivo da comissao: mudaria com as vendas e ficaria
+   * velha.
+   */
+  influencerId: string | null;
+  /** Data de calendario "aaaa-mm-dd". E ela que decide o mes da despesa. */
+  data: string;
+  categoria: CategoriaDespesa;
+  descricao: string;
+  /** Em reais. Sempre positivo: e custo. */
+  valor: number;
+  atualizadoEm: string;
+}
+
+export type EntradaDespesaInfluencer = Omit<DespesaInfluencer, "id" | "atualizadoEm">;
+
+/** De onde saiu a parte de um influencer numa despesa compartilhada. */
+export interface RateioDespesa {
+  /** Id da despesa compartilhada gravada. */
+  despesaId: string;
+  /** Valor total cadastrado, antes da divisao. */
+  total: number;
+  /** Fracao do total que coube a este influencer. */
+  fracao: number;
+}
+
+/**
+ * Despesa ja com dono: a propria de um influencer (`rateio: null`) ou a parte
+ * dele numa compartilhada. E o que as contas e a grade consomem.
+ */
+export interface DespesaAtribuida extends Omit<DespesaInfluencer, "influencerId"> {
+  influencerId: string;
+  rateio: RateioDespesa | null;
+}
+
+/** Id do registro gravado: o da compartilhada, quando for uma parte dela. */
+export function idDeOrigem(despesa: DespesaInfluencer | DespesaAtribuida): string {
+  return "rateio" in despesa && despesa.rateio ? despesa.rateio.despesaId : despesa.id;
+}
+
+/**
+ * "2026-09" a partir de "2026-09-14", por fatia de texto.
+ *
+ * Sem `new Date`: "2026-09-01" viraria meia-noite em UTC, que no Brasil ainda
+ * e 31 de agosto, e a despesa do dia primeiro cairia no mes anterior.
+ */
+export function mesDaDespesa(despesa: Pick<DespesaInfluencer, "data">): string {
+  return despesa.data.slice(0, 7);
+}

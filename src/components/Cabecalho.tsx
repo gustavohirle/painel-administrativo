@@ -31,8 +31,21 @@ export function Cabecalho({
 }: CabecalhoProps) {
   return (
     <header className="sticky top-0 z-30 border-b border-borda bg-superficie/95 backdrop-blur">
-      <div className="mx-auto flex max-w-[1400px] flex-wrap items-center gap-x-5 gap-y-3 px-6 py-3">
-        <Link href={ROTA_INICIAL[usuario.perfil]} className="flex items-center gap-3">
+      {/*
+        * Tres blocos num `flex-wrap`, nesta ordem: logo, faixa de abas, canto
+        * do usuario. No celular a faixa se joga para a linha de baixo sozinha
+        * (`order-last w-full`, dentro da propria NavegacaoPrincipal) e as duas
+        * linhas ficam alinhadas pela mesma margem.
+        *
+        * O canto do usuario NAO quebra (`flex-nowrap`): antes ele era o
+        * terceiro a disputar espaco com as abas na mesma linha, e o "Sair"
+        * caia sozinho numa terceira fileira.
+        */}
+      <div className="mx-auto flex max-w-[1400px] flex-wrap items-center gap-x-3 gap-y-2 px-4 py-2 sm:gap-x-5 sm:gap-y-3 sm:px-6 sm:py-3">
+        <Link
+          href={ROTA_INICIAL[usuario.perfil]}
+          className="flex shrink-0 items-center gap-3"
+        >
           <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-tinta text-sm font-bold text-white">
             PA
           </span>
@@ -43,7 +56,7 @@ export function Cabecalho({
 
         <NavegacaoPrincipal areas={areasDoPerfil(usuario.perfil)} />
 
-        <div className="ml-auto flex flex-wrap items-center gap-3">
+        <div className="ml-auto flex min-w-0 shrink items-center gap-2 sm:gap-3">
           {meses && mesSelecionado && (
             <SeletorMes meses={meses} mesSelecionado={mesSelecionado} />
           )}
@@ -55,10 +68,21 @@ export function Cabecalho({
   );
 }
 
+/** Duas iniciais do nome, para o avatar de celular. */
+function iniciais(nome: string): string {
+  const partes = nome.trim().split(/\s+/);
+  const primeira = partes[0]?.[0] ?? "";
+  const ultima = partes.length > 1 ? (partes[partes.length - 1]?.[0] ?? "") : "";
+  return (primeira + ultima).toUpperCase();
+}
+
 function MenuUsuario({ usuario }: { usuario: UsuarioPublico }) {
   return (
-    <div className="flex items-center gap-3 border-l border-borda pl-3">
-      <div className="text-right">
+    <div className="flex items-center gap-2 border-l border-borda pl-2 sm:gap-3 sm:pl-3">
+      <div
+        className="hidden text-right sm:block"
+        title={`${usuario.nome} -- ${ROTULO_PERFIL[usuario.perfil]}`}
+      >
         <p className="text-sm font-semibold leading-tight text-tinta">
           {usuario.nome}
         </p>
@@ -66,10 +90,17 @@ function MenuUsuario({ usuario }: { usuario: UsuarioPublico }) {
           {ROTULO_PERFIL[usuario.perfil]}
         </p>
       </div>
+      {/* No celular so as iniciais: o nome inteiro empurrava o Sair para outra linha. */}
+      <span
+        title={`${usuario.nome} -- ${ROTULO_PERFIL[usuario.perfil]}`}
+        className="flex h-8 w-8 items-center justify-center rounded-full bg-fundo text-xs font-bold text-tinta-media sm:hidden"
+      >
+        {iniciais(usuario.nome)}
+      </span>
       <form action={sair}>
         <button
           type="submit"
-          className="rounded-lg border border-borda-forte px-3 py-1.5 text-sm font-medium text-tinta-media transition-colors hover:text-tinta"
+          className="rounded-lg border border-borda-forte px-2.5 py-1 text-sm font-medium text-tinta-media transition-colors hover:text-tinta sm:px-3 sm:py-1.5"
         >
           Sair
         </button>
@@ -82,11 +113,12 @@ function MenuUsuario({ usuario }: { usuario: UsuarioPublico }) {
 export function SeloDemonstracao() {
   return (
     <span
-      title="Os numeros desta tela sao ficticios, gerados para demonstracao. Nenhum dado real da loja foi utilizado."
-      className="listrado-demo inline-flex items-center gap-2 rounded-full border border-alerta-borda bg-alerta-fundo px-3 py-1.5 text-xs font-semibold text-naopago"
+      title="Os números desta tela são fictícios, gerados para demonstração. Nenhum dado real da loja foi utilizado."
+      className="listrado-demo inline-flex items-center gap-1.5 rounded-full border border-alerta-borda bg-alerta-fundo px-2.5 py-1 text-xs font-semibold text-naopago sm:gap-2 sm:px-3 sm:py-1.5"
     >
       <span className="h-2 w-2 rounded-full bg-naopago" />
-      Dados de demonstracao
+      <span className="sm:hidden">Demonstração</span>
+      <span className="hidden sm:inline">Dados de demonstração</span>
     </span>
   );
 }

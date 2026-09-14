@@ -19,9 +19,9 @@ const aliquotaDigitada = z.preprocess((entrada) => {
   const n = Number(limpo);
   return Number.isFinite(n) ? n : Number.NaN;
 }, z
-  .number({ invalid_type_error: "Aliquota invalida" })
-  .min(0, "Nao pode ser negativa")
-  .max(40, "Aliquota interna de ICMS acima de 40% nao existe -- confira"));
+  .number({ invalid_type_error: "Alíquota inválida" })
+  .min(0, "Não pode ser negativa")
+  .max(40, "Alíquota interna de ICMS acima de 40% não existe -- confira"));
 
 const booleano = z.preprocess(
   (v) => v === "on" || v === "true" || v === true,

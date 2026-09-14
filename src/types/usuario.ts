@@ -97,9 +97,9 @@ export const ROTULO_PERFIL: Record<PerfilUsuario, string> = {
 };
 
 export const DESCRICAO_PERFIL: Record<PerfilUsuario, string> = {
-  dono: "Ve o painel inteiro, incluindo faturamento, custos, comissoes e lucro.",
+  dono: "Vê o painel inteiro, incluindo faturamento, custos, comissões e lucro.",
   estoque:
-    "Cadastra produtos e registra contagens de estoque. Nao ve nenhum valor financeiro.",
+    "Cadastra produtos e registra contagens de estoque. Não vê nenhum valor financeiro.",
 };
 
 /** Rota inicial de cada perfil apos o login. */

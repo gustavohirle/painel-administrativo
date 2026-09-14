@@ -11,7 +11,7 @@ import type { SinaisAdicionais as Sinais } from "@/lib/metrics";
 export function SinaisAdicionais({ sinais }: { sinais: Sinais }) {
   const itens = [
     {
-      rotulo: "Carrinhos abandonados no mes",
+      rotulo: "Carrinhos abandonados no mês",
       valor: inteiro(sinais.carrinhosAbandonados),
       apoio: `${moedaRedonda(sinais.valorCarrinhosAbandonados)} em produtos que ficaram no carrinho`,
     },
@@ -21,7 +21,7 @@ export function SinaisAdicionais({ sinais }: { sinais: Sinais }) {
       apoio: "Sobre os clientes com pedido pago nos 6 meses",
     },
     {
-      rotulo: "Intervalo medio entre compras",
+      rotulo: "Intervalo médio entre compras",
       valor: `${Math.round(sinais.cicloMedioRecompraDias)} dias`,
       apoio: "De um pedido pago ao seguinte, do mesmo cliente, nos 6 meses",
     },

@@ -1,7 +1,6 @@
 import { Cabecalho } from "@/components/Cabecalho";
 import { Cartao, NumeroDestaque } from "@/components/Cartao";
 import { ComposicaoFaturamento } from "@/components/ComposicaoFaturamento";
-import { AreaComissao } from "@/components/AreaComissao";
 import { CargaTributaria } from "@/components/CargaTributaria";
 import { DemonstrativoResultado } from "@/components/DemonstrativoResultado";
 import { EvolucaoMensal } from "@/components/EvolucaoMensal";
@@ -12,8 +11,9 @@ import { RodapeDemonstracao } from "@/components/RodapeDemonstracao";
 import { obterFonteDePedidos, obterRepositorioCadastros } from "@/data";
 import { periodoDoMes } from "@/data/source";
 import { modoDemonstracao, PERCENTUAL_COMISSAO_PADRAO } from "@/lib/config";
-import { cruzarMarcasComContratos, montarDemonstrativo } from "@/lib/costing";
+import { montarDemonstrativo, ratearDespesas } from "@/lib/costing";
 import { apurarImpostos } from "@/lib/impostos";
+import { apurarTaxasPlataforma } from "@/lib/plataforma";
 import {
   inteiro,
   mesAnoLongo,
@@ -53,6 +53,8 @@ export default async function PaginaPainel({
     impostosCadastrados,
     produtos,
     aliquotasEstaduais,
+    taxasCadastradas,
+    despesasInfluencer,
   ] = await Promise.all([
     fonte.listarPedidos(),
     repositorio.listarCustos(),
@@ -60,6 +62,8 @@ export default async function PaginaPainel({
     repositorio.listarImpostos(),
     repositorio.listarProdutos(),
     repositorio.listarAliquotasEstaduais(),
+    repositorio.listarTaxasPlataforma(),
+    repositorio.listarDespesasInfluencer(),
   ]);
 
   const meses = mesesDisponiveis(todosOsPedidos);
@@ -73,9 +77,6 @@ export default async function PaginaPainel({
 
   const reconciliacao = reconciliar(pedidosDoMes);
   const marcas = agruparPorMarca(pedidosDoMes, PERCENTUAL_COMISSAO_PADRAO);
-  // O simulador precisa saber a base de calculo de cada contrato -- sem isso
-  // ele mostraria a comissao numa base que aquele influencer nao usa.
-  const marcasComContrato = cruzarMarcasComContratos(marcas, influencers);
   const metodos = agruparPorMetodoPagamento(pedidosDoMes);
   const evolucao = evolucaoMensal(todosOsPedidos, 6);
   const sinais = calcularSinaisAdicionais(pedidosDoMes, carrinhos, todosOsPedidos);
@@ -88,9 +89,14 @@ export default async function PaginaPainel({
     aliquotasEstaduais,
   );
 
+  const taxas = apurarTaxasPlataforma(pedidosDoMes, taxasCadastradas);
+
   const dre = montarDemonstrativo(pedidosDoMes, custos, influencers, {
     produtos,
     impostos,
+    taxasPlataforma: taxas,
+    // Dividida com TODOS os pedidos: a proporcao e a do mes inteiro.
+    despesasInfluencers: ratearDespesas(despesasInfluencer, todosOsPedidos, influencers),
   });
 
   const demo = modoDemonstracao();
@@ -112,7 +118,8 @@ export default async function PaginaPainel({
           <p className="mt-1 text-sm text-tinta-media">
             {inteiro(reconciliacao.quantidade.total)} pedidos criados em{" "}
             {marcas.length} marcas. Do faturamento ao lucro, com impostos,
-            custos de fabricacao e comissoes ja descontados.
+            custos de fabricação, comissões, despesas com influencers e a
+            participação dos sócios já descontados.
           </p>
         </div>
 
@@ -121,7 +128,7 @@ export default async function PaginaPainel({
           <NumeroDestaque
             rotulo="Faturamento bruto"
             valor={moedaRedonda(reconciliacao.bruto)}
-            apoio="Tudo que foi pedido no mes"
+            apoio="Tudo que foi pedido no mês"
           />
           <NumeroDestaque
             rotulo="Recebido"
@@ -131,43 +138,38 @@ export default async function PaginaPainel({
           <NumeroDestaque
             rotulo="Impostos sobre a venda"
             valor={moedaRedonda(dre.totalImpostos)}
-            apoio={`${percentual(impostos.cargaSobreReceita)} do recebido`}
+            apoio={`${percentual(impostos.cargaSobreReceita)} da receita sem frete`}
             cor="var(--color-naopago)"
           />
+          {/* Com prejuizo o rotulo muda e o numero fica vermelho e sem sinal:
+              "Lucro operacional" verde com valor negativo se contradiz. */}
           <NumeroDestaque
-            rotulo="Lucro operacional"
-            valor={moedaRedonda(dre.lucroOperacional)}
-            apoio={`${percentual(dre.margemOperacionalPercentual)} da receita real`}
-            cor="var(--color-real)"
+            rotulo={dre.lucroOperacional < 0 ? "Prejuízo operacional" : "Lucro operacional"}
+            valor={moedaRedonda(Math.abs(dre.lucroOperacional))}
+            apoio={`${percentual(Math.abs(dre.margemOperacionalPercentual))} da receita real`}
+            cor={dre.lucroOperacional < 0 ? "var(--color-naopago)" : "var(--color-real)"}
           />
         </div>
 
         <Cartao
           titulo="Para onde vai cada real faturado"
-          descricao="O que nunca entrou, o frete, os impostos, o DIFAL, o custo de fabricacao, as comissoes -- e o que sobra."
+          descricao="O que nunca entrou, o frete, os impostos, o DIFAL, a taxa da Nuvemshop, o custo de fabricação, as comissões -- e o que sobra."
         >
           <ComposicaoFaturamento dre={dre} />
         </Cartao>
 
-        <Cartao
-          titulo="Comissao de influencers: simulador de base"
-          descricao="Cada marca aparece na base de calculo do proprio contrato, ao lado do que a mesma comissao daria sobre a receita real. Ajuste o percentual para testar cenarios."
-        >
-          <AreaComissao
-            marcas={marcasComContrato}
-            percentualInicial={PERCENTUAL_COMISSAO_PADRAO}
-          />
-        </Cartao>
+        {/* O simulador de base de comissao mudou para /simulador, aba
+            "Comissao de influencer" (secao 5.17). */}
 
         <Cartao
           titulo="Raio-x do resultado"
-          descricao="Do faturamento bruto ate o lucro operacional, com impostos, custos de fabricacao e contratos de comissao cadastrados."
+          descricao="Do faturamento bruto até o lucro operacional, com impostos, custos de fabricação e contratos de comissão cadastrados."
         >
           <DemonstrativoResultado dre={dre} />
         </Cartao>
 
         <Cartao
-          titulo="Carga tributaria"
+          titulo="Carga tributária"
           descricao="Quanto do que entra vira imposto, e para onde vai."
         >
           <CargaTributaria resultado={impostos} />
@@ -181,20 +183,20 @@ export default async function PaginaPainel({
         */}
         <Cartao
           titulo="Por onde o dinheiro escapa"
-          descricao="Taxa de nao pagamento de cada meio de pagamento."
+          descricao="Taxa de não pagamento de cada meio de pagamento."
         >
           <MeiosPagamento linhas={metodos} />
         </Cartao>
 
         <Cartao
-          titulo="Evolucao dos ultimos 6 meses"
-          descricao="A distancia entre faturar e receber se repete mes a mes."
+          titulo="Evolução dos últimos 6 meses"
+          descricao="A distância entre faturar e receber se repete mês a mês."
         >
           <EvolucaoMensal pontos={evolucao} />
         </Cartao>
 
         <Cartao
-          titulo="Outros sinais do mes"
+          titulo="Outros sinais do mês"
           descricao="Indicadores que abrem conversa para as proximas etapas do projeto."
         >
           <SinaisAdicionais sinais={sinais} />

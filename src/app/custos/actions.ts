@@ -20,11 +20,11 @@ const valorMonetario = z.preprocess((entrada) => {
   if (limpo === "") return 0;
   const n = Number(limpo);
   return Number.isFinite(n) ? n : Number.NaN;
-}, z.number({ invalid_type_error: "Valor invalido" }).min(0, "Nao pode ser negativo"));
+}, z.number({ invalid_type_error: "Valor inválido" }).min(0, "Não pode ser negativo"));
 
 const esquemaCusto = z.object({
   id: z.string().optional(),
-  produtoId: z.coerce.number().int().positive("Produto invalido"),
+  produtoId: z.coerce.number().int().positive("Produto inválido"),
   varianteId: z.preprocess(
     (v) => (v === "" || v === "todas" || v === null || v === undefined ? null : v),
     z.coerce.number().int().positive().nullable(),
@@ -93,7 +93,7 @@ export async function removerCusto(
   await exigirArea("custos");
 
   const id = String(formData.get("id") ?? "");
-  if (!id) return { ok: false, mensagem: "Ficha nao encontrada." };
+  if (!id) return { ok: false, mensagem: "Ficha não encontrada." };
 
   try {
     const repositorio = await obterRepositorioCadastros();

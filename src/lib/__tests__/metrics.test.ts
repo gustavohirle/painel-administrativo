@@ -168,10 +168,11 @@ describe("compararComissao", () => {
 
     const c = compararComissao(r, 30);
 
-    expect(c.comissaoSobreBruto).toBeCloseTo(600, 6);
+    // Bruto sem frete: 1000 + (1000 - 20 do frete do pendente) = 1980.
+    expect(c.comissaoSobreBruto).toBeCloseTo(594, 6);
     expect(c.comissaoSobreReal).toBeCloseTo(300, 6);
-    expect(c.diferencaMensal).toBeCloseTo(300, 6);
-    expect(c.projecaoAnual).toBeCloseTo(3600, 6);
+    expect(c.diferencaMensal).toBeCloseTo(294, 6);
+    expect(c.projecaoAnual).toBeCloseTo(3528, 6);
   });
 
   it("zera a diferenca quando todos os pedidos foram pagos e nao ha frete", () => {
@@ -182,9 +183,10 @@ describe("compararComissao", () => {
   });
 
   it("acompanha a mudanca de percentual", () => {
+    // Total 1000 com 20 de frete: a base e 980.
     const r = reconciliar([pedido({ total: "1000.00" })]);
-    expect(compararComissao(r, 10).comissaoSobreBruto).toBeCloseTo(100, 6);
-    expect(compararComissao(r, 50).comissaoSobreBruto).toBeCloseTo(500, 6);
+    expect(compararComissao(r, 10).comissaoSobreBruto).toBeCloseTo(98, 6);
+    expect(compararComissao(r, 50).comissaoSobreBruto).toBeCloseTo(490, 6);
   });
 });
 
@@ -350,10 +352,26 @@ describe("base de demonstracao", () => {
     expect(taxa).toBeLessThan(0.02);
   });
 
-  it("tem frete em ~4,7% do recebido", () => {
+  it("cobra R$ 19 de frete por pedido, sem excecao", () => {
+    // Afirmacao exata, nao banda: o frete e fixo. Se um pedido passar a ter
+    // frete gratis ou proporcional, esta conta quebra na hora -- que e o
+    // comportamento desejado, porque mexer no frete mexe no bruto e, por
+    // tabela, na comissao de quem tem contrato sobre o bruto.
+    expect(r.frete / r.quantidade.recebido).toBeCloseTo(19, 2);
+  });
+
+  it("o frete fica perto de 5% do recebido", () => {
     const taxa = r.frete / r.recebido;
-    expect(taxa).toBeGreaterThan(0.035);
-    expect(taxa).toBeLessThan(0.06);
+    expect(taxa).toBeGreaterThan(0.04);
+    expect(taxa).toBeLessThan(0.065);
+  });
+
+  it("a receita real continua sendo o valor da mercadoria", () => {
+    // O frete maior NAO come o lucro: ele entra no total e sai na deducao.
+    // Se um dia a receita real cair junto com esse aumento, o frete passou a
+    // ser descontado duas vezes.
+    expect(r.receitaReal).toBeGreaterThan(2_100_000);
+    expect(r.receitaReal).toBeLessThan(2_700_000);
   });
 
   it("fecha a cascata na base gerada", () => {

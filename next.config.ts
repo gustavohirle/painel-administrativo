@@ -17,6 +17,15 @@ const nextConfig: NextConfig = {
    * `next dev` avalia este arquivo com NODE_ENV=development; `next build` e
    * `next start`, com production. Cada um fica com a sua pasta.
    */
+  /*
+   * A aba "Comissoes" virou "Influencers" e mudou de endereco. Favorito, link
+   * salvo e historico do navegador continuam chegando; os parametros (?mes=)
+   * passam junto.
+   */
+  async redirects() {
+    return [{ source: "/comissoes", destination: "/influencers", permanent: false }];
+  },
+
   distDir: process.env.NODE_ENV === "development" ? ".next-dev" : ".next",
 };
 

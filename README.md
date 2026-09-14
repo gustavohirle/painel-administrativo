@@ -42,6 +42,15 @@ npm test
 Cobrem as funções puras de cálculo (`lib/metrics.ts` e `lib/costing.ts`) e
 verificam que os totais da base de demonstração batem com o cenário esperado.
 
+Com o `npm run dev` ligado:
+
+- `npm run fumaca` bate em todas as rotas com os dois perfis e confere que cada
+  página monta no servidor e que o bloqueio de acesso responde. Leva uns
+  segundos e dispensa abrir o navegador.
+- `npm run celular` abre cada rota em 390px num Chrome headless e falha se
+  alguma transbordar, tiver texto de gráfico ilegível depois da escala, ou uma
+  tabela rolando de lado sem a primeira coluna ancorada.
+
 ---
 
 ## Telas
@@ -52,12 +61,18 @@ verificam que os totais da base de demonstração batem com o cenário esperado.
 | `/` | dono | Pizza da composição do faturamento (para onde vai cada real), raio-x do resultado, carga tributária, simulador de comissão, meios de pagamento, evolução de 6 meses |
 | `/custos` | dono, estoque | Custo de fabricação por produto/variante. Preço de venda e margem só para o dono |
 | `/comissoes` | dono | Influencers: contrato de comissão **e** regime tributário de cada marca |
+| `/relatorios` | dono | As mesmas contas, agrupadas por marca, influencer, estado, pagamento, mês ou produto, com filtros e impressão |
 | `/impostos` | dono | Catálogo dos tributos que podem incidir sobre um produto, por regime, e a apuração marca a marca |
 | `/difal` | dono | Alíquota interna de cada estado (editável) e o DIFAL apurado por destino |
 | `/produtos` | dono, estoque | Influencer dono, NCM e composição dos kits. Os impostos vêm do regime do influencer |
 | `/estoque` | dono, estoque | Saldo por item e registro de contagens |
 
 O seletor de mês no topo vale para todas as telas.
+
+Todas as telas funcionam em celular. Tabela de leitura vira cartão empilhado no
+telefone; tabela de cadastro continua tabela, com a primeira coluna ancorada
+enquanto o resto rola. Gráfico tem um desenho próprio para tela estreita — não é
+o mesmo reduzido, porque texto dentro de SVG encolhe junto com o desenho.
 
 ### Perfis de acesso
 
@@ -162,6 +177,27 @@ essas palavras.
 O percentual é editável para testar cenários. Ele não altera o cadastro: o
 raio-x do resultado continua usando o percentual de cada contrato.
 
+### Relatórios
+
+A aba `/relatorios` quebra as mesmas contas por marca, influencer, estado de
+destino, meio de pagamento, mês ou produto — com um segundo nível opcional,
+filtros e impressão em PDF.
+
+Ela **não tem aritmética própria**: cada métrica sai das mesmas funções que
+alimentam o painel, aplicadas a um subconjunto de pedidos. O total é calculado
+sobre o conjunto inteiro, não somando as células, e serve de conferência.
+
+O relatório é guiado: quando um cruzamento não faz sentido, a coluna sai e a
+tela diz por quê, em vez de mostrar um número inventado. Comissão, imposto e
+lucro só existem por marca inteira — o contrato é da marca e a guia do Simples é
+mensal sobre o recebido dela, então não há "comissão de São Paulo" nem "DAS do
+cartão de crédito". Filtrar por estado ou por meio de pagamento também corta a
+marca ao meio e derruba essas colunas. E a dimensão produto oferece só métricas
+de item, porque um pedido com três produtos não divide frete entre eles.
+
+Toda a configuração fica na URL, então um relatório é um link: dá para mandar a
+combinação exata para o contador em vez de descrever quais caixas marcar.
+
 ### Kits
 
 A Nuvemshop entrega o kit como **um** produto — ela não decompõe. O cadastro de
@@ -194,6 +230,20 @@ no cadastro do produto já traz os tributos daquele regime marcados.
 No Simples, a alíquota que se paga é a **efetiva** — a da tabela menos a parcela
 a deduzir. O que está dentro da guia única nunca soma no total; a quebra por
 tributo é só leitura.
+
+### Taxa da Nuvemshop
+
+O que a plataforma e o gateway retêm de cada venda, **por meio de pagamento** —
+percentual mais um valor fixo por transação. Não é tributo e não se mistura com
+eles: é preço de serviço, e é a única das duas deduções que dá para renegociar.
+
+O valor fixo é o que torna o modelo necessário. O boleto tem 1,99% nominal e
+**3,3% de carga efetiva** na base de demonstração, porque o R$ 3,49 por
+transação pesa mais que o percentual num pedido pequeno. Um percentual único
+esconderia isso.
+
+As taxas vêm preenchidas com ordem de grandeza pública e editáveis em
+`/impostos`, marcadas como não conferidas até alguém bater com a fatura.
 
 ### DIFAL
 

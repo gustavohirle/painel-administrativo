@@ -43,6 +43,11 @@
   --color-difal: #4c1d95;
   --color-custo: #0369a1;
   --color-comissao: #be185d;
+  /* Taxa de plataforma: laranja queimado, para nao se confundir com imposto. */
+  --color-taxa: #b45309;
+  /* Participacao dos socios: dourado escuro, entre a comissao (rosa) e o
+     lucro (verde) na pizza, sem se confundir com nenhum dos dois. */
+  --color-socios: #854d0e;
 
   --color-alerta-fundo: #fef3f2;
   --color-alerta-borda: #fecdca;
@@ -85,8 +90,270 @@ body {
   );
 }
 
+/*
+ * Faixa de abas do cabecalho, no celular.
+ *
+ * Sao nove secoes; em 390px elas somam ~600px. Ate aqui a barra tentava caber
+ * numa linha so com `flex-wrap`, e o resultado era a lista quebrando no meio,
+ * com a segunda fileira comecando embaixo do logo em vez de alinhada com a
+ * margem. Rolar de lado resolve porque assume que nao cabe, em vez de fingir
+ * que cabe.
+ *
+ * A barra de rolagem some: ela nao acrescenta nada num telefone (o dedo ja
+ * arrasta) e no computador rouba 15px de altura de um cabecalho grudado no
+ * topo. A aba cortada na borda direita e a pista de que ha mais -- e a mesma
+ * afordancia da coluna ancorada logo abaixo.
+ */
+.faixa-de-abas {
+  scrollbar-width: none;
+  overscroll-behavior-x: contain;
+}
+
+.faixa-de-abas::-webkit-scrollbar {
+  display: none;
+}
+
+/*
+ * Tabela de cadastro em tela estreita: a primeira coluna fica ancorada.
+ *
+ * As telas de cadastro (produtos, estoque, DIFAL, impostos, custos, contratos)
+ * tem colunas demais para caber num celular, e virar cartao nao serve: ali o
+ * ponto e justamente comparar linha com linha e achar a que esta fora da
+ * curva. Entao a tabela continua tabela e rola de lado -- mas o nome do item
+ * nao sai da tela junto, senao a pessoa arrasta ate a coluna certa e ja nao
+ * sabe de que produto e aquele numero.
+ *
+ * As linhas ganham fundo explicito para a celula ancorada poder herda-lo: sem
+ * isso, a linha destacada em amarelo ficaria com o primeiro campo branco, e o
+ * conteudo rolando por baixo apareceria atraves dela.
+ */
+.tabela-ancorada thead tr,
+.tabela-ancorada tbody tr,
+.tabela-ancorada tfoot tr {
+  background-color: var(--color-superficie);
+}
+
+.tabela-ancorada :is(th, td):first-child {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background-color: inherit;
+  /*
+   * Sem teto, o nome do produto tomava mais da metade da tela e sobrava pouco
+   * para o dado que a pessoa rolou para ver. Com teto o nome quebra em duas
+   * linhas, que e mais barato do que esconder a coluna de numero.
+   */
+  max-width: 42vw;
+}
+
+/* Sombra curta na borda: sinaliza que ha conteudo escondido a direita. */
+.tabela-ancorada :is(th, td):first-child::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 6px;
+  transform: translateX(100%);
+  background: linear-gradient(to right, rgba(16, 24, 40, 0.08), transparent);
+  pointer-events: none;
+}
+
+/* Do sm para cima a tabela cabe inteira e a ancora so atrapalharia. */
+@media (min-width: 640px) {
+  .tabela-ancorada :is(th, td):first-child {
+    position: static;
+  }
+
+  .tabela-ancorada :is(th, td):first-child::after {
+    display: none;
+  }
+}
+
 @media print {
   .sem-impressao {
     display: none !important;
+  }
+
+  /*
+   * Folha de relatorio: so a tabela e o cabecalho dela.
+   *
+   * O menu, o seletor de mes e os controles nao existem no papel -- quem
+   * recebe o PDF nao clica em nada. O que tem que sobreviver e a tabela, os
+   * totais e as notas de rodape que dizem o que o numero nao inclui.
+   */
+  body {
+    background: #fff;
+  }
+
+  header.sticky,
+  footer.sem-impressao {
+    display: none !important;
+  }
+
+  /* Sombra e borda arredondada viram sujeira cinza na impressora. */
+  section {
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    border-color: #999 !important;
+  }
+
+  /* Uma linha da tabela nao pode ser cortada ao meio pela quebra de pagina. */
+  tr,
+  dl {
+    break-inside: avoid;
+  }
+
+  thead {
+    display: table-header-group;
+  }
+
+  /*
+   * A visao de cartoes existe so para o celular. Na impressao a largura e de
+   * folha, entao vale a tabela -- e o `sm:hidden` do Tailwind ja resolveria
+   * isso pela largura, menos quando o navegador imprime com a largura da tela
+   * atual. Forcar aqui evita sair um PDF de cartoes empilhados.
+   */
+  .cartoes-do-celular {
+    display: none !important;
+  }
+
+  .tabela-larga {
+    display: block !important;
+    overflow: visible !important;
+  }
+
+  /*
+   * A tabela de relatorio precisa CABER na folha, nao so aparecer nela.
+   *
+   * Em retrato sobram ~180mm uteis. Com nove colunas de dinheiro, a tabela
+   * passava da margem e o navegador simplesmente cortava o excesso: o PDF
+   * saia sem "Lucro operacional" e sem "Margem operacional" -- justamente as
+   * duas colunas que sao a conclusao do relatorio.
+   *
+   * A correcao tem tres partes, e todas sao necessarias:
+   */
+
+  /* 1. O `min-width` que serve para rolar na tela e o que estoura a folha. */
+  .tabela-larga table {
+    min-width: 0 !important;
+    width: 100% !important;
+    font-size: 8.5pt;
+  }
+
+  .tabela-larga :is(th, td) {
+    padding: 4px 6px !important;
+    /*
+     * 2. Sticky nao tem sentido no papel -- nao ha rolagem -- e em impressao
+     *    chega a deslocar a celula da coluna.
+     */
+    position: static !important;
+  }
+
+  /*
+   * 3. O nome da marca ou do produto pode quebrar em duas linhas; o numero
+   *    NAO pode. "R$ 16.833.068,37" partido ao meio vira dois numeros
+   *    diferentes na leitura. Entao a folga vem da coluna de texto.
+   */
+  .tabela-larga :is(th, td):first-child {
+    white-space: normal !important;
+    overflow-wrap: anywhere;
+  }
+
+  .tabela-larga td:not(:first-child) {
+    white-space: nowrap !important;
+  }
+
+  .tabela-ancorada :is(th, td):first-child::after {
+    display: none !important;
+  }
+}
+
+/*
+ * Formulario de edicao dentro da tabela, em tela estreita.
+ *
+ * O formulario mora numa `<tr>` com `colSpan` logo abaixo do item (secao 8,
+ * armadilha 5) -- e isso continua certo: aberto depois da tabela inteira, numa
+ * lista de 47 produtos, o clique em "Editar" parecia nao fazer nada.
+ *
+ * O efeito colateral so aparece no celular: a celula herda a largura da
+ * TABELA, nao a da tela. Com `min-w-[900px]` o formulario nascia com 900px
+ * numa tela de 390 e so era alcancavel arrastando de lado. Medido, nao
+ * suposto.
+ *
+ * A correcao prende a largura na tela e gruda o bloco a esquerda, para que ele
+ * continue visivel mesmo com a tabela rolada. `6rem` e o recuo da pagina mais
+ * o do cartao (24px de cada, dos dois lados); paginas com outro recuo podem
+ * redefinir `--recuo-da-tabela`.
+ */
+@media (max-width: 639px) {
+  .linha-de-edicao {
+    position: sticky;
+    left: 0;
+    width: calc(100vw - var(--recuo-da-tabela, 6rem));
+    max-width: calc(100vw - var(--recuo-da-tabela, 6rem));
+  }
+}
+
+/*
+ * Orientacao do papel, por tela.
+ *
+ * O relatorio e tabela larga: nove colunas nunca caberiam num A4 em pe sem
+ * espremer o numero a ponto de nao se ler. Deitado sobram ~273mm, que acomodam
+ * a tabela inteira com folga.
+ *
+ * Mas deitado so serve para ele. O painel, a DRE e as telas de cadastro sao
+ * estreitas e altas; deitadas gastariam o dobro de folhas com a metade da
+ * coluna vazia. Dai a pagina NOMEADA: `@page` sozinho valeria para o site
+ * inteiro, inclusive para quem apertar Ctrl+P em qualquer outra tela.
+ */
+@page {
+  size: A4 portrait;
+  margin: 12mm;
+}
+
+@page deitada {
+  size: A4 landscape;
+  margin: 12mm;
+}
+
+.folha-deitada {
+  page: deitada;
+}
+
+/*
+ * Barra de carregamento entre telas (IndicadorNavegacao).
+ *
+ * Fina e no topo, por cima do cabecalho grudado: aparece no instante do clique
+ * e nao empurra nada de lugar. Um trecho corre de um lado ao outro -- nao ha
+ * como saber quanto falta, entao a barra nao finge progresso.
+ */
+.barra-carregando {
+  position: fixed;
+  inset: 0 0 auto 0;
+  z-index: 100;
+  height: 3px;
+  overflow: hidden;
+  background-color: color-mix(in srgb, var(--color-destaque) 18%, transparent);
+}
+
+.barra-carregando > span {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 40%;
+  background-color: var(--color-destaque);
+  animation: barra-carregando-corre 0.9s ease-in-out infinite;
+}
+
+@keyframes barra-carregando-corre {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(250%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .barra-carregando > span {
+    width: 100%;
+    animation: none;
+    opacity: 0.6;
   }
 }

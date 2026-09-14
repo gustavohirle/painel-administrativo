@@ -2,6 +2,7 @@ import Link from "next/link";
 
 import { moeda, moedaRedonda, percentual, razaoSegura } from "@/lib/format";
 import type { DemonstrativoResultado as DRE } from "@/lib/costing";
+import { idDeOrigem } from "@/types/dominio";
 
 /*
  * O raio-x: de quanto foi pedido ate quanto realmente sobrou.
@@ -16,10 +17,15 @@ interface Linha {
   explicacao: string;
   valor: number;
   tipo: "abertura" | "deducao" | "subtotal" | "resultado";
+  /** Resultado negativo: a linha diz "prejuizo", em vermelho, com o valor sem sinal. */
+  prejuizo?: boolean;
 }
 
 function montarLinhas(dre: DRE): Linha[] {
   const r = dre.reconciliacao;
+  // Uma compartilhada chega aqui dividida em uma parte por influencer; conta
+  // como uma despesa so, que e o que foi cadastrado.
+  const despesasCadastradas = new Set(dre.despesasInfluencers.map(idDeOrigem)).size;
 
   return [
     {
@@ -29,7 +35,7 @@ function montarLinhas(dre: DRE): Linha[] {
       tipo: "abertura",
     },
     {
-      rotulo: "Nao pagos, cancelados e reembolsados",
+      rotulo: "Não pagos, cancelados e reembolsados",
       explicacao: "Pedidos que nunca viraram dinheiro em caixa",
       valor: -(r.naoPago + r.cancelado + r.reembolsado),
       tipo: "deducao",
@@ -55,42 +61,74 @@ function montarLinhas(dre: DRE): Linha[] {
     {
       rotulo: "Impostos sobre a venda",
       explicacao: dre.impostos
-        ? `${percentual(dre.impostos.cargaSobreReceita)} do recebido, apurado ` +
+        ? `${percentual(dre.impostos.cargaSobreReceita)} da receita real (sem frete), apurado ` +
           `marca a marca em ${dre.impostos.porInfluencer.length} operacao(oes)`
         : "Nenhum imposto cadastrado ainda",
       valor: -dre.totalImpostos,
       tipo: "deducao",
     },
     {
-      rotulo: "Receita liquida",
-      explicacao: "Depois dos impostos sobre a venda",
+      rotulo: "Taxa Nuvemshop e meio de pagamento",
+      explicacao: dre.taxasPlataforma
+        ? `${percentual(dre.taxasPlataforma.cargaSobreRecebido)} do recebido, ` +
+          `cobrado por ${dre.taxasPlataforma.porMetodo.length} meio(s) de pagamento`
+        : "Nenhuma taxa cadastrada ainda",
+      valor: -dre.totalTaxasPlataforma,
+      tipo: "deducao",
+    },
+    {
+      rotulo: "Receita líquida",
+      explicacao: "Depois dos impostos e das taxas da plataforma",
       valor: dre.receitaLiquida,
       tipo: "subtotal",
     },
     {
-      rotulo: "Custo de fabricacao",
-      explicacao: "Materia-prima, embalagem, mao de obra e custo indireto",
+      rotulo: "Custo de fabricação",
+      explicacao: "Matéria-prima, embalagem, mão de obra e custo indireto",
       valor: -dre.cmv.cmv,
       tipo: "deducao",
     },
     {
-      rotulo: "Margem de contribuicao",
+      rotulo: "Margem de contribuição",
       explicacao: `${percentual(dre.margemContribuicaoPercentual)} da receita real`,
       valor: dre.margemContribuicao,
       tipo: "subtotal",
     },
     {
-      rotulo: "Comissoes de influencers",
+      rotulo: "Comissões de influencers",
       explicacao: `${dre.comissoes.length} contrato(s) ativo(s) cadastrado(s)`,
       valor: -dre.totalComissoes,
       tipo: "deducao",
     },
     {
-      rotulo: "Lucro operacional",
-      explicacao: `${percentual(dre.margemOperacionalPercentual)} da receita real`,
-      valor: dre.lucroOperacional,
-      tipo: "resultado",
+      rotulo: "Despesas com influencers",
+      explicacao:
+        despesasCadastradas > 0
+          ? `${despesasCadastradas} despesa(s) cadastrada(s) no mês, incluindo as compartilhadas`
+          : "Nenhuma despesa cadastrada no mês",
+      valor: -dre.totalDespesasInfluencers,
+      tipo: "deducao",
     },
+    {
+      rotulo: "Participação dos sócios",
+      explicacao: `${dre.percentualParticipacaoSocios.toLocaleString("pt-BR")}% do valor recebido`,
+      valor: -dre.participacaoSocios,
+      tipo: "deducao",
+    },
+    dre.lucroOperacional < 0
+      ? {
+          rotulo: "Prejuízo operacional",
+          explicacao: `${percentual(Math.abs(dre.margemOperacionalPercentual))} da receita real`,
+          valor: Math.abs(dre.lucroOperacional),
+          tipo: "resultado",
+          prejuizo: true,
+        }
+      : {
+          rotulo: "Lucro operacional",
+          explicacao: `${percentual(dre.margemOperacionalPercentual)} da receita real`,
+          valor: dre.lucroOperacional,
+          tipo: "resultado",
+        },
   ];
 }
 
@@ -107,13 +145,16 @@ export function DemonstrativoResultado({ dre }: { dre: DRE }) {
             {linhas.map((linha) => {
               const resultado = linha.tipo === "resultado";
               const subtotal = linha.tipo === "subtotal";
+              const corResultado = linha.prejuizo ? "text-naopago" : "text-real";
 
               return (
                 <tr
                   key={linha.rotulo}
                   className={`border-b border-borda last:border-b-0 ${
                     resultado
-                      ? "bg-real-claro"
+                      ? linha.prejuizo
+                        ? "bg-alerta-fundo"
+                        : "bg-real-claro"
                       : subtotal
                         ? "bg-fundo"
                         : "bg-superficie"
@@ -123,7 +164,7 @@ export function DemonstrativoResultado({ dre }: { dre: DRE }) {
                     <p
                       className={`font-semibold ${
                         resultado
-                          ? "text-lg text-real"
+                          ? `text-lg ${corResultado}`
                           : subtotal
                             ? "text-base text-tinta"
                             : "text-sm text-tinta-media"
@@ -138,7 +179,7 @@ export function DemonstrativoResultado({ dre }: { dre: DRE }) {
                   <td
                     className={`numerico px-5 text-right font-semibold ${
                       resultado
-                        ? "text-3xl text-real xl:text-4xl"
+                        ? `text-3xl xl:text-4xl ${corResultado}`
                         : subtotal
                           ? "text-xl text-tinta"
                           : "text-base text-tinta-media"
@@ -160,7 +201,7 @@ function AvisoCobertura({ dre }: { dre: DRE }) {
   return (
     <div className="rounded-lg border border-alerta-borda bg-alerta-fundo px-5 py-4">
       <p className="text-sm font-semibold text-naopago">
-        {dre.cmv.produtosSemCusto} produto(s) ainda sem custo de fabricacao
+        {dre.cmv.produtosSemCusto} produto(s) ainda sem custo de fabricação
         cadastrado
       </p>
       <p className="mt-1 text-sm leading-relaxed text-tinta-media">
@@ -168,7 +209,7 @@ function AvisoCobertura({ dre }: { dre: DRE }) {
         <strong className="numerico font-semibold text-tinta">
           {moeda(dre.cmv.receitaSemCusto)}
         </strong>{" "}
-        de receita no mes, ou{" "}
+        de receita no mês, ou{" "}
         <strong className="numerico font-semibold text-tinta">
           {percentual(
             razaoSegura(
@@ -177,8 +218,8 @@ function AvisoCobertura({ dre }: { dre: DRE }) {
             ),
           )}
         </strong>{" "}
-        do total vendido. Enquanto o custo deles nao for informado, o lucro
-        operacional acima esta calculado sobre o restante.
+        do total vendido. Enquanto o custo deles não for informado, o lucro
+        operacional acima está calculado sobre o restante.
       </p>
       <Link
         href="/custos"

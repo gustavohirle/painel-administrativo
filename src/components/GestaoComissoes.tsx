@@ -2,7 +2,7 @@
 
 import { Fragment, useActionState, useState } from "react";
 
-import { removerInfluencer, salvarInfluencer } from "@/app/comissoes/actions";
+import { removerInfluencer, salvarInfluencer } from "@/app/influencers/actions";
 import { ESTADO_INICIAL } from "@/types/formulario";
 import { moeda, percentual } from "@/lib/format";
 import {
@@ -22,11 +22,11 @@ const ROTULO_REGIME: Record<RegimeTributario, string> = {
 
 const EXPLICACAO_REGIME: Record<RegimeTributario, string> = {
   simples_nacional:
-    "Guia unica, aliquota efetiva pela receita de 12 meses desta marca. Teto de R$ 4,8 mi/ano.",
+    "Guia única, alíquota efetiva pela receita de 12 meses desta marca. Teto de R$ 4,8 mi/ano.",
   lucro_presumido:
     "PIS/COFINS cumulativos; IRPJ e CSLL sobre base presumida da receita.",
   lucro_real:
-    "PIS/COFINS nao cumulativos com credito; IRPJ e CSLL sobre o lucro efetivo.",
+    "PIS/COFINS não cumulativos com crédito; IRPJ e CSLL sobre o lucro efetivo.",
 };
 
 interface GestaoComissoesProps {
@@ -65,17 +65,17 @@ export function GestaoComissoes({
       )}
 
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[900px] border-collapse text-sm">
+        <table className="tabela-ancorada w-full min-w-[900px] border-collapse text-sm">
           <thead>
             <tr className="border-b border-borda-forte text-left text-xs uppercase tracking-wider text-tinta-fraca">
               <th className="py-2.5 pr-4 font-semibold">Influencer</th>
               <th className="py-2.5 pr-4 font-semibold">Marca</th>
               <th className="py-2.5 pr-4 font-semibold">Regime</th>
               <th className="py-2.5 pr-4 text-right font-semibold">Percentual</th>
-              <th className="py-2.5 pr-4 font-semibold">Base de calculo</th>
+              <th className="py-2.5 pr-4 font-semibold">Base de cálculo</th>
               <th className="py-2.5 pr-4 text-right font-semibold">Valor base</th>
-              <th className="py-2.5 pr-4 text-right font-semibold">Comissao no mes</th>
-              <th className="py-2.5 text-right font-semibold">Acao</th>
+              <th className="py-2.5 pr-4 text-right font-semibold">Comissão no mês</th>
+              <th className="py-2.5 text-right font-semibold">Ação</th>
             </tr>
           </thead>
           <tbody>
@@ -155,12 +155,14 @@ export function GestaoComissoes({
                   {aberto && (
                     <tr>
                       <td colSpan={8} className="p-0 pb-4">
+<div className="linha-de-edicao">
                         <FormularioInfluencer
                           influencer={influencer}
                           marcas={marcas}
                           aoFechar={() => setEditando(null)}
                         />
-                      </td>
+                      </div>
+</td>
                     </tr>
                   )}
                 </Fragment>
@@ -212,7 +214,7 @@ function FormularioInfluencer({
     <div className="rounded-xl border-2 border-tinta bg-superficie p-6">
       <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
         <h3 className="text-lg font-semibold text-tinta">
-          {influencer ? influencer.nome : "Novo contrato de comissao"}
+          {influencer ? influencer.nome : "Novo contrato de comissão"}
         </h3>
         <button
           type="button"
@@ -270,7 +272,7 @@ function FormularioInfluencer({
 
         <fieldset>
           <legend className="text-sm font-medium text-tinta">
-            Base de calculo da comissao
+            Base de cálculo da comissão
           </legend>
           <div className="mt-2 grid gap-3 xl:grid-cols-3">
             {(["bruto", "recebido", "receitaReal"] as const).map((valor) => (
@@ -305,10 +307,10 @@ function FormularioInfluencer({
 
         <fieldset className="rounded-lg border border-borda bg-fundo px-5 py-4">
           <legend className="px-2 text-sm font-medium text-tinta">
-            Regime tributario desta marca
+            Regime tributário desta marca
           </legend>
           <p className="mb-3 text-xs leading-relaxed text-tinta-media">
-            Cada marca e uma operacao com o seu proprio enquadramento. E daqui
+            Cada marca é uma operação com o seu próprio enquadramento. É daqui
             que sai o imposto de <strong>todos os produtos</strong> deste
             influencer: mudar o regime muda o conjunto de tributos que o
             cadastro de produto sugere.
@@ -360,7 +362,7 @@ function FormularioInfluencer({
                 {(["I", "II", "III", "IV", "V"] as const).map((a) => (
                   <option key={a} value={a}>
                     Anexo {a}
-                    {a === "II" ? " (Industria)" : ""}
+                    {a === "II" ? " (Indústria)" : ""}
                   </option>
                 ))}
               </select>
@@ -384,7 +386,7 @@ function FormularioInfluencer({
               <input
                 name="rbt12Manual"
                 inputMode="decimal"
-                placeholder="Calcular do historico"
+                placeholder="Calcular do histórico"
                 defaultValue={
                   influencer?.rbt12Manual == null
                     ? ""
@@ -398,7 +400,7 @@ function FormularioInfluencer({
 
         <label className="block">
           <span className="text-sm font-medium text-tinta">
-            Observacao <span className="text-tinta-fraca">(opcional)</span>
+            Observação <span className="text-tinta-fraca">(opcional)</span>
           </span>
           <textarea
             name="observacao"
@@ -416,7 +418,7 @@ function FormularioInfluencer({
             className="h-4 w-4 accent-[var(--color-tinta)]"
           />
           <span className="text-sm font-medium text-tinta">
-            Contrato ativo (entra no calculo do painel)
+            Contrato ativo (entra no cálculo do painel)
           </span>
         </label>
 

@@ -101,7 +101,7 @@ export async function salvarProduto(
   const dados = analise.data;
 
   if (dados.componentes === null) {
-    return { ok: false, mensagem: "Composicao do kit invalida." };
+    return { ok: false, mensagem: "Composição do kit inválida." };
   }
   if (dados.ehKit && dados.componentes.length === 0) {
     return {
@@ -118,7 +118,7 @@ export async function salvarProduto(
 
   // Kit que contem a si mesmo trava a expansao recursiva. Barra na entrada.
   if (dados.ehKit && dados.componentes.some((c) => c.chave === chave)) {
-    return { ok: false, mensagem: "Um kit nao pode conter ele mesmo." };
+    return { ok: false, mensagem: "Um kit não pode conter ele mesmo." };
   }
 
   try {
@@ -166,7 +166,7 @@ export async function removerProduto(
   await exigirArea("produtos");
 
   const id = String(formData.get("id") ?? "");
-  if (!id) return { ok: false, mensagem: "Produto nao encontrado." };
+  if (!id) return { ok: false, mensagem: "Produto não encontrado." };
 
   try {
     const repositorio = await obterRepositorioCadastros();

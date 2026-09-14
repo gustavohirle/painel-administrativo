@@ -51,8 +51,14 @@ contar essa história ou a chegar no lucro real, ela não entra.
 
 ## 2. Quem vai olhar a tela
 
-O cliente tem por volta de 55 anos, não é técnico, e vai ver isso em uma tela
-grande numa reunião — provavelmente por poucos minutos.
+O cliente tem por volta de 55 anos, não é técnico, e vê o painel em dois
+contextos, não em um:
+
+1. **Tela grande, numa reunião**, por poucos minutos. É onde a tese precisa
+   ser provada em 10 segundos.
+2. **No celular, no dia a dia.** Confirmado pelo cliente. Deixou de ser
+   "não pode passar vergonha se ele abrir no telefone" e virou requisito de
+   primeira classe.
 
 Consequências obrigatórias para a UI:
 
@@ -66,9 +72,118 @@ Consequências obrigatórias para a UI:
   `FONTE_DADOS=demo`. Não pode parecer que estamos mostrando os números reais
   dele — isso destruiria a confiança.
 - Não quebra em 1366×768 (notebook comum).
+- **Funciona de verdade em 390px de largura** — ver 2.1.
 
 O código-fonte, ao contrário, é lido por mim (programador). Comentários e nomes
 de variáveis em português são bem-vindos, mas priorize clareza.
+
+**O texto que aparece na tela é escrito em português correto**, com acento e
+cedilha: "Comissões", "Evolução", "não pago", "Situação", "fabricação". Isso
+vale para título, rótulo, frase de apoio, mensagem de erro de formulário, nome
+de produto e de marca, e para o texto dentro do PDF.
+
+Já foi o contrário. O projeto inteiro nasceu sem acento e a regra dizia para
+manter assim; o cliente olhou a tela e a primeira coisa que notou foi a
+ortografia. Um painel que escreve "Comissoes" para quem fatura R$ 3 milhões por
+mês parece inacabado antes de qualquer número ser lido.
+
+**O que continua sem acento é o CÓDIGO**, e a distinção é operacional, não
+estética:
+
+| Leva acento | Não leva, nunca |
+|---|---|
+| Texto de JSX, rótulos, mensagens | Nome de variável, função, componente |
+| `placeholder`, `title`, `alt` | Chave de objeto (`situacao:`) |
+| Valores de `ROTULO_*`, `EXPLICACAO_*` | Valor gravado no banco (`"aguardando"`, `"bruto"`) |
+| Nome de produto e marca | Classe de CSS (`.linha-de-edicao`) |
+| Mensagem de Zod e de Server Action | Parâmetro de URL (`?situacao=`) |
+
+Acentuar a coluna da direita quebra o cadastro, os dados já salvos e as rotas.
+`situacao` é ao mesmo tempo palavra de tela e nome de campo: só a primeira muda.
+
+### Como fazer isso sem quebrar tudo
+
+Duas tentativas falharam antes de acertar, e as duas valem registro:
+
+1. **Expressão regular sobre `>...<` não funciona.** O `>` de uma arrow
+   function abre um falso trecho de texto; o script moveu chaves de lugar e
+   corrompeu 36 arquivos de uma vez. Regex não distingue texto de código em JSX.
+2. **Dicionário de palavras não basta.** `e`/`é`, `ha`/`há`, `esta`/`está`,
+   `tem`/`têm`, `a`/`à` dependem da frase. Essas foram corrigidas uma a uma,
+   lendo. E cuidado com o efeito colateral: `fabrica` → `fábrica` transformou
+   `fabrica-los` em `fábrica-los`.
+
+O que funcionou foi usar o **parser do próprio TypeScript** para localizar os
+nós de texto (`JsxText`, atributo de exibição, string dentro de `{ternário}`,
+valor de mapa de rótulos) e trocar só esses trechos. Fica em
+`scripts/acentuar.mjs` (texto de tela) e `scripts/acentuar-mensagens.mjs`
+(mensagens de Server Action), com o dicionario em `scripts/acentuar-palavras.json`.
+
+Três categorias escapam da varredura e precisam de olho:
+
+- string dentro de `{condicao ? "a" : "b"}` no meio do JSX;
+- mensagem de Zod (`.min(3, "Escreva o nome")`);
+- nome de produto **já gravado** em `.demo-data` — mudar a fonte não muda o
+  dado salvo. Renomeie no arquivo também, preservando `chave`, `id` e `token`.
+
+### 2.1 O que "funciona no celular" quer dizer aqui
+
+Não basta não quebrar. Medido em 390px, o layout já não transbordava e mesmo
+assim a tela era inútil — por três motivos que não aparecem olhando o HTML:
+
+| Armadilha | Como aparecia |
+|---|---|
+| Texto dentro de SVG encolhe junto com o `viewBox` | Um gráfico de `viewBox` 1200 espremido em ~294px escala a fonte por 0,245: fonte 14 chegava com **3,2px** |
+| `overflow-x-auto` não resolve tabela larga | A tabela rolava, mas só "Marca" e "Base do contrato" cabiam; comissão e diferença — a conversa inteira — ficavam duas telas à direita |
+| Cabeçalho com tudo em `flex-wrap` | Cinco linhas empilhadas antes de qualquer conteúdo |
+
+As três decisões que valem daqui para frente:
+
+1. **Gráfico SVG tem dois formatos**, não um redimensionado. O estreito tem
+   menos largura, menos margem e menos rótulo — ver `Formato` em
+   `EvolucaoMensal.tsx`. Ao criar gráfico novo, meça a fonte resultante:
+   `fontSize × (largura renderizada ÷ largura do viewBox)` precisa passar de
+   ~10px.
+2. **Tabela de leitura vira cartão empilhado no celular** (`sm:hidden` para os
+   cartões, `hidden sm:block` para a tabela). Vale para raio-x do resultado,
+   meios de pagamento e relatórios — telas em que a pessoa
+   lê uma linha por vez e precisa da conclusão.
+3. **O formulário de edição precisa da classe `linha-de-edicao`.** Ele mora
+   numa `<tr>` com `colSpan` logo abaixo do item, e isso continua certo — mas a
+   célula herda a largura da **tabela**, não a da tela. Sem a classe, o
+   formulário nascia com 900px numa tela de 390 e só era alcançável arrastando
+   de lado. A classe prende a largura na tela e gruda o bloco à esquerda, para
+   ele não sumir quando a tabela rolar.
+4. **A barra de abas rola de lado, não quebra em linhas.** São dez seções;
+   em 390px elas somam ~600px. Até aqui as abas dividiam a linha do cabeçalho
+   com o logo e o menu do usuário num `flex-wrap` único, e a lista quebrava no
+   meio: a segunda fileira começava embaixo do logo, desalinhada de tudo. O
+   problema não era o espaço — era a barra tentar ser uma linha só quando não
+   cabe em uma. Agora a faixa ocupa a largura inteira, numa linha própria, e
+   rola; a aba ativa é trazida para o campo de visão por `scrollLeft` na mão
+   (`scrollIntoView` sobe pela árvore e rola a **página** junto, o que num
+   cabeçalho grudado no topo empurra o conteúdo para baixo ao carregar).
+5. **Tabela de cadastro continua tabela**, com a classe `tabela-ancorada`
+   (definida em `globals.css`): a primeira coluna gruda e o resto rola. Ali o
+   ponto é comparar linha com linha e achar a que está fora da curva, e cartão
+   destrói essa leitura. A âncora tem teto de `42vw` — sem isso o nome do
+   produto tomava metade da tela e o número que a pessoa rolou para ver ficava
+   cortado.
+
+A auditoria tinha um alarme falso escondido: ela tratava **todo**
+`.overflow-x-auto` que rolasse como "tabela sem coluna âncora". Funcionou
+enquanto o único rolador horizontal era tabela; a faixa de abas foi o primeiro
+que não é, e passou a ser acusada em todas as rotas. O filtro agora exige um
+`<table>` dentro.
+
+A régua para conferir é `npm run celular`, que abre cada rota em 390px e falha
+se houver transbordo, texto de gráfico abaixo de 9px na tela, tabela rolando sem
+coluna âncora, ou formulário de edição maior que a tela. Ver seção 11.
+
+**Ele clica em "Editar" (e em "Contar", no estoque).** A primeira versão da
+auditoria media a página parada e por isso não viu o formulário de edição
+estourando — o formulário nem existe no HTML inicial. Ao acrescentar checagem
+nova, pergunte se o defeito aparece só depois de um clique.
 
 ---
 
@@ -101,6 +216,8 @@ src/
     costing.ts            # funções PURAS: Pedido[] + cadastros -> lucro
     format.ts             # formatação pt-BR
     config.ts             # leitura de env
+    pdf.ts                # gerador de PDF escrito à mão, sem dependência
+    ordens.ts             # ordem de fabricação: número, token, hash, documento
   components/
   app/                    # Next.js App Router
 ```
@@ -168,7 +285,7 @@ frete           = soma de shipping_cost_customer dos pedidos recebidos
 receita real    = recebido − frete
 ```
 
-Exibida como **gráfico de pizza**, com nove fatias. É o herói da tela.
+Exibida como **gráfico de pizza**, com onze fatias. É o herói da tela.
 
 A cascata foi tentada e descartada: com a cadeia completa (ver 5.8) ela vira
 onze barras em degrau, com os rótulos em alturas diferentes e os textos de
@@ -179,8 +296,11 @@ A pizza só fecha porque as parcelas **somam exatamente** o bruto:
 
 ```
 bruto = não pago + cancelado + reembolsado + frete + impostos + DIFAL
-      + fabricação + comissões + lucro operacional
+      + taxa da plataforma + fabricação + influencers + sócios + lucro operacional
 ```
+
+A fatia **Influencers** é comissão **mais** despesas cadastradas (5.16). As duas
+saem do lucro, então a fatia precisa carregar as duas para a pizza fechar.
 
 Se mexer nessa conta, a pizza deixa de fechar — e é o primeiro lugar onde o
 erro aparece.
@@ -198,11 +318,52 @@ base da comissão sumiriam do gráfico.
 Fatia abaixo de 4% não recebe percentual dentro dela; o número fica na legenda
 e no tooltip.
 
+**Resultado negativo muda de nome e de cor.** Com prejuízo, o quadro do
+resultado na legenda, o número do topo da tela inicial e a última linha do
+raio-x dizem **"Prejuízo operacional"**, em vermelho, com o valor **sem sinal**.
+Antes continuavam "Lucro operacional" em verde com `-R$ 75.621` — o cliente
+apontou na primeira vez que o mês fechou negativo. Verde e "lucro" afirmam o
+contrário do número; e "prejuízo de −R$ 75 mil" seria dupla negação.
+
 Precedência obrigatória para não contar o mesmo pedido duas vezes:
 `cancelado > reembolsado/estornado > não pago > recebido`. Está implementada em
 `classificarPedido()` e documentada lá.
 
+### 5.1.1 O frete é do cliente
+
+**O frete não entra em comissão nem em imposto.** Decisão do cliente: o frete é
+cobrado **por fora** — num produto de R$ 100 com R$ 19 de frete o cliente paga
+R$ 119 — e os R$ 19 vão para a transportadora. Não é venda do influencer nem
+receita da operação.
+
+| Conta | Base | Onde |
+|---|---|---|
+| Comissão, base "bruto" | faturamento **sem frete** (`brutoSemFrete`, todos os pedidos) | `calcularComissoesPorInfluencer` |
+| Comissão, base "recebido" / "receita real" | receita real (recebido − frete) — as duas passam a dar o mesmo valor | idem |
+| Impostos, DAS, Presumido, RBT12 | receita real | `apurarImpostos`, `calcularRBT12` |
+| DIFAL | valor da operação − frete | `apurarDifal` |
+| Divisão das despesas compartilhadas | faturamento sem frete | `ratearDespesas` |
+| Taxa do meio de pagamento | valor pago **com** frete | o gateway cobra sobre o total |
+| Participação dos sócios | recebido, **com** frete | definição do cliente: "do valor recebido" |
+
+`Reconciliacao` ganhou `freteTotal` (frete de **todo** pedido criado, pago ou não)
+e `brutoSemFrete`. A base "bruto" precisa do frete dos não pagos também, senão um
+boleto nunca pago continuaria comissionando o frete dele.
+
+**Ponto para o contador:** na legislação, o frete cobrado do destinatário
+costuma integrar a base de ICMS, PIS/COFINS e a receita bruta do Simples. Tirá-lo
+dos impostos foi pedido do cliente e deixa o imposto do painel **menor** do que
+o que pode ser devido. Se o contador discordar, a mudança é voltar a base de
+`apurarGrupo`, `calcularRBT12` e `apurarDifal` para o recebido com frete — a
+comissão fica como está.
+
 ### 5.2 Comissão de influencer (simulador)
+
+**Esta tela não existe mais.** Morou na tela inicial, depois embaixo da
+estimativa de contrato no Simulador (5.17), e saiu a pedido do cliente quando a
+estimativa passou a funcionar: as duas respondiam a mesma conversa. O
+componente (`AreaComissao`) foi apagado; as funções puras abaixo continuam em
+`costing.ts`, com teste, e as regras desta seção valem se a tela voltar.
 
 **A base é sempre a do contrato daquele influencer. O percentual é editável.**
 
@@ -227,6 +388,28 @@ O percentual vem do **simulador**, não do contrato: o cliente vai querer testar
 cenários na reunião. Quando ele foge do percentual cadastrado, a linha mostra
 `contrato: 25%` em texto pequeno — senão o número da tela contradiz o cadastro
 sem dizer por quê.
+
+**O topo do simulador mostra a comissão devida por BASE DE CONTRATO**, não três
+totais. Antes havia três cartões — "pelos contratos", "se todas fossem sobre a
+receita real" e "diferença" — que respondiam *quanto sai no total*. Faltava a
+pergunta do meio, que é a que decide a conversa: **de onde sai**. Com a quebra
+fica visível de qual modalidade vem a comissão, e é ali que renegociar tem
+efeito; sem ela, o total parecia um número único com uma regra única. Na base
+semeada, por pedido do cliente, **todos os contratos são sobre o bruto** (a
+Verte Natural era 25% sobre o recebido), então o topo mostra uma modalidade só.
+A base continua escolhível no cadastro, e a quebra volta a aparecer assim que
+algum contrato usar outra. Cada modalidade mostra o valor, a participação, as marcas, o valor
+sobre o qual incide e quanto acrescenta em relação à receita real.
+
+Base que nenhum contrato usa **não** vira cartão de zero: "Sobre a receita real
+— R$ 0,00" afirmaria que existe uma modalidade rendendo nada, quando o que
+existe é nenhuma marca nela. O agrupamento é `agruparComissoesPorBase` em
+`costing.ts`, com teste de que a soma das modalidades bate com o total geral.
+
+O total geral e a diferença do mês continuam, numa linha de fecho abaixo da
+quebra — o texto de apoio antigo dizia "entre os dois números ao lado", que
+além de posicional deixava de fazer sentido quando os cartões empilhavam no
+celular.
 
 **A palavra "diferença" é definida na própria tela**, num parágrafo fixo acima
 da tabela. O cliente perguntou o que aquilo era: um rótulo sozinho não responde,
@@ -292,11 +475,27 @@ faturamento bruto
 = recebido
 − frete
 = receita real
+− impostos sobre a venda
+− taxa da plataforma e do meio de pagamento
+= receita líquida
 − CMV
 = margem de contribuição
 − comissões dos contratos cadastrados
+− despesas com influencers (5.16)
+− participação dos sócios (6% do recebido)
 = lucro operacional
 ```
+
+**Participação dos sócios** é custo fixo definido pelo cliente: **6% do
+recebido** (`PERCENTUAL_PARTICIPACAO_SOCIOS`, em `lib/config.ts`). Sobre o
+recebido, e não sobre o bruto, porque é dinheiro que precisa ter entrado para
+ser distribuído. Tem fatia própria na pizza ("Sócios") e entra em **toda** conta
+que chega ao lucro, porque todas saem de `montarDemonstrativo`: tela inicial,
+relatórios e margem atual da operação. Os dois simuladores repetem a mesma
+regra — no de produto como carga de 6% do preço (numa venda paga, preço é o
+recebido), o que também sobe o preço mínimo e o sugerido; no de influencer
+como 6% do recebido estimado — e os testes de identidade com a DRE continuam
+fechando.
 
 Atenção: a comissão da DRE vem dos **contratos cadastrados** (seção 5.9), não
 do percentual do simulador da 5.2. Um é a realidade, o outro é cenário.
@@ -346,9 +545,9 @@ marcados; usar o consolidado superestimava).
 No Simples:
 
 ```
-RBT12          = receita bruta dos últimos 12 meses (recebido, não faturado)
+RBT12          = receita dos últimos 12 meses (receita real: recebido sem frete)
 alíquota efetiva = (RBT12 × nominal da faixa − parcela a deduzir) / RBT12
-DAS do mês     = alíquota efetiva × recebido do mês
+DAS do mês     = alíquota efetiva × receita real do mês (sem frete, ver 5.1.1)
 ```
 
 A alíquota **efetiva** não é a da tabela — confundir as duas erra a conta em
@@ -392,7 +591,7 @@ origem, e a diferença entre a **interna do destino** e a interestadual vai para
 o estado de destino. Essa diferença é o DIFAL.
 
 ```
-DIFAL = valor da operação × (alíquota interna do destino − interestadual)
+DIFAL = (valor da operação − frete) × (alíquota interna do destino − interestadual)
 ```
 
 O estado de destino vem de `shipping_address.province` do pedido. A Nuvemshop
@@ -469,6 +668,11 @@ fábrica sabe quanto custa a matéria-prima e precisa cadastrar, mas a mesma tel
 esconde preço de venda e margem para esse perfil. Custo é o que o produto
 consome; margem é quanto a empresa ganha.
 
+A **ordem de fabricação** (5.15) fica na área `produtos`: os dois perfis pedem e
+acompanham, porque a conversa ali é sobre unidade e prazo, não sobre dinheiro. A
+tela pública de assinatura é a exceção do painel inteiro — não tem perfil, e o
+que a limita é mostrar só produto, quantidade, data e saldo, nenhum valor.
+
 A verificação acontece **no servidor**, em `exigirArea`, em dois lugares: na
 página, antes de montar, e **dentro de cada Server Action**. As duas são
 necessárias — Server Action é um endpoint público, dá para chamá-la sem nunca
@@ -476,6 +680,585 @@ abrir a página. Esconder link no menu é só conveniência.
 
 Senha com scrypt e sal por usuário; sessão em cookie httpOnly **assinado** —
 sem assinatura, qualquer um trocaria o próprio perfil para `dono` no cookie.
+
+### 5.13.1 Taxa da plataforma e do meio de pagamento
+
+O que a Nuvemshop e o gateway retêm de cada venda. **Não é tributo**, e a
+distinção é deliberada: imposto se recolhe em guia e tem regime; taxa é preço
+de serviço, negociável, retido no ato. Por isso mora em `types/plataforma.ts`
+e não em `types/fiscal.ts`, tem fatia própria na pizza e seção própria em
+`/impostos`, separada do catálogo de tributos.
+
+**O meio de pagamento é normalizado antes de qualquer conta.** A API devolve
+`payment_details.method` como texto livre, e `apiSource.ts` faz *pass-through*
+do JSON — não valida nada. `normalizarMetodoPagamento` (em `types/nuvemshop.ts`)
+é o `normalizarUF` desse campo: resolve caixa, espaço e separador, e traduz
+apelidos conhecidos. Sem ele, `Credit Card` e `credit_card` virariam dois meios,
+com duas taxas, e o total ficaria certo pelo motivo errado.
+
+Três decisões nele, todas fáceis de errar ao contrário:
+
+1. **Valor desconhecido NÃO vira `other`.** Passa adiante com o próprio nome, e
+   aparece na tabela de taxas como lacuna declarada. Dobrar para `other`
+   cobraria a taxa de "outros" sobre um meio que ninguém cadastrou.
+2. **Ausência vira `nao_informado`, que é diferente de `other`.** Uma é lacuna
+   de dado, a outra é escolha de pagamento.
+3. **`rotuloMetodo` mostra o nome cru do que não conhece**, em vez de "Outros" —
+   é o que permite mapeá-lo quando o payload real aparecer.
+
+A base de demonstração **varia a grafia de propósito** (`GRAFIAS_DO_METODO`):
+13 formas cruas que colapsam em 3 meios. Mesma razão do estado por extenso —
+sem isso, um defeito na normalização não apareceria na tela, só num teste.
+
+A escolha da grafia usa o **id do pedido**, não `rnd()`. Puxar um sorteio ali
+desloca toda a sequência seguinte e muda os totais do cenário documentado —
+aconteceu na primeira versão, que derrubou o bruto de R$ 3,14 mi para
+R$ 3,12 mi sem ninguém ter mexido em valor nenhum.
+
+Ao ligar `FONTE_DADOS=live`, o primeiro lugar a conferir é a aba de taxas:
+método que chegar com nome desconhecido aparece lá, com a taxa em branco e o
+recebido dele declarado como fora da conta.
+
+**A taxa é por meio de pagamento**, porque é assim que é cobrada:
+
+```
+custo da transação = percentual × valor do pedido + valor fixo
+```
+
+O valor fixo existe por causa do boleto, e é o que justifica o modelo. Na base
+de demonstração o boleto tem 1,99% nominal e **3,3% de carga efetiva** — o
+R$ 3,49 por transação pesa mais que o percentual em pedido pequeno. Um
+percentual único sobre o recebido daria um total parecido e esconderia isso,
+que é justamente o insight da tela: boleto sai caro duas vezes, pela taxa e
+pelo não pagamento.
+
+**Sobre o que a taxa incide é campo do cadastro**, não regra global:
+
+| Base | Significado | Caso típico |
+|---|---|---|
+| `bruto` (padrão) | todo pedido criado, pago ou não | boleto, tarifado por **registro** |
+| `recebido` | só o que virou dinheiro | gateway que só tarifa transação aprovada |
+
+A escolha existe porque a diferença é grande e **muda por meio de pagamento**.
+Na base de demonstração, dos 1.320 boletos emitidos só 498 são pagos: cobrar
+apenas sobre os pagos subestimaria essa linha em mais de 60%. No cartão vale o
+contrário — autorização que falha não gera tarifa.
+
+Uma regra global erraria um dos dois lados sempre. Quem tem a fatura na mão
+decide, linha por linha.
+
+**A carga efetiva é sempre medida contra o RECEBIDO**, mesmo quando a taxa
+incide sobre o bruto: é do dinheiro que entrou que ela sai. Medir contra a
+própria base esconderia o peso real — uma taxa sobre pedidos não pagos pesa
+mais no caixa do que a alíquota sugere.
+
+Na DRE entra ao lado dos impostos, não somada a eles: juntar as duas coisas
+numa linha só esconderia a única das duas que dá para renegociar.
+
+As alíquotas nascem semeadas com ordem de grandeza pública da Nuvemshop e
+`confirmadaNaFatura: false`, que aparece como aviso na tela — o percentual real
+muda com o plano, com o volume e com a antecipação de recebíveis. É o mesmo
+padrão do ICMS (5.10), com o nome do campo adaptado: quem confirma taxa
+comercial é a fatura, não o contador.
+
+**Meio de pagamento sem taxa cadastrada não some da conta.** Aparece na tabela
+com total zero e entra em `metodosSemTaxa`, com o quanto de receita ficou de
+fora — senão o total pareceria cobrir tudo que entrou.
+
+Na margem por produto a taxa é **rateada** pela participação do item na receita
+do pedido, e vem em campo próprio (`taxaPlataforma`, `margemAposTaxa`) em vez
+de já descontada. O rateio é declarado porque a cobrança é do pedido, não do
+item; o critério não exige arbitragem, já que a própria cobrança é proporcional
+ao valor.
+
+### 5.14 Relatórios
+
+Aba `/relatorios`, área `financeiro`. As mesmas contas das seções acima,
+quebradas por uma dimensão escolhida na hora: **marca, influencer, estado de
+destino, meio de pagamento, mês ou produto**, com um segundo nível opcional.
+Filtros de período (intervalo de meses), marca, estado e meio de pagamento.
+
+**O relatório não tem aritmética própria.** Cada métrica sai de `reconciliar`,
+`calcularCMV`, `apurarImpostos` e `montarDemonstrativo` — as mesmas funções do
+painel principal, aplicadas a um subconjunto de pedidos. Se tivesse conta
+própria, o total por marca poderia divergir da tela inicial e o cliente
+encontraria duas versões da verdade no mesmo painel. Há teste comparando o
+total do relatório com `reconciliar` sobre os mesmos pedidos.
+
+#### A regra que torna o relatório "guiado"
+
+Nem toda métrica vale em toda dimensão, e a tela recusa o cruzamento em vez de
+devolver um número errado. São duas restrições, por motivos diferentes:
+
+1. **Comissão, imposto, lucro e margem operacional só existem por marca
+   inteira.** O contrato é da marca (5.2) e o regime é do influencer dela
+   (5.10). Não existe "a comissão de São Paulo" nem "o DAS do cartão de
+   crédito": a guia do Simples é mensal sobre a receita real da marca, indivisível
+   por destino ou por forma de pagamento. Ratear proporcionalmente daria um
+   número plausível e inventado — o que a seção 8 proíbe.
+
+2. **Produto não particiona pedidos.** Um pedido com três produtos aparece em
+   três grupos, então frete, desconto e total do pedido não são atribuíveis a
+   um produto sem rateio. Por isso a dimensão produto oferece só métricas de
+   item: unidades, receita dos itens, CMV e margem bruta do item.
+
+`receitaItens` existe separada de `receitaReal`, e `margemItens` separada de
+`margemContribuicao`, de propósito — são contas diferentes:
+
+```
+receitaReal        = recebido − frete            (do pedido inteiro)
+receitaItens       = Σ preço × quantidade        (só dos itens)
+margemContribuicao = receitaLíquida − CMV        (já depois de imposto)
+margemItens        = receitaItens − CMV          (antes de imposto)
+```
+
+Dar o mesmo nome às duas faria parecer que o painel tem duas versões da mesma
+verdade quando os números não batessem — e eles não batem, porque uma inclui
+frete e imposto e a outra não.
+
+**O filtro também corta a marca ao meio.** Agrupar por marca com o filtro
+"estado = SP" não produz linhas de marca: produz linhas de "marca dentro de
+SP". Comissão e imposto caem nesse caso também — é o furo mais fácil de não
+enxergar, porque a linha continua dizendo o nome da marca. Está em
+`filtroCortaMarca`, com teste.
+
+Célula sem valor é **traço, nunca zero**: zero afirma que a conta foi feita e
+deu nada. O rodapé diz qual coluna ficou de fora e por quê.
+
+#### Resto das decisões
+
+- **A configuração inteira mora na URL.** O cálculo continua no servidor (o
+  navegador recebe dezenas de linhas agregadas, não 45 mil pedidos) e um
+  relatório vira um link — dá para mandar a combinação exata para o contador
+  em vez de descrever quais caixinhas marcar. `lib/relatoriosUrl.ts` valida
+  tudo que vem da barra de endereço contra as listas conhecidas.
+- **Abre numa combinação pronta, nunca em branco.** Tela de montar relatório
+  em branco não responde nada: quem abre precisa saber o que perguntar antes de
+  ter a resposta. As seis combinações estão em `COMBINACOES_PRONTAS`.
+- **A linha de total é calculada sobre o conjunto inteiro**, não somando as
+  células. Média e percentual não se somam, e assim o total serve de conferência:
+  se a soma visual das linhas não bater com ele, o agrupamento perdeu pedido.
+- **Exportação é impressão/PDF**, não CSV — decisão do cliente.
+
+#### O PDF é um documento, não uma captura de tela
+
+Quatro decisões, todas porque o papel sai da tela e vai para outra pessoa:
+
+1. **A folha do relatório é deitada.** Nove colunas de dinheiro não cabem num
+   A4 em pé: o navegador não encolhe, ele **corta** — o primeiro PDF saiu sem
+   "Lucro operacional" e sem "Margem operacional", justamente a conclusão.
+   Deitado sobram ~273mm e a tabela ocupa ~982px de 1032 disponíveis.
+   É uma `@page` **nomeada** (`@page deitada` + classe `.folha-deitada`), não
+   um `@page` global: o painel e os cadastros são estreitos e altos, e deitados
+   gastariam o dobro de folhas com metade da coluna vazia.
+2. **O `min-width` que serve para rolar na tela é o que estoura a folha.** Some
+   na impressão, junto com o `position: sticky` da coluna âncora — no papel não
+   há rolagem, e sticky chega a deslocar a célula da coluna.
+3. **A folga vem da coluna de texto, nunca do número.** O nome da marca quebra
+   em duas linhas; `R$ 16.833.068,37` partido ao meio vira dois números
+   diferentes na leitura.
+4. **Período e filtros ficam escritos no relatório.** "45.024 pedidos no
+   período" sem dizer qual período nem sobre quais marcas é um número que o
+   leitor não tem como conferir. Colunas recusadas pelo mesmo motivo viram uma
+   nota só — repetir a mesma explicação quatro vezes tomava um terço da folha.
+
+Para conferir a impressão sem imprimir: emule a mídia `print` numa largura de
+1032px (A4 deitado, 96dpi, margens de 12mm) e veja se a última coluna termina
+antes da borda.
+
+### 5.15 Ordem de fabricação
+
+Aba `/ordens`, área `produtos`. Quem cuida das campanhas dos influencers pede a
+fabricação de uma quantidade de produto para uma data de lançamento; o link vai
+para quem toca a produção, que confere o estoque, aprova e **assina**. O
+resultado é um PDF com as duas assinaturas e as duas datas, gravado no banco.
+
+O problema que resolve: hoje isso se combina por mensagem, e quando falta
+produto no dia do lançamento ninguém sabe se o pedido foi feito, se chegou nem
+se foi aceito. A ordem existe para virar **prova**.
+
+#### As cinco decisões que sustentam a tela
+
+1. **A ordem NÃO baixa nem reserva estoque.** O saldo é
+   `última contagem − vendido desde a contagem` (5.12), função pura e
+   idempotente. Descontar uma ordem dali criaria um segundo mecanismo mexendo
+   no mesmo número, e o estoque passaria a depender de quantas vezes a página
+   rodou. O saldo aparece **ao lado** do item, como informação para quem
+   decide.
+
+2. **Uma vez aprovada, congela.** É o único registro do projeto que não é
+   cadastro editável. Um documento que muda depois de assinado não prova nada.
+   Por isso o repositório tem `criarOrdem` e `gravarOrdem`, e não
+   `salvarOrdem(entrada, id)` como os outros.
+
+3. **O link é a credencial.** `/assinar/[token]` é **pública** — não chama
+   `exigirArea`. Quem toca a produção não tem conta no painel, e exigir que
+   tivesse trocaria uma assinatura de trinta segundos no celular por um
+   cadastro que ninguém faz. São 32 bytes de `randomBytes` (256 bits).
+   Como Server Action é endpoint público (5.13), **tudo que protege está
+   dentro da action**: o token é revalidado a cada chamada, só ordem em
+   `aguardando` aceita decisão, e o formulário só consegue mandar **nome,
+   traços e motivo**. Item, quantidade e data vêm do registro — se viessem do
+   corpo da requisição, quem tivesse o link assinaria um documento com números
+   diferentes dos que foram pedidos.
+
+4. **O nome do produto é COPIADO no momento do pedido**, e resolvido no
+   servidor a partir da chave. Renomear o produto depois não pode alterar o que
+   foi assinado, e aceitar o nome que veio do formulário deixaria assinar um
+   documento cujo texto não corresponde ao item.
+
+5. **Recusa não gera PDF.** O documento existe para provar um acordo; recusa
+   não é acordo, e não tem a assinatura dos dois lados que o papel afirma ter.
+   Fica o registro em tela, com quem recusou, quando e por quê.
+
+#### A assinatura é vetor, não imagem
+
+Cada traço é uma lista `[x0, y0, x1, y1, ...]` em coordenadas de **0 a 1**
+dentro do quadro. São poucos KB, viajam num campo de formulário comum, cabem no
+JSON do modo demonstração e vão direto para o PDF como polilinha. Um PNG em
+base64 seria dez vezes maior e obrigaria o gerador de PDF a embutir imagem — que
+é justamente o que faria o projeto precisar de uma biblioteca de PDF.
+
+**A proporção do quadro é fixa** (`PROPORCAO_ASSINATURA = 3`), e a mesma
+constante governa o quadro na tela, o `<svg>` de leitura e a moldura no papel.
+Proporções diferentes achatariam a assinatura no PDF, porque os pontos são
+normalizados em cada eixo. Fixar elimina o problema em vez de corrigi-lo.
+
+Três detalhes do quadro que só aparecem testando no telefone, todos em
+`QuadroAssinatura.tsx`: `touch-action: none` (senão o primeiro movimento do dedo
+rola a página), `setPointerCapture` (o dedo sai do quadro no meio do traço o
+tempo todo) e acompanhar o `devicePixelRatio` (senão sai borrado).
+
+**`normalizarTracos` descarta o traço INTEIRO** quando acha um valor inválido.
+Não basta pular o valor ruim: `Number(null)` e `Number("")` valem **zero**, não
+`NaN`, então um `null` no meio da lista virava uma coordenada válida e todos os
+pontos seguintes trocavam de eixo — a assinatura saía embaralhada em vez de
+faltar. Faltar é honesto; embaralhada parece assinatura de outra pessoa.
+
+#### O gerador de PDF é escrito à mão
+
+`lib/pdf.ts`, sem dependência. Mesma escolha dos gráficos: o painel precisa
+funcionar offline e sem CDN, e um PDF de uma página com texto, linhas e
+polilinha cabe em duzentas linhas. Faz texto em Helvetica nos dois pesos com
+**medição real de largura**, linhas, retângulos, polilinhas e múltiplas páginas.
+Não faz fonte embutida, imagem, nem unicode fora do WinAnsi — se algum dia
+precisar de uma dessas, é hora de pesar uma dependência de verdade, não de
+esticar o arquivo.
+
+Quatro armadilhas que o teste cobre, todas do tipo "abre num leitor e não em
+outro":
+
+| Armadilha | O que acontece |
+|---|---|
+| Escrever o arquivo em utf-8 | Cada acento vira dois bytes e **todos** os deslocamentos da tabela `xref` depois dele ficam errados. Tudo é latin-1 do início ao fim, e é isso que faz `.length` valer como contagem de bytes |
+| `/Length` fora do tamanho real do fluxo | O leitor lê além ou aquém do `stream` |
+| Não escapar `(`, `)` e `\` | Parêntese num nome de produto fecha a string no meio e o resto do fluxo vira lixo |
+| Medir texto por largura média | `R$ 2.400 un` não fica embaixo de "Quantidade". As larguras AFM da Helvetica estão na tabela; acentuada mede o mesmo que a letra base, o que é exato nessa fonte |
+
+As coordenadas da API descem **do topo**, ao contrário do PDF, cujo eixo Y sobe
+da base. A conversão acontece num lugar só, em `fluxoDaPagina`. Escrever layout
+de documento de baixo para cima é fonte inesgotável de erro de um ponto.
+
+#### Dois hashes, e eles são diferentes
+
+- **`hashConteudo`** — SHA-256 da forma canônica dos dados, montada campo a
+  campo. Sai **impresso** no rodapé do documento. `JSON.stringify(ordem)` não
+  serviria: a ordem das chaves de um objeto lido do banco não é a de um
+  recém-criado, e o hash mudaria sem o conteúdo mudar.
+- **`sha256`** — hash dos **bytes** do arquivo, guardado ao lado. Não pode
+  viver dentro do PDF: o arquivo não carrega o próprio hash.
+
+O PDF é gerado **uma vez**, na assinatura, e nunca regenerado no download. Um
+documento reconstruído a cada leitura mudaria junto com o código que o desenha,
+e a assinatura deixaria de se referir a alguma coisa fixa.
+
+#### Duas rotas de download, não uma
+
+`/ordens/[id]/pdf` exige login; `/assinar/[token]/pdf` vai pelo token. Poderiam
+ser uma só com "aceita login OU token", mas duas regras de acesso no mesmo lugar
+são duas chances de a errada valer. A segunda existe porque quem aprovou assinou
+pelo celular, sem conta, e sai da página com o documento na mão.
+
+O `Content-Disposition` é `inline`, não `attachment`: no celular, `attachment`
+empurra o arquivo para a pasta de downloads e a pessoa some da página. É também
+o único recurso do painel com cache `immutable` — o único em que "estes bytes
+nunca mudam" é verdade por definição.
+
+#### O botão de copiar o link tem um campo de texto ao lado
+
+Não é enfeite. `navigator.clipboard` só existe em contexto seguro (HTTPS ou
+localhost), e o painel é acessado de fora por **HTTP puro** no IP fixo. Ali o
+botão simplesmente não funciona, e sem o campo visível não haveria como pegar o
+link de jeito nenhum. No celular esse campo ocupa a linha inteira: dividindo a
+linha com os dois botões sobravam ~90px e ele mostrava `http://177.223`.
+
+#### Endereço de IP, WhatsApp e HTTPS: um beco sem saída em HTTP puro
+
+Três fatos medidos no mesmo dia, e juntos eles fecham uma porta:
+
+1. **O WhatsApp não transforma IP em link.** Colado numa conversa,
+   `http://177.223.44.178:3000/assinar/...` chega como texto morto — ele só
+   linkifica domínio com terminação válida. Pior: pinta o IP com a **cor de
+   telefone**, porque é como telefone que ele o classifica. Quem recebe toca e
+   o celular tenta ligar.
+
+2. **Dar um nome ao IP resolve isso e quebra outra coisa.** `<ip>.sslip.io` é
+   DNS curinga e resolve de volta para o mesmo IP; o WhatsApp passa a
+   linkificar. E aí o link para de **abrir**, com `ERR_SSL_PROTOCOL_ERROR`: o
+   Chrome força HTTPS em endereço com **nome**, e o painel só fala HTTP.
+
+3. **Endereço de IP é isento dessa conversão.** É por isso que o IP abre e o
+   nome não — e é o que torna os dois requisitos incompatíveis:
+
+   > para ser tocável no WhatsApp, precisa de nome;
+   > tendo nome, o navegador exige HTTPS.
+
+Não é HSTS: nem `sslip.io` nem `nip.io` estão na lista pré-carregada. É o
+comportamento padrão do Chrome.
+
+**A decisão, então:** o link continua sendo o IP, que ao menos **abre** colado
+em qualquer navegador. A tela diz o passo que falta, e a mensagem do botão de
+WhatsApp leva a instrução junto ("copie o endereço e cole no navegador") —
+sem ela, quem recebe vê texto cinza que não responde ao toque e conclui que o
+link está quebrado. Foi o que aconteceu na primeira vez.
+
+A tentativa do `sslip.io` **foi revertida**. Se alguém pensar nela de novo:
+ela linkifica e não abre, que é pior que não linkificar.
+
+Link tocável exige **HTTPS de verdade** — túnel Cloudflare nomeado com domínio
+próprio, ou Tailscale Funnel. Ver `DEMONSTRACAO.md`.
+
+`localhost` ganha um aviso próprio, em vermelho: aquele link só abre na máquina
+que rodou o painel, e enviá-lo não produz erro nenhum — produz uma página que
+não carrega no telefone de quem recebeu.
+
+#### Túnel rápido da Cloudflare não serve para reunião marcada
+
+`cloudflared tunnel --url` sorteia um subdomínio **novo a cada vez que sobe**
+(o próprio log diz *"Requesting new quick Tunnel"*). Reiniciar troca o
+endereço e mata todo link já enviado. Funciona, dá HTTPS válido, e o fluxo de
+assinatura inteiro passa por ele — inclusive as Server Actions, que foi o que
+mais preocupou e foi testado ponta a ponta. Mas é conveniência, não
+infraestrutura.
+
+### 5.16 Influencers: contrato e despesas
+
+A aba se chamava "Comissões" e virou **Influencers** (`/influencers`; o endereço
+antigo `/comissoes` redireciona, com os parâmetros). A pergunta mudou de "quanto
+de comissão cada contrato gera" para "quanto cada influencer custa".
+
+Abre num **seletor de cartões** — um por contrato, com o custo do mês já escrito —
+e numa "Visão geral" com os totais e o cadastro de contratos. Cartão e não
+`<select>`: o nome sozinho não ajuda a escolher, e o cartão responde a primeira
+pergunta antes do clique. A escolha mora na URL (`?influencer=`), como os
+filtros do relatório, e o seletor de mês do cabeçalho a preserva.
+
+Escolhido um influencer, aparece a **grade dele no mês**:
+
+1. **A primeira linha é sempre a comissão**, calculada dos pedidos do mês e do
+   contrato (5.2). Não se edita na grade e **não é gravada**: gravar faria a
+   grade mostrar um número velho quando as vendas mudassem. Para mudar a
+   comissão, muda-se o contrato.
+2. **As linhas de baixo são despesas**: operacional, produto enviado, viagem,
+   cachê, anúncio, outros. Despesa é avulsa e pertence ao mês pela data. Cachê
+   fixo mensal se cadastra uma vez por mês — recorrência automática foi
+   descartada para a grade mostrar exatamente o que foi gasto, sem regra
+   escondida.
+
+**Despesa compartilhada.** O formulário tem a marcação "Despesa compartilhada".
+Marcada, a despesa é gravada **uma vez, sem dono** (`influencerId: null`) e com
+o valor **total**; a parte de cada influencer é calculada na leitura por
+`ratearDespesas`, proporcional ao **faturamento sem frete** da marca dele no mês. É
+o que o cliente pediu como "atualizar a despesa toda vez proporcional ao
+influencer": nada é regravado, a divisão simplesmente se refaz quando as vendas
+mudam — mesma razão de a comissão não ser gravada. Gravar uma cópia por
+influencer ficaria velha na primeira venda nova.
+
+Regras da divisão, todas testadas em `rateioDespesas.test.ts`:
+
+- a proporção é a do **mês inteiro**, por isso `ratearDespesas` recebe todos os
+  pedidos, antes de qualquer filtro. As telas dividem primeiro e só então
+  entregam as despesas à DRE, ao relatório e ao simulador; compartilhada não
+  dividida fica fora de `despesasQueCabem` (não tem dono nem marca);
+- só influencer ativo recebe parte, e por marca só o primeiro ativo (5.9);
+- as partes são arredondadas em centavo e a sobra vai para a maior, para a soma
+  fechar exatamente no total cadastrado;
+- na grade, a linha mostra a parte e a fração ("23,4% de R$ 60.000,00");
+  editar mexe no **total**, e remover diz "Remover de todos", porque remove.
+
+O raio-x conta a compartilhada como uma despesa só (`idDeOrigem`), não uma por
+influencer.
+
+**Despesa sai do lucro operacional.** Antes dela o painel só enxergava a
+comissão, e o lucro saía maior que o verdadeiro. A DRE (5.8) ganhou a linha
+"Despesas com influencers", e a fatia da pizza virou **Influencers**. O campo
+`totalComissoes` continua sendo **só** a comissão — o simulador e a métrica de
+comissão do relatório dependem disso; o total somado é `totalInfluencers`.
+
+**Quais despesas entram é decidido em `despesasQueCabem`**, e a DRE aplica isso
+sozinha: recebe *todas* as despesas e fica com as do mês dos pedidos e das
+marcas dos pedidos. É isso que faz o lucro de uma marca no relatório bater com o
+do painel, e a aba usa a mesma função para os totais. Consequência assumida:
+despesa num mês em que a marca não vendeu nada não entra no lucro; a grade a
+mostra mesmo assim e avisa.
+
+O mês da despesa sai da **data como texto** (`mesDaDespesa`), nunca de
+`new Date`: "2026-09-01" viraria meia-noite UTC, que no Brasil ainda é 31 de
+agosto.
+
+Ao ligar a despesa no relatório apareceu um furo antigo: a DRE do relatório
+**não recebia a taxa da plataforma**, e o lucro por marca saía maior que o do
+painel para os mesmos pedidos. Corrigido junto, com teste que monta a DRE do
+jeito do painel e exige o mesmo número.
+
+Três detalhes de comportamento:
+
+- Data fora do mês aberto grava normalmente, e a mensagem diz em que mês a
+  despesa entrou. Sem isso ela some da grade, parece que não salvou, e a reação
+  natural é cadastrar de novo — duplicando o custo.
+- Remover um influencer remove as despesas dele; senão elas continuariam saindo
+  do lucro sem aparecer em tela nenhuma.
+- Remover despesa é em dois passos na própria linha, sem `window.confirm`, que
+  some atrás de abas no celular e trava a auditoria automatizada.
+
+### 5.17 Simulador
+
+Aba `/simulador`, área `financeiro`, com duas abas na URL (`?aba=`, que o
+seletor de mês preserva): **Preço de produto** (padrão) e **Comissão de
+influencer**.
+
+#### Preço de produto
+
+A pergunta: **"se eu fabricar por X e
+vender por Y, ganho ou perco dinheiro?"** Três campos — influencer, custo de
+fabricação por unidade e preço de venda por unidade — e o botão **Simular**. O
+influencer é o que traz o regime tributário (5.10) e o contrato.
+
+O servidor monta um perfil de médias por marca (`montarPerfisDeCusto`, em
+`lib/simulacaoPreco.ts`) e o navegador só multiplica (`simularPreco`) — mesmo
+desenho do simulador de comissão, que responde na hora e sem internet.
+
+```
+lucro por unidade = preço × (1 − impostos − DIFAL − comissão − despesas)
+                  − (preço + frete) × (taxa + sócios)
+                  − custo de fabricação
+preço mínimo      = (fabricação + frete × (taxa + sócios)) ÷ (1 − soma das cargas)
+```
+
+**Nenhuma alíquota é do simulador.** Impostos, DIFAL e taxa são a média do mês
+da marca, medida pelas funções do painel (`apurarImpostos`,
+`apurarTaxasPlataforma`). Impostos e DIFAL são fração da **receita real** (sem
+frete, 5.1.1) e se aplicam ao preço; a taxa é fração do **recebido** e se aplica
+ao preço mais o frete. O teste que
+segura isso: simular o preço e o custo médios de cada marca reproduz o lucro
+operacional da DRE dela, a menos **exatamente** da comissão e das despesas que
+incidem sobre pedido não pago (escolha 1). Se alguém der ao simulador uma regra
+própria, esse teste quebra.
+
+Quatro escolhas que mudam a resposta:
+
+1. **A comissão é o percentual do contrato sobre o preço** — numa venda paga, o
+   preço é o faturamento bruto dela. Foi decisão do cliente. A primeira versão
+   usava o custo médio do contrato por venda paga (30% sobre o bruto saía ~39%,
+   porque o contrato também paga pedido que nunca entrou), e ele pediu o
+   percentual sobre o faturamento bruto. **Consequência assumida:** a simulação
+   sai mais otimista que a DRE na medida da comissão paga sobre pedido não pago
+   — com custo 30 e preço 100, a Aurora passou de prejuízo para lucro. Não
+   "corrija" de volta sem falar com ele.
+2. **O frete não é custo** (5.1.1): o cliente paga por fora e ele vai para a
+   transportadora. Não entra em imposto, comissão nem na lista de custos; a
+   tela diz isso numa frase, para ninguém achar que foi esquecido. Só a taxa
+   do pagamento e os sócios incidem sobre o valor pago **com** frete. O frete
+   usado é por unidade (R$ 19 ÷ ~2,1 unidades por pedido). A primeira versão o
+   tratava como custo da loja; o cliente corrigiu.
+3. **DIFAL é a média ponderada dos destinos**, contando as vendas dentro do
+   próprio estado (que não pagam). Marca no Simples fica com zero e a linha diz
+   por quê (5.10.1).
+4. **Despesas com influencer entram rateadas pelo faturamento sem frete.** São custo fixo do
+   mês, não da unidade, mas saem do lucro; sem elas a identidade com a DRE não
+   fecha.
+
+**Preço sugerido.** Depois de simular, o resultado mostra o preço que entrega
+três margens operacionais de referência — **mínima saudável 10%, recomendada
+15%, forte 20%** (`MARGENS_DE_REFERENCIA`) — e um campo para outra margem:
+
+```
+preço para a margem m = (fabricação + frete × (taxa + sócios)) ÷ (1 − soma das cargas − m)
+```
+
+A margem é a mesma do resultado (lucro por unidade sobre o preço, depois de
+tudo), e com m = 0 a fórmula dá o preço mínimo — são a mesma função
+(`precoParaMargem`). As faixas são **ordem de grandeza de mercado**, não estudo:
+empresas de cosméticos saudáveis costumam operar entre ~10% e ~20% de margem
+operacional. A tela diz isso, pelo mesmo motivo do ICMS semeado (5.10).
+
+O preço sugerido é arredondado **para cima** até o próximo ,90
+(`precoComercial`): para baixo entregaria menos margem do que a faixa promete.
+O botão "Simular com este preço" preenche o campo e simula com o influencer e o
+custo **da simulação que gerou a sugestão**, não com o que estiver digitado —
+se a pessoa mexeu nos campos depois, a sugestão não vale para eles — e rola até
+o veredito, que no celular fica fora da tela.
+
+O mês das médias é o do seletor do cabeçalho. Influencer inativo e marca sem
+venda paga no mês ficam fora da lista, **e a tela diz quem** — simular com carga
+zero diria que vender ali não custa nada.
+
+O resultado guarda os valores que o produziram. Mexer num campo depois apaga o
+destaque e avisa "toque em Simular para atualizar"; senão a pessoa leria o lucro
+de um preço que já não está escrito ali.
+
+É estimativa para decidir preço, não apuração: o imposto e o DIFAL de um produto
+específico mudam com o NCM e o destino, e a tela diz isso junto do número, com o
+aviso de alíquota não confirmada quando houver.
+
+#### Comissão de influencer
+
+A pergunta: **"se eu fechar com um influencer a X% e ele faturar Y por mês,
+sobra dinheiro?"** Campos: percentual (sobre o faturamento, como os contratos atuais),
+faturamento esperado por mês **sem frete** e regime (automático pelo porte, ou
+escolhido). A tela não mostra linhas de recebido nem de frete: uma nota diz
+quanto de frete o cliente paga à parte.
+Botão **Estimar**. O simulador de base dos contratos atuais (5.2) ficava embaixo
+e saiu a pedido do cliente.
+
+O influencer ainda não existe, então não há pedido dele. A estimativa aplica ao
+faturamento informado as frações médias das marcas atuais
+(`montarReferencia` / `estimarInfluencer`, em `lib/simulacaoInfluencer.ts`) — a
+mesma cadeia da DRE (5.8), com frações no lugar dos pedidos:
+
+```
+faturamento  = informado, SEM frete (5.1.1)
+receita real = faturamento × (receita real ÷ faturamento sem frete das marcas atuais)
+recebido     = receita real + frete (o cliente paga o frete por fora)
+lucro        = receita real − impostos − DIFAL − taxa (sobre o recebido) − fabricação
+             − comissão (% × faturamento) − parte nas compartilhadas − sócios
+```
+
+O teste que segura isso: montada a referência com uma marca só e estimado o
+faturamento dela, a conta devolve o lucro da DRE daquela marca — a menos do
+custo estimado dos itens sem ficha (escolha 2).
+
+Três escolhas:
+
+1. **Simples é calculado, Presumido é média.** No Simples a alíquota muda muito
+   com o porte, e a média das marcas atuais daria a um influencer pequeno o
+   imposto de uma marca de R$ 2,7 mi/ano; por isso a guia sai de
+   `apurarSimples` com o RBT12 projetado (receita sem frete × 12). No Presumido a carga
+   quase não depende do porte (só o adicional de IRPJ), e a média das marcas do
+   regime serve. O modo automático sugere Simples até o teto (R$ 4,8 mi
+   de receita real por ano); escolher Simples acima dele mostra aviso.
+2. **Custo de fabricação extrapolado pela cobertura** (`cmv ÷ cobertura`). Item
+   sem ficha entra como zero no CMV das marcas atuais; aplicar essa fração a um
+   influencer novo daria custo menor que o real. A tela diz quanto das vendas
+   tinha ficha.
+3. **O novo influencer entra na divisão do operacional:** parte = total × faturamento
+   ÷ (faturamento sem frete atual + faturamento dele), que é o que `ratearDespesas` faria no mês em
+   que ele começasse a vender.
+
+O resultado mostra o lucro do mês e em 12 meses, a margem sobre a receita real
+ao lado da margem atual da operação, e a **comissão máxima sem prejuízo**
+(lucro antes da comissão ÷ faturamento sem frete). A tela avisa que é estimativa: público com
+mais boleto ou ticket mais baixo muda a fração que vira dinheiro.
 
 ---
 
@@ -491,13 +1274,37 @@ soma não bater, o cliente percebe.
 | Não pago | ~14% do bruto |
 | Cancelado | ~5% do bruto |
 | Reembolsado | ~1,3% do bruto |
-| Frete | ~4,7% do recebido |
+| Frete | **R$ 19 fixo por pedido** (~5% do recebido) |
+| Receita real | ~R$ 2.390.000 |
 | Marcas | 5 |
 | Meses de histórico | 6 |
 
+### O frete já foi de três jeitos — e por que é fixo agora
+
+Vale registrar, porque a escolha tem consequência a três saltos de distância:
+
+1. **R$ 22–46 sorteado**, com 48% dos pedidos em frete grátis (~4,7% do recebido).
+2. **Proporcional à mercadoria**, calibrado para dar 30% do recebido. Isso
+   **inflou o faturamento bruto em 39%** — `total = mercadoria + frete`, então
+   frete maior é bruto maior. E como a base da maioria dos contratos é o bruto,
+   a comissão subiu junto (R$ 901 mil → R$ 1,25 mi) enquanto a receita real
+   ficava parada. O mês fechou **no prejuízo**.
+3. **R$ 19 fixo por pedido**, que é o que vale (`FRETE_POR_PEDIDO`).
+
+A cadeia a memorizar era **frete → bruto → comissão → lucro**: o frete atravessava
+o bruto e chegava na comissão de quem tem contrato sobre o bruto. Desde a 5.1.1
+a comissão e os impostos usam o faturamento sem frete, e a cadeia parou no bruto —
+mexer no frete agora só muda a fatia do frete, a taxa do pagamento e a
+participação dos sócios. Continua valendo olhar os três ao mexer nele. Fixo tem a vantagem de não interagir com o ticket —
+mexer no valor do pedido não mexe na proporção do frete.
+
+`shipping_cost_owner` recebe o mesmo R$ 19. Ele não aparece em métrica nenhuma
+do painel, e com frete fixo cobrado do cliente a leitura menos surpreendente é
+a de repasse direto.
+
 Regimes semeados, escolhidos pelo porte de cada marca: Verte Natural e Nitro
-Hair no **Simples Nacional** (~R$ 2,7–2,8 mi/ano, 5ª faixa, ~11% efetivo);
-Aurora, Luma e Petra no **Lucro Presumido** (R$ 7–9 mi/ano, acima do teto do
+Hair no **Simples Nacional** (~R$ 2,6–2,8 mi/ano, 5ª faixa, ~11% efetivo);
+Aurora, Luma e Petra no **Lucro Presumido** (R$ 7–10 mi/ano, acima do teto do
 Simples). É isso que torna o cenário de R$ 3,1 mi/mês coerente sem baixar a
 escala: são cinco operações, não uma.
 
@@ -527,6 +1334,28 @@ Seed fixo (`SEED_PADRAO` em `geradorPedidos.ts`). O painel mostra os mesmos
 números toda vez que abre — não dá para os valores mudarem no meio da reunião.
 Os rótulos de mês acompanham o calendário para a demonstração não parecer
 velha; os valores não dependem da data.
+
+Duas **ordens de fabricação** nascem semeadas: uma aguardando assinatura e uma
+já assinada, com o PDF gerado no momento da semeadura — exatamente como
+aconteceria numa assinatura de verdade. As duas existem porque a tela precisa se
+explicar sozinha: só com a primeira o arquivo de documentos fica vazio e ninguém
+vê o PDF; só com a segunda não há o que assinar na demonstração.
+
+O token da que está em aberto é **fixo** (`TOKEN_ORDEM_DEMO`), por dois motivos,
+os dois de demonstração: dá para abrir o link de assinatura na reunião sem antes
+criar uma ordem, e `npm run celular --rota /assinar/<token>` consegue auditar a
+tela pública, que de outro modo seria inalcançável — o token real vem de
+`randomBytes(32)`. Em `FONTE_DADOS=live` as ordens começam vazias.
+
+O rabisco das assinaturas semeadas é gerado por soma de senos, não sorteado:
+o painel inteiro é determinístico (mesmos números toda vez que abre).
+
+A única **despesa de influencer** semeada é o **Operacional**, R$ 60 mil
+(`OPERACIONAL_MENSAL`), **compartilhado**, um registro por mês da base
+(`despesasInfluencerIniciais`). Na grade de cada influencer ficam a comissão e a
+parte dele no operacional. As dez despesas avulsas de exemplo que existiam
+saíram a pedido do cliente. Datas relativas ao calendário, pelo mesmo motivo
+das ordens.
 
 Quatro produtos ficam **de propósito** sem ficha de custo
 (`PRODUTOS_SEM_CUSTO_NA_DEMO`). Não é descuido: é o gancho para mostrar o aviso
@@ -566,7 +1395,7 @@ Se precisar adicionar uma dependência grande, pergunte antes.
   receita real" — o contrato dele pode legitimamente prever comissão sobre
   bruto, e acusar antes de saber seria constrangedor na reunião.
 
-### Duas armadilhas de runtime que já custaram tempo aqui
+### Armadilhas que já custaram tempo aqui
 
 Nenhuma das duas é pega por `npm run build` nem por `tsc --noEmit`. As duas
 quebram só quando alguém clica.
@@ -596,6 +1425,76 @@ quebram só quando alguém clica.
    clique em "Editar" parecer que não fez nada — ele abria fora da tela. Padrão:
    `<Fragment>` com a `<tr>` do item e uma `<tr>` com `colSpan` logo abaixo.
 
+6. **O `npm install` desta máquina não roda os scripts de pós-instalação.** O
+   npm os bloqueia e avisa (`allow-scripts`), então **`prisma generate` não
+   roda**. Em modo demonstração não faz diferença para a tela —
+   `src/data/index.ts` importa o Prisma por `import()` dinâmico, que nunca é
+   avaliado nesse caminho, e `npm test` e `npm run dev` passam sem isso.
+
+   Mas **`npm run typecheck` NÃO passa** depois de mexer em
+   `prisma/schema.prisma`: o cliente gerado é a fonte dos tipos, e
+   `prismaCostRepository.ts` referencia cada model pelo nome. Modelo novo no
+   schema sem `npx prisma generate` dá
+   *"Property 'x' does not exist on type 'PrismaClient'"* — o erro parece de
+   código e é de geração. Rode `npx prisma generate` logo depois de editar o
+   schema, mesmo sem banco nenhum por perto.
+
+7. **`npm run dev` embute o `.demo-data` inteiro no HTML — inclusive os hashes
+   de senha.** Medido: a mesma rota sai com **277 KB** em desenvolvimento e
+   **57 KB** em produção, e a diferença é o conteúdo de `cadastros.json`
+   serializado no payload, com `senhaHash`, `senhaSal`, custo de fabricação e
+   percentual de comissão. Não é bug nosso: é a instrumentação de I/O do Next
+   em modo dev, que manda o resultado de cada `fs.readFile` para o navegador
+   junto com o rastro de pilha.
+
+   O que isso quebra, **só em dev**:
+
+   - o perfil `estoque` recebe comissão e hash de senha, furando a 5.13;
+   - `/assinar/<qualquer-coisa>` — pública, sem login, com token inválido —
+     também devolve tudo isso.
+
+   O `SESSAO_SECRET` **não** vaza (conferido), então não dá para forjar sessão.
+   E em produção nada disso aparece: verificado em quatro rotas e nos dois
+   perfis, zero ocorrência.
+
+   Regra prática: **servidor de desenvolvimento não vai para a internet.**
+   Enquanto os dados forem fictícios e as senhas forem as publicadas aqui, o
+   estrago é nenhum; com dados reais, é sério. Ver `DEMONSTRACAO.md`.
+
+8. **`Number(null)` e `Number("")` valem ZERO, não `NaN`.** Filtrar entrada com
+   `Number.isFinite(Number(valor))` deixa passar `null`, `""`, `false` e `[]`,
+   todos virando um zero silencioso. Onde os números vêm em pares — os traços
+   da assinatura são `[x0, y0, x1, y1, ...]` — um zero a mais desloca todo o
+   resto e troca os eixos. Confira o `typeof` antes, e descarte a sequência
+   inteira em vez de remendar: dado embaralhado é pior que dado faltando.
+
+9. **Nome de marca é CHAVE, não só rótulo.** `Pedido.marca` sai do catálogo e
+   `Influencer.marca` sai do cadastro, e comissão, regime tributário e DIFAL
+   casam os dois por igualdade de texto. Ao acentuar os nomes de tela, o
+   catálogo passou a dizer "Luma Cosméticos" e o contrato continuou "Luma
+   Cosmeticos": a marca ficou sem contrato em silêncio — 4 de 5 comissões,
+   lucro inflado, imposto no regime padrão — e nenhum teste de conta pegou,
+   porque cada conta, sozinha, estava certa. `marcas.test.ts` confere que todo
+   contrato semeado aponta para uma marca do catálogo. Ao renomear uma marca,
+   renomeie nos dois lados **e** no `.demo-data`.
+
+10. **Semente cara dentro de caminho quente.** O repositório de demonstração
+    relê o arquivo em toda chamada (armadilha 2), e a função que completa
+    chaves faltantes montava o estado inicial **antes** de olhar o arquivo:
+    contagens de estoque sobre 45 mil pedidos e o scrypt das senhas, ~52 ms por
+    chamada. Uma página faz umas nove chamadas, então **cada troca de aba
+    esperava ~225 ms** para produzir um objeto que ia para o lixo. O cliente
+    sentiu como "a aba demora a mudar". Agora `completar` só monta o estado
+    inicial se alguma chave faltar — a página caiu para ~3 ms de repositório.
+    Regra: nada caro roda no caminho de leitura sem ter sido medido.
+
+    O outro lado da mesma queixa era a falta de sinal. Toda página é montada
+    no servidor, e o Next só troca a tela quando a nova chega; sem nenhum
+    retorno, o clique parecia não ter pegado. Duas peças resolvem sem mexer no
+    cálculo: `IndicadorNavegacao` (no layout) mostra uma barra fina no topo
+    assim que qualquer link interno é clicado, e a barra de abas acende a aba
+    clicada na hora, antes de a página chegar.
+
 ---
 
 ## 9. Roadmap (contexto, não escopo atual)
@@ -622,7 +1521,74 @@ puros, e `FonteDePedidos`/`RepositorioCadastros` como interfaces.
 - `npm test` passa.
 - Os totais da cascata fecham na aritmética.
 - A soma das linhas da tabela por marca bate com os totais gerais.
-- O percentual de comissão é editável e recalcula tudo na hora.
+- O percentual de comissão é editável no Simulador e recalcula a estimativa.
 - Cadastrar um custo muda o lucro operacional na tela principal.
 - Funciona com a internet desligada.
 - Legível numa tela de reunião, e não quebra em 1366×768.
+
+---
+
+## 11. Como subir e conferir
+
+```bash
+npm install     # so na primeira vez
+npm run dev     # http://localhost:3000
+```
+
+Sem `.env` nenhum o painel sobe em modo demonstração. Não crie um só para
+rodar: o padrão de `fonteDados()` já é `demo` e o segredo de sessão tem
+fallback fixo embutido.
+
+Login da demonstração: `dono` / `dono123`, `estoque` / `estoque123`. Os hashes
+são gerados em `src/data/seeds.ts`.
+
+### Conferir as telas sem abrir o navegador
+
+```bash
+npm run fumaca    # com o dev rodando
+npm run celular   # idem, e precisa do Chrome instalado
+```
+
+`fumaca` bate em todas as rotas com os dois perfis e diz se cada página montou
+no servidor. Também confirma que `estoque` leva 307 nas telas financeiras — a
+garantia da 5.13, que é invisível em teste unitário — e que a rota **pública**
+`/assinar/<token>` abre **sem** sessão, recusa token inválido e devolve 404 no
+PDF antes de a ordem ser assinada. Ela é a única do painel em que redirecionar
+para `/entrar` seria o defeito, não a proteção.
+
+Rota nova sem área declarada em `AREA_DA_ROTA` **falha** o script de propósito:
+sem isso, uma tela financeira nova entraria no ar sem ninguém conferir se o
+perfil `estoque` está barrado nela.
+
+`celular` abre cada rota em 390px num Chrome headless e falha se houver
+transbordo horizontal, texto de gráfico abaixo de 9px **na tela** (não no JSX)
+ou tabela rolando sem coluna âncora. Ele varre só as pastas de primeiro nível de
+`src/app`; a tela de assinatura mora em `assinar/[token]/` e precisa do token no
+argumento:
+
+```bash
+node scripts/celular.mjs --rota /assinar/demonstracao-aguardando-assinatura-do-gerente
+```
+
+No Git Bash isso exige `MSYS_NO_PATHCONV=1` na frente, senão o `/assinar/...` é
+convertido em caminho do Windows antes de chegar ao Node. É a régua da seção 2.1. Não instala nada:
+fala o protocolo do próprio Chrome por WebSocket, que o Node 24 já tem.
+
+**Não tente fazer login por `curl`.** O formulário é uma Server Action: o
+protocolo (header `Next-Action`, um id que muda a cada build, argumentos
+serializados posicionalmente) não é feito para ser falado à mão, e as
+tentativas voltam 500 ou 404 sem nada de errado no app. `scripts/fumaca.mjs`
+pula essa etapa forjando o cookie assinado, que é o que o navegador receberia
+de qualquer forma.
+
+O que o `fumaca` **não** diz: se o número está certo, se a pizza fecha, se cabe
+em 1366×768. Isso é `npm test` e olho na tela.
+
+### Onde cada coisa é verificada
+
+| Pergunta | Onde |
+|---|---|
+| A conta está certa? | `npm test` — 363 testes sobre as funções puras |
+| A página monta? O perfil bloqueia? | `npm run fumaca` |
+| Funciona no celular? | `npm run celular` |
+| A tela comunica? | abrir no navegador, em tela grande e no telefone |

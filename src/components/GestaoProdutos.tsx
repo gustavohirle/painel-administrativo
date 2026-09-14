@@ -130,7 +130,7 @@ export function GestaoProdutos({
       )}
 
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[900px] border-collapse text-sm">
+        <table className="tabela-ancorada w-full min-w-[900px] border-collapse text-sm">
           <thead>
             <tr className="border-b border-borda-forte text-left text-xs uppercase tracking-wider text-tinta-fraca">
               <th className="py-2.5 pr-4 font-semibold">Produto</th>
@@ -143,10 +143,10 @@ export function GestaoProdutos({
                   className="py-2.5 pr-4 text-right font-semibold"
                   title="Para kit, quantos kits foram vendidos. Para item avulso, unidades que sairam, somando o que foi dentro de kit."
                 >
-                  Saidas no mes
+                  Saídas no mês
                 </th>
               )}
-              <th className="py-2.5 text-right font-semibold">Acao</th>
+              <th className="py-2.5 text-right font-semibold">Ação</th>
             </tr>
           </thead>
           <tbody>
@@ -194,7 +194,7 @@ export function GestaoProdutos({
                   <td className="numerico py-3 pr-4 text-tinta-media">
                     {produto.ncm ?? (
                       <span className="text-xs font-semibold uppercase text-naopago">
-                        nao informado
+                        não informado
                       </span>
                     )}
                   </td>
@@ -256,6 +256,7 @@ export function GestaoProdutos({
                   {aberto && (
                     <tr>
                       <td colSpan={colunas} className="p-0 pb-4">
+<div className="linha-de-edicao">
                         <FormularioProduto
                           produto={produto}
                           impostos={impostos}
@@ -263,7 +264,8 @@ export function GestaoProdutos({
                           opcoes={opcoes}
                           aoFechar={() => setEditando(null)}
                         />
-                      </td>
+                      </div>
+</td>
                     </tr>
                   )}
                 </Fragment>
@@ -431,7 +433,7 @@ function FormularioProduto({
             ))}
           </select>
           <span className="mt-1 block text-xs leading-relaxed text-tinta-media">
-            Um produto pertence a um influencer so. E o regime dele que define
+            Um produto pertence a um influencer só. É o regime dele que define
             quais impostos incidem sobre este item.
           </span>
         </label>
@@ -464,9 +466,9 @@ function FormularioProduto({
         </div>
 
         <p className="text-xs leading-relaxed text-tinta-fraca">
-          Sao esses dois ids que ligam o cadastro as vendas. Deixando em branco,
-          o produto recebe um id interno e fica cadastrado, mas nao casa com
-          nenhum pedido ate os ids reais da Nuvemshop serem informados.
+          São esses dois ids que ligam o cadastro às vendas. Deixando em branco,
+          o produto recebe um id interno e fica cadastrado, mas não casa com
+          nenhum pedido até os ids reais da Nuvemshop serem informados.
         </p>
 
         {/* --- Impostos --------------------------------------------------- */}
@@ -478,7 +480,7 @@ function FormularioProduto({
           {!dono ? (
             <p className="text-sm text-tinta-media">
               Escolha o influencer dono acima. Os impostos aparecem sozinhos, a
-              partir do regime tributario dele.
+              partir do regime tributário dele.
             </p>
           ) : doRegime.length === 0 ? (
             <p className="text-sm text-tinta-media">
@@ -490,7 +492,7 @@ function FormularioProduto({
               <p className="mb-3 text-xs leading-relaxed text-tinta-media">
                 Preenchidos a partir do regime{" "}
                 <strong className="text-tinta">{ROTULO_REGIME[dono.regime]}</strong>,
-                de {dono.nome}. Desmarcar aqui tira o imposto so deste produto.
+                de {dono.nome}. Desmarcar aqui tira o imposto só deste produto.
               </p>
 
               <div className="grid gap-3 sm:grid-cols-2">
@@ -520,7 +522,7 @@ function FormularioProduto({
                         </span>
                         {!imposto.ativo && (
                           <span className="ml-1 text-xs font-normal text-naopago">
-                            (sem aliquota informada)
+                            (sem alíquota informada)
                           </span>
                         )}
                       </span>
@@ -538,8 +540,8 @@ function FormularioProduto({
               {dono.regime === "simples_nacional" && (
                 <p className="mt-4 border-t border-borda pt-3 text-xs leading-relaxed text-tinta-media">
                   No Simples Nacional, IRPJ, CSLL, PIS, COFINS, CPP, IPI e ICMS
-                  ja estao dentro da guia unica e por isso nao aparecem aqui --
-                  eles entram no calculo pela tabela do Anexo, sobre a receita
+                  já estão dentro da guia única e por isso não aparecem aqui --
+                  eles entram no cálculo pela tabela do Anexo, sobre a receita
                   inteira da marca.
                 </p>
               )}
@@ -550,7 +552,7 @@ function FormularioProduto({
         {/* --- Kit --------------------------------------------------------- */}
         <fieldset className="rounded-lg border border-borda bg-fundo px-5 py-4">
           <legend className="px-2 text-sm font-medium text-tinta">
-            Composicao
+            Composição
           </legend>
 
           <label className="flex items-start gap-2">
@@ -563,12 +565,12 @@ function FormularioProduto({
             />
             <span>
               <span className="block text-sm font-medium text-tinta">
-                Este item e vendido como kit
+                Este item é vendido como kit
               </span>
               <span className="block text-xs leading-relaxed text-tinta-media">
-                A Nuvemshop entrega o kit como um produto so. Informando os
+                A Nuvemshop entrega o kit como um produto só. Informando os
                 componentes, o painel baixa o estoque de cada um e soma o custo
-                de fabricacao real do kit.
+                de fabricação real do kit.
               </span>
             </span>
           </label>
@@ -652,13 +654,13 @@ function FormularioProduto({
             className="h-4 w-4 accent-[var(--color-tinta)]"
           />
           <span className="text-sm font-medium text-tinta">
-            Produto ativo (entra nos calculos do painel)
+            Produto ativo (entra nos cálculos do painel)
           </span>
         </label>
 
         <label className="block">
           <span className="text-sm font-medium text-tinta">
-            Observacao <span className="text-tinta-fraca">(opcional)</span>
+            Observação <span className="text-tinta-fraca">(opcional)</span>
           </span>
           <textarea
             name="observacao"

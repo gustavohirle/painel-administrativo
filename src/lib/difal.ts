@@ -16,7 +16,9 @@
  *    o STF suspendeu a exigencia na ADI 5464. Como o regime aqui e por
  *    influencer, isso sai de graca: marca no Simples fica fora da conta.
  *
- * 3. A base e o valor da operacao. A apuracao real usa base dupla (o imposto
+ * 3. A base e o valor da operacao SEM O FRETE cobrado do cliente, que fica
+ *    fora de todo imposto por decisao do cliente. A apuracao real usa base
+ *    dupla (o imposto
  *    entra na propria base), o que aumenta um pouco o valor devido -- este
  *    painel NAO faz o gross-up, e por isso o numero e conservador para menos.
  *    Esta dito na tela.
@@ -110,7 +112,7 @@ export function apurarDifal(
   let pedidosSemEstado = 0;
 
   for (const pedido of recebidos) {
-    const valor = paraNumero(pedido.total);
+    const valor = paraNumero(pedido.total) - paraNumero(pedido.shipping_cost_customer);
     const uf = normalizarUF(pedido.shipping_address?.province);
 
     if (!uf) {

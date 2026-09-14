@@ -46,7 +46,7 @@ export const MARCAS: MarcaCatalogo[] = [
     produtos: [
       {
         id: 1001,
-        nome: "Kit Reconstrucao Aurora",
+        nome: "Kit Reconstrução Aurora",
         sku: "AUR-KIT-REC",
         popularidade: 22,
         variantes: [
@@ -56,7 +56,7 @@ export const MARCAS: MarcaCatalogo[] = [
       },
       {
         id: 1002,
-        nome: "Shampoo Aurora Nutricao",
+        nome: "Shampoo Aurora Nutrição",
         sku: "AUR-SHP-NUT",
         popularidade: 30,
         variantes: [
@@ -66,7 +66,7 @@ export const MARCAS: MarcaCatalogo[] = [
       },
       {
         id: 1003,
-        nome: "Mascara Capilar Aurora",
+        nome: "Máscara Capilar Aurora",
         sku: "AUR-MSC-CAP",
         popularidade: 24,
         variantes: [
@@ -76,7 +76,7 @@ export const MARCAS: MarcaCatalogo[] = [
       },
       {
         id: 1004,
-        nome: "Oleo Finalizador Aurora",
+        nome: "Óleo Finalizador Aurora",
         sku: "AUR-OLE-FIN",
         popularidade: 14,
         variantes: [
@@ -97,14 +97,14 @@ export const MARCAS: MarcaCatalogo[] = [
     ],
   },
   {
-    nome: "Luma Cosmeticos",
+    nome: "Luma Cosméticos",
     participacao: 0.24,
     // Publico de maior renda: quase tudo no cartao, quase nada de boleto.
     mixPagamento: { credit_card: 0.72, pix: 0.23, boleto: 0.05 },
     produtos: [
       {
         id: 2001,
-        nome: "Serum Vitamina C Luma",
+        nome: "Sérum Vitamina C Luma",
         sku: "LUM-SER-VTC",
         popularidade: 28,
         variantes: [
@@ -134,7 +134,7 @@ export const MARCAS: MarcaCatalogo[] = [
       },
       {
         id: 2004,
-        nome: "Agua Micelar Luma",
+        nome: "Água Micelar Luma",
         sku: "LUM-AGM-500",
         popularidade: 16,
         variantes: [
@@ -148,7 +148,7 @@ export const MARCAS: MarcaCatalogo[] = [
         sku: "LUM-KIT-ROT",
         popularidade: 10,
         variantes: [
-          { id: 200501, rotulo: "Unico", preco: 389, custoFabricacao: 112.5 },
+          { id: 200501, rotulo: "Único", preco: 389, custoFabricacao: 112.5 },
         ],
       },
     ],
@@ -190,7 +190,7 @@ export const MARCAS: MarcaCatalogo[] = [
       },
       {
         id: 3004,
-        nome: "Shampoo Solido Verte",
+        nome: "Shampoo Sólido Verte",
         sku: "VER-SHP-SOL",
         popularidade: 14,
         variantes: [
@@ -200,7 +200,7 @@ export const MARCAS: MarcaCatalogo[] = [
       },
       {
         id: 3005,
-        nome: "Oleo Corporal Verte",
+        nome: "Óleo Corporal Verte",
         sku: "VER-OLE-COR",
         popularidade: 10,
         variantes: [
@@ -229,7 +229,7 @@ export const MARCAS: MarcaCatalogo[] = [
       },
       {
         id: 4002,
-        nome: "Tonico Barba Nitro",
+        nome: "Tônico Barba Nitro",
         sku: "NIT-TON-BAR",
         popularidade: 24,
         variantes: [
@@ -249,7 +249,7 @@ export const MARCAS: MarcaCatalogo[] = [
       },
       {
         id: 4004,
-        nome: "Tonico Capilar Nitro",
+        nome: "Tônico Capilar Nitro",
         sku: "NIT-TON-CAP",
         popularidade: 14,
         variantes: [
@@ -263,7 +263,7 @@ export const MARCAS: MarcaCatalogo[] = [
         sku: "NIT-KIT-BAR",
         popularidade: 10,
         variantes: [
-          { id: 400501, rotulo: "Unico", preco: 199, custoFabricacao: 63.8 },
+          { id: 400501, rotulo: "Único", preco: 199, custoFabricacao: 63.8 },
         ],
       },
     ],
@@ -275,7 +275,7 @@ export const MARCAS: MarcaCatalogo[] = [
     produtos: [
       {
         id: 5001,
-        nome: "Serum Retinol Petra",
+        nome: "Sérum Retinol Petra",
         sku: "PET-SER-RET",
         popularidade: 28,
         variantes: [
@@ -295,7 +295,7 @@ export const MARCAS: MarcaCatalogo[] = [
       },
       {
         id: 5003,
-        nome: "Oleo Facial Petra",
+        nome: "Óleo Facial Petra",
         sku: "PET-OLE-FAC",
         popularidade: 22,
         variantes: [
@@ -305,7 +305,7 @@ export const MARCAS: MarcaCatalogo[] = [
       },
       {
         id: 5004,
-        nome: "Mascara Ouro Petra",
+        nome: "Máscara Ouro Petra",
         sku: "PET-MSC-OUR",
         popularidade: 16,
         variantes: [
@@ -319,7 +319,7 @@ export const MARCAS: MarcaCatalogo[] = [
         sku: "PET-KIT-RIT",
         popularidade: 10,
         variantes: [
-          { id: 500501, rotulo: "Unico", preco: 899, custoFabricacao: 236.5 },
+          { id: 500501, rotulo: "Único", preco: 899, custoFabricacao: 236.5 },
         ],
       },
     ],

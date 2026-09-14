@@ -75,12 +75,12 @@ export default async function PaginaCustos({
       <main className="mx-auto max-w-[1400px] space-y-6 px-6 py-7">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-tinta xl:text-3xl">
-            Custos de fabricacao
+            Custos de fabricação
           </h1>
           <p className="mt-1 max-w-3xl text-sm text-tinta-media">
-            A Nuvemshop sabe por quanto cada produto foi vendido, mas nao sabe
+            A Nuvemshop sabe por quanto cada produto foi vendido, mas não sabe
             quanto ele custa para fabricar. Informe o custo por unidade aqui e o
-            painel passa a calcular a margem e o lucro de verdade. Referencia:{" "}
+            painel passa a calcular a margem e o lucro de verdade. Referência:{" "}
             {mesAnoLongo(mesSelecionado)}.
           </p>
         </div>
@@ -104,12 +104,12 @@ export default async function PaginaCustos({
           {podeVerFinanceiro ? (
             <>
               <NumeroDestaque
-                rotulo="Custo de fabricacao no mes"
+                rotulo="Custo de fabricação no mês"
                 valor={moedaRedonda(cmv.cmv)}
                 apoio="Somente dos pedidos efetivamente pagos"
               />
               <NumeroDestaque
-                rotulo="Margem de contribuicao"
+                rotulo="Margem de contribuição"
                 valor={moedaRedonda(margemBruta)}
                 apoio={`${percentual(razaoSegura(margemBruta, reconciliacao.receitaReal))} da receita real`}
                 cor="var(--color-real)"
@@ -117,7 +117,7 @@ export default async function PaginaCustos({
               <NumeroDestaque
                 rotulo="Receita sem custo informado"
                 valor={moeda(cmv.receitaSemCusto)}
-                apoio="Fica de fora do calculo de lucro"
+                apoio="Fica de fora do cálculo de lucro"
                 cor={
                   cmv.receitaSemCusto > 0
                     ? "var(--color-naopago)"
@@ -128,7 +128,7 @@ export default async function PaginaCustos({
           ) : (
             <>
               <NumeroDestaque
-                rotulo="Itens vendidos no mes"
+                rotulo="Itens vendidos no mês"
                 valor={inteiro(itens.reduce((s, i) => s + i.unidadesVendidas, 0))}
                 apoio="Unidades que sairam, somando o que foi dentro de kit"
               />
@@ -142,8 +142,8 @@ export default async function PaginaCustos({
         </div>
 
         <Cartao
-          titulo="Produtos vendidos no mes"
-          descricao="Ordenados por receita: cadastrar os primeiros da lista e o que mais muda o resultado."
+          titulo="Produtos vendidos no mês"
+          descricao="Ordenados por receita: cadastrar os primeiros da lista é o que mais muda o resultado."
         >
           <GestaoCustos
             itens={itens}

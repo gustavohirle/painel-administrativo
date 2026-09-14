@@ -86,7 +86,7 @@ export function GestaoDifal({ aliquotas, porEstado, ufOrigem }: GestaoDifalProps
       </div>
 
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[900px] border-collapse text-sm">
+        <table className="tabela-ancorada w-full min-w-[900px] border-collapse text-sm">
           <thead>
             <tr className="border-b border-borda-forte text-left text-xs uppercase tracking-wider text-tinta-fraca">
               <th className="py-2.5 pr-4 font-semibold">Estado</th>
@@ -96,9 +96,9 @@ export function GestaoDifal({ aliquotas, porEstado, ufOrigem }: GestaoDifalProps
               <th className="py-2.5 pr-4 text-right font-semibold">Pedidos</th>
               <th className="py-2.5 pr-4 text-right font-semibold">Receita</th>
               <th className="py-2.5 pr-4 text-right font-semibold">
-                DIFAL no mes
+                DIFAL no mês
               </th>
-              <th className="py-2.5 text-right font-semibold">Acao</th>
+              <th className="py-2.5 text-right font-semibold">Ação</th>
             </tr>
           </thead>
           <tbody>
@@ -158,7 +158,7 @@ export function GestaoDifal({ aliquotas, porEstado, ufOrigem }: GestaoDifalProps
                       <span className="flex items-center justify-end gap-2">
                         {!aliquota.confirmadoPeloContador && (
                           <span
-                            title="A aliquota deste estado ainda nao foi confirmada com o contador."
+                            title="A alíquota deste estado ainda não foi confirmada com o contador."
                             className="rounded-full border border-alerta-borda bg-alerta-fundo px-2 py-0.5 text-xs font-semibold text-naopago"
                           >
                             a confirmar
@@ -178,13 +178,15 @@ export function GestaoDifal({ aliquotas, porEstado, ufOrigem }: GestaoDifalProps
                   {aberto && (
                     <tr>
                       <td colSpan={8} className="p-0 pb-4">
+<div className="linha-de-edicao">
                         <FormularioAliquota
                           aliquota={aliquota}
                           interestadual={interestadual}
                           interna={interna}
                           aoFechar={() => setEditando(null)}
                         />
-                      </td>
+                      </div>
+</td>
                     </tr>
                   )}
                 </Fragment>
@@ -235,7 +237,7 @@ function FormularioAliquota({
           </h3>
           <p className="text-sm text-tinta-media">
             {interna
-              ? "Estado de origem da fabrica: a venda e interna e nao gera DIFAL."
+              ? "Estado de origem da fábrica: a venda é interna e não gera DIFAL."
               : `Aliquota interestadual aplicada: ${percentual(interestadual / 100, 0)}.`}
           </p>
         </div>
@@ -254,7 +256,7 @@ function FormularioAliquota({
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <label className="block">
             <span className="text-sm font-medium text-tinta">
-              Aliquota interna do estado
+              Alíquota interna do estado
             </span>
             <div className="mt-1 flex items-center gap-2 rounded-lg border border-borda-forte bg-superficie px-3 py-2 focus-within:border-tinta">
               <input
@@ -291,7 +293,7 @@ function FormularioAliquota({
             />
             <span>
               <span className="block text-sm font-medium text-tinta">
-                Ativo (entra no calculo do DIFAL)
+                Ativo (entra no cálculo do DIFAL)
               </span>
               <span className="block text-xs text-tinta-media">
                 Desmarcado, as vendas para este estado continuam aparecendo, mas
@@ -309,11 +311,11 @@ function FormularioAliquota({
             />
             <span>
               <span className="block text-sm font-medium text-tinta">
-                Aliquota confirmada pelo contador
+                Alíquota confirmada pelo contador
               </span>
               <span className="block text-xs text-tinta-media">
-                Enquanto estiver desmarcado, o painel avisa que o numero ainda e
-                o valor semeado, nao um confirmado.
+                Enquanto estiver desmarcado, o painel avisa que o número ainda é
+                o valor semeado, não um confirmado.
               </span>
             </span>
           </label>
@@ -321,7 +323,7 @@ function FormularioAliquota({
 
         <label className="block">
           <span className="text-sm font-medium text-tinta">
-            Observacao <span className="text-tinta-fraca">(opcional)</span>
+            Observação <span className="text-tinta-fraca">(opcional)</span>
           </span>
           <textarea
             name="observacao"
@@ -337,7 +339,7 @@ function FormularioAliquota({
             disabled={salvando}
             className="rounded-lg bg-tinta px-5 py-2.5 text-sm font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-50"
           >
-            {salvando ? "Salvando..." : "Salvar aliquota"}
+            {salvando ? "Salvando..." : "Salvar alíquota"}
           </button>
           {estado.mensagem && (
             <span
@@ -366,8 +368,8 @@ export function DifalPorEstado({
   if (comDifal.length === 0) {
     return (
       <p className="text-sm text-tinta-media">
-        Nenhum DIFAL no mes. Ou as vendas foram todas dentro do estado de
-        origem, ou as marcas estao no Simples Nacional -- optante nao recolhe
+        Nenhum DIFAL no mês. Ou as vendas foram todas dentro do estado de
+        origem, ou as marcas estão no Simples Nacional -- optante não recolhe
         DIFAL como remetente.
       </p>
     );
@@ -399,7 +401,7 @@ export function DifalPorEstado({
 
       {comDifal.length > 12 && (
         <p className="pt-1 text-xs text-tinta-fraca">
-          Mostrando os 12 maiores de {comDifal.length} estados com DIFAL no mes.
+          Mostrando os 12 maiores de {comDifal.length} estados com DIFAL no mês.
         </p>
       )}
     </div>

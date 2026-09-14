@@ -57,11 +57,11 @@ export function GestaoEstoque({ saldos }: { saldos: SaldoEstoque[] }) {
       {precisamAtencao.length > 0 && (
         <div className="rounded-lg border border-alerta-borda bg-alerta-fundo px-5 py-4">
           <p className="text-sm font-semibold text-naopago">
-            {precisamAtencao.length} item(ns) precisam de reposicao agora
+            {precisamAtencao.length} item(ns) precisam de reposição agora
           </p>
           <p className="mt-1 text-sm leading-relaxed text-tinta-media">
-            Saldo negativo indica que a contagem esta desatualizada ou que saiu
-            mais do que havia registrado. Saldo critico e o que cobre menos de
+            Saldo negativo indica que a contagem está desatualizada ou que saiu
+            mais do que havia registrado. Saldo crítico é o que cobre menos de
             uma semana no ritmo de venda atual.
           </p>
         </div>
@@ -76,7 +76,7 @@ export function GestaoEstoque({ saldos }: { saldos: SaldoEstoque[] }) {
             className="h-4 w-4 accent-[var(--color-tinta)]"
           />
           <span className="text-sm font-medium text-tinta">
-            So o que precisa de atencao
+            Só o que precisa de atenção
           </span>
         </label>
 
@@ -90,23 +90,23 @@ export function GestaoEstoque({ saldos }: { saldos: SaldoEstoque[] }) {
       </div>
 
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[980px] border-collapse text-sm">
+        <table className="tabela-ancorada w-full min-w-[980px] border-collapse text-sm">
           <thead>
             <tr className="border-b border-borda-forte text-left text-xs uppercase tracking-wider text-tinta-fraca">
               <th className="py-2.5 pr-4 font-semibold">Produto</th>
               <th className="py-2.5 pr-4 text-right font-semibold">
-                Ultima contagem
+                Última contagem
               </th>
               <th className="py-2.5 pr-4 text-right font-semibold">
-                Saiu desde entao
+                Saiu desde então
               </th>
               <th className="py-2.5 pr-4 text-right font-semibold">Saldo atual</th>
               <th className="py-2.5 pr-4 text-right font-semibold">
-                Vendas no mes
+                Vendas no mês
               </th>
               <th className="py-2.5 pr-4 text-right font-semibold">Cobertura</th>
-              <th className="py-2.5 pr-4 font-semibold">Situacao</th>
-              <th className="py-2.5 text-right font-semibold">Acao</th>
+              <th className="py-2.5 pr-4 font-semibold">Situação</th>
+              <th className="py-2.5 text-right font-semibold">Ação</th>
             </tr>
           </thead>
           <tbody>
@@ -189,11 +189,13 @@ export function GestaoEstoque({ saldos }: { saldos: SaldoEstoque[] }) {
                 {contando?.chave === saldo.chave && (
                   <tr>
                     <td colSpan={8} className="p-0 pb-4">
+<div className="linha-de-edicao">
                       <FormularioContagem
                         item={saldo}
                         aoFechar={() => setContando(null)}
                       />
-                    </td>
+                    </div>
+</td>
                   </tr>
                 )}
               </Fragment>
@@ -279,7 +281,7 @@ function FormularioContagem({
 
           <label className="block xl:col-span-2">
             <span className="text-sm font-medium text-tinta">
-              Observacao <span className="text-tinta-fraca">(opcional)</span>
+              Observação <span className="text-tinta-fraca">(opcional)</span>
             </span>
             <input
               name="observacao"
@@ -289,9 +291,9 @@ function FormularioContagem({
         </div>
 
         <p className="text-xs leading-relaxed text-tinta-fraca">
-          O painel guarda a contagem e a data, nao um saldo. O saldo atual e
+          O painel guarda a contagem e a data, não um saldo. O saldo atual é
           sempre a contagem menos o que saiu depois dela -- inclusive o que saiu
-          dentro de kits. Recontar nao apaga o historico.
+          dentro de kits. Recontar não apaga o histórico.
         </p>
 
         <div className="flex flex-wrap items-center gap-3">

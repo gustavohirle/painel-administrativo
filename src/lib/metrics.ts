@@ -7,6 +7,7 @@
  */
 
 import {
+  metodoDoPedido,
   paraNumero,
   type CarrinhoAbandonado,
   type Pedido,
@@ -68,6 +69,17 @@ export interface Reconciliacao {
   frete: number;
   /** recebido - frete. O numero que o cliente deveria estar olhando. */
   receitaReal: number;
+  /**
+   * Frete cobrado do cliente em TODOS os pedidos, pagos ou nao.
+   *
+   * O frete e cobrado por fora: num produto de R$ 100 com R$ 19 de frete, o
+   * cliente paga R$ 119, e os R$ 19 vao para a transportadora. Por isso ele nao
+   * entra na base da comissao nem dos impostos -- e a base "bruto" da comissao
+   * precisa do frete de todo pedido criado, nao so dos pagos.
+   */
+  freteTotal: number;
+  /** bruto - freteTotal: o faturamento de produto, sem o frete. */
+  brutoSemFrete: number;
   /** Contagens, para a leitura em quantidade de pedidos. */
   quantidade: {
     total: number;
@@ -85,6 +97,7 @@ export function reconciliar(pedidos: Pedido[]): Reconciliacao {
   let reembolsado = 0;
   let recebido = 0;
   let frete = 0;
+  let freteTotal = 0;
 
   const quantidade = {
     total: pedidos.length,
@@ -97,6 +110,7 @@ export function reconciliar(pedidos: Pedido[]): Reconciliacao {
   for (const pedido of pedidos) {
     const total = paraNumero(pedido.total);
     bruto += total;
+    freteTotal += paraNumero(pedido.shipping_cost_customer);
 
     switch (classificarPedido(pedido)) {
       case "cancelado":
@@ -127,6 +141,8 @@ export function reconciliar(pedidos: Pedido[]): Reconciliacao {
     recebido,
     frete,
     receitaReal: recebido - frete,
+    freteTotal,
+    brutoSemFrete: bruto - freteTotal,
     quantidade,
   };
 }
@@ -152,7 +168,8 @@ export function compararComissao(
   percentual: number,
 ): ComparativoComissao {
   const fracao = percentual / 100;
-  const comissaoSobreBruto = reconciliacao.bruto * fracao;
+  // Sem frete: ele e cobrado do cliente por fora e nao entra na comissao.
+  const comissaoSobreBruto = reconciliacao.brutoSemFrete * fracao;
   const comissaoSobreReal = reconciliacao.receitaReal * fracao;
   const diferencaMensal = comissaoSobreBruto - comissaoSobreReal;
 
@@ -172,6 +189,8 @@ export function compararComissao(
 export interface LinhaMarca {
   marca: string;
   bruto: number;
+  /** Faturamento bruto sem o frete cobrado do cliente: a base "bruto" da comissao. */
+  brutoSemFrete: number;
   /** Valor absoluto nao pago -- necessario para somar a linha de total. */
   naoPago: number;
   recebido: number;
@@ -209,6 +228,7 @@ export function agruparPorMarca(
     linhas.push({
       marca,
       bruto: r.bruto,
+      brutoSemFrete: r.brutoSemFrete,
       naoPago: r.naoPago,
       recebido: r.recebido,
       receitaReal: r.receitaReal,
@@ -245,7 +265,7 @@ export function agruparPorMetodoPagamento(
 ): LinhaMetodoPagamento[] {
   const grupos = new Map<string, Pedido[]>();
   for (const pedido of pedidos) {
-    const chave = pedido.payment_details.method ?? "other";
+    const chave = metodoDoPedido(pedido);
     const lista = grupos.get(chave);
     if (lista) lista.push(pedido);
     else grupos.set(chave, [pedido]);

@@ -24,13 +24,15 @@ export function SeletorMes({ meses, mesSelecionado }: SeletorMesProps) {
   }
 
   return (
-    <label className="flex items-center gap-2 text-sm">
-      <span className="font-medium text-tinta-media">Mes</span>
+    <label className="flex shrink-0 items-center gap-2 text-sm">
+      {/* No celular o rotulo sai: sao 34px disputando a linha com o selo de
+          demonstracao e o botao de sair, e o proprio "Set/26" ja diz o que e. */}
+      <span className="hidden font-medium text-tinta-media sm:inline">Mês</span>
       <select
         value={mesSelecionado}
         onChange={(e) => trocar(e.target.value)}
         disabled={pendente}
-        className="rounded-lg border border-borda-forte bg-superficie px-3 py-1.5 text-sm font-semibold text-tinta shadow-sm disabled:opacity-60"
+        className="rounded-lg border border-borda-forte bg-superficie px-2 py-1.5 text-sm font-semibold text-tinta shadow-sm disabled:opacity-60 sm:px-3"
       >
         {meses.map((mes) => (
           <option key={mes} value={mes}>

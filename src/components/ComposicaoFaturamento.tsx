@@ -11,7 +11,7 @@ import type { DemonstrativoResultado } from "@/lib/costing";
  * A pizza so fecha porque as parcelas somam EXATAMENTE o bruto:
  *
  *   bruto = nao pago + cancelado + reembolsado + frete + impostos + DIFAL
- *         + fabricacao + comissoes + lucro
+ *         + taxa + fabricacao + influencers + socios + lucro
  *
  * Se mexer nessa conta, a pizza deixa de fechar -- e e o primeiro lugar onde
  * o erro aparece.
@@ -42,18 +42,32 @@ function montarFatias(dre: DemonstrativoResultado): Fatia[] {
   const outrosImpostos = Math.max(0, dre.totalImpostos - difal);
 
   return [
-    { rotulo: "Nao pagos", valor: r.naoPago, cor: "var(--color-naopago)" },
+    { rotulo: "Não pagos", valor: r.naoPago, cor: "var(--color-naopago)" },
     { rotulo: "Cancelados", valor: r.cancelado, cor: "var(--color-cancelado)" },
     { rotulo: "Reembolsados", valor: r.reembolsado, cor: "var(--color-reembolsado)" },
     { rotulo: "Frete", valor: r.frete, cor: "var(--color-frete)" },
     { rotulo: "Impostos", valor: outrosImpostos, cor: "var(--color-imposto)" },
     { rotulo: "DIFAL", valor: difal, cor: "var(--color-difal)" },
-    { rotulo: "Fabricacao", valor: dre.cmv.cmv, cor: "var(--color-custo)" },
-    { rotulo: "Comissoes", valor: dre.totalComissoes, cor: "var(--color-comissao)" },
+    // Fatia propria, nao somada aos impostos: taxa e preco de servico, a unica
+    // das duas que da para renegociar.
     {
-      rotulo: "Lucro operacional",
+      rotulo: "Taxa Nuvemshop",
+      valor: dre.totalTaxasPlataforma,
+      cor: "var(--color-taxa)",
+    },
+    { rotulo: "Fabricação", valor: dre.cmv.cmv, cor: "var(--color-custo)" },
+    // Comissao + despesas cadastradas. A pizza so fecha se a fatia carregar as
+    // duas, porque as duas saem do lucro.
+    { rotulo: "Influencers", valor: dre.totalInfluencers, cor: "var(--color-comissao)" },
+    // Custo fixo sobre o recebido; sai antes do lucro, entao tem fatia propria.
+    { rotulo: "Sócios", valor: dre.participacaoSocios, cor: "var(--color-socios)" },
+    // Com prejuizo o valor fica negativo -- e por isso nao entra no desenho
+    // (so fatias positivas) --, mas a legenda tem que dizer "prejuizo", em
+    // vermelho: "Lucro operacional" verde com numero negativo se contradiz.
+    {
+      rotulo: dre.lucroOperacional < 0 ? "Prejuízo operacional" : "Lucro operacional",
       valor: dre.lucroOperacional,
-      cor: "var(--color-real)",
+      cor: dre.lucroOperacional < 0 ? "var(--color-naopago)" : "var(--color-real)",
       resultado: true,
     },
   ];
@@ -129,7 +143,7 @@ export function ComposicaoFaturamento({ dre }: { dre: DemonstrativoResultado }) 
 
   /*
    * Com prejuizo nao ha fatia de lucro: as deducoes sozinhas ja passam de 100%
-   * do bruto. A pizza mostra a proporcao entre elas e o prejuizo sai num aviso
+   * do bruto. A pizza mostra a proporção entre elas e o prejuizo sai num aviso
    * separado -- em vez de uma fatia negativa, que nao existe.
    */
   const visiveis = fatias.filter((f) => f.valor > 0);
@@ -138,12 +152,35 @@ export function ComposicaoFaturamento({ dre }: { dre: DemonstrativoResultado }) 
 
   return (
     <div>
+      {/*
+        Com prejuizo, o percentual de cada fatia passa a ser sobre a SOMA DAS
+        DEDUCOES, nao sobre o bruto -- e essa soma e maior que o bruto, senao
+        nao haveria prejuizo. Dizer "de cada real faturado" ali afirmaria que
+        as fatias cabem dentro do faturamento, que e justamente o que deixou de
+        ser verdade.
+      */}
       <p className="text-sm text-tinta-media">
-        De cada real dos{" "}
-        <strong className="numerico font-semibold text-tinta">
-          {moedaRedonda(r.bruto)}
-        </strong>{" "}
-        faturados no mes:
+        {prejuizo ? (
+          <>
+            As deduções do mês somam{" "}
+            <strong className="numerico font-semibold text-tinta">
+              {moedaRedonda(total)}
+            </strong>{" "}
+            contra{" "}
+            <strong className="numerico font-semibold text-tinta">
+              {moedaRedonda(r.bruto)}
+            </strong>{" "}
+            faturados. A pizza mostra a proporção entre elas:
+          </>
+        ) : (
+          <>
+            De cada real dos{" "}
+            <strong className="numerico font-semibold text-tinta">
+              {moedaRedonda(r.bruto)}
+            </strong>{" "}
+            faturados no mês:
+          </>
+        )}
       </p>
 
       <div className="mt-5 flex flex-col items-center gap-8 xl:flex-row xl:gap-10">
@@ -192,44 +229,55 @@ export function ComposicaoFaturamento({ dre }: { dre: DemonstrativoResultado }) 
         {/* --- Legenda ---------------------------------------------------- */}
         <div className="w-full flex-1">
           <div className="grid gap-x-8 gap-y-3 sm:grid-cols-2">
-            {fatias.map((fatia) => (
-              <div
-                key={fatia.rotulo}
-                className={`flex items-baseline gap-2.5 ${
-                  fatia.resultado ? "rounded-md bg-real-claro px-2.5 py-1.5" : ""
-                }`}
-              >
-                <span
-                  className="mt-1 h-3 w-3 shrink-0 rounded-sm"
-                  style={{ backgroundColor: fatia.cor }}
-                />
-                <span className="min-w-0 flex-1">
-                  <span
-                    className={`block text-sm ${
-                      fatia.resultado
-                        ? "font-semibold text-real"
-                        : "font-medium text-tinta"
-                    }`}
-                  >
-                    {fatia.rotulo}
-                  </span>
-                  <span
-                    className={`numerico block text-base font-semibold ${
-                      fatia.resultado ? "text-real" : "text-tinta"
-                    }`}
-                  >
-                    {moeda(fatia.valor)}
-                  </span>
-                </span>
-                <span
-                  className={`numerico shrink-0 text-sm font-semibold ${
-                    fatia.resultado ? "text-real" : "text-tinta-media"
+            {fatias.map((fatia) => {
+              // O rotulo ja diz "prejuizo"; o valor sai sem sinal para nao
+              // virar "prejuizo de menos R$ 75 mil".
+              const negativo = fatia.resultado === true && fatia.valor < 0;
+              const corResultado = negativo ? "text-naopago" : "text-real";
+
+              return (
+                <div
+                  key={fatia.rotulo}
+                  className={`flex items-baseline gap-2.5 ${
+                    fatia.resultado
+                      ? `rounded-md px-2.5 py-1.5 ${
+                          negativo ? "border border-alerta-borda bg-alerta-fundo" : "bg-real-claro"
+                        }`
+                      : ""
                   }`}
                 >
-                  {percentual(razaoSegura(fatia.valor, total))}
-                </span>
-              </div>
-            ))}
+                  <span
+                    className="mt-1 h-3 w-3 shrink-0 rounded-sm"
+                    style={{ backgroundColor: fatia.cor }}
+                  />
+                  <span className="min-w-0 flex-1">
+                    <span
+                      className={`block text-sm ${
+                        fatia.resultado
+                          ? `font-semibold ${corResultado}`
+                          : "font-medium text-tinta"
+                      }`}
+                    >
+                      {fatia.rotulo}
+                    </span>
+                    <span
+                      className={`numerico block text-base font-semibold ${
+                        fatia.resultado ? corResultado : "text-tinta"
+                      }`}
+                    >
+                      {moeda(Math.abs(fatia.valor))}
+                    </span>
+                  </span>
+                  <span
+                    className={`numerico shrink-0 text-sm font-semibold ${
+                      fatia.resultado ? corResultado : "text-tinta-media"
+                    }`}
+                  >
+                    {percentual(razaoSegura(Math.abs(fatia.valor), total))}
+                  </span>
+                </div>
+              );
+            })}
           </div>
 
           {/*
@@ -255,16 +303,19 @@ export function ComposicaoFaturamento({ dre }: { dre: DemonstrativoResultado }) 
 
       {prejuizo && (
         <p className="mt-4 rounded-lg border border-alerta-borda bg-alerta-fundo px-4 py-3 text-sm font-semibold text-naopago">
-          As deducoes passaram do faturamento: prejuizo operacional de{" "}
+          As deduções passaram do faturamento: prejuízo operacional de{" "}
           <span className="numerico">{moeda(Math.abs(dre.lucroOperacional))}</span>{" "}
-          no mes. Por isso nao ha fatia de lucro na pizza.
+          no mês. Por isso não há fatia de lucro na pizza.
         </p>
       )}
 
       <p className="mt-5 text-xs leading-relaxed text-tinta-fraca">
-        As fatias somam exatamente o faturamento bruto. O DIFAL aparece separado
-        dos demais impostos por ser devido ao estado de DESTINO, e nao ao de
-        origem. A tabela do raio-x, logo abaixo, traz a mesma conta em sequencia.
+        {prejuizo
+          ? "As fatias somam as deduções do mês, que passaram do faturamento bruto -- a diferença é o prejuízo acima. "
+          : "As fatias somam exatamente o faturamento bruto. "}
+        O DIFAL aparece separado
+        dos demais impostos por ser devido ao estado de DESTINO, e não ao de
+        origem. A tabela do raio-x, logo abaixo, traz a mesma conta em sequência.
       </p>
     </div>
   );

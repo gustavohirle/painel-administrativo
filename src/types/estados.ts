@@ -3,7 +3,7 @@
  *
  * AVISO QUE VALE PARA O ARQUIVO INTEIRO: as aliquotas semeadas sao PONTO DE
  * PARTIDA, nao apuracao. Varios estados mexeram nas suas entre 2023 e 2025, e
- * algumas ja incluem fundo de combate a pobreza enquanto outras nao. Toda
+ * algumas ja incluem fundo de combate à pobreza enquanto outras nao. Toda
  * aliquota nasce com `confirmadoPeloContador: false` e e editavel na tela --
  * o painel nunca apresenta numero fiscal como definitivo.
  */
@@ -22,7 +22,7 @@ export interface EstadoBrasileiro {
   /**
    * Aliquota interna modal de ICMS, em percentual.
    *
-   * Onde o estado cobra fundo de combate a pobreza sobre a operacao, o valor
+   * Onde o estado cobra fundo de combate à pobreza sobre a operacao, o valor
    * ja vem somado -- e por isso alguns aparecem com casa decimal.
    */
   aliquotaInterna: number;
@@ -78,14 +78,14 @@ export function nomeDoEstado(uf: string): string {
  * Nome por extenso -> sigla, sem acento e sem depender de maiuscula.
  *
  * A Nuvemshop devolve `province` ora como "SP", ora como "Sao Paulo", ora com
- * acento ("São Paulo"). Normalizar num lugar so evita o estado virar tres
+ * acento ("Sao Paulo"). Normalizar num lugar so evita o estado virar tres
  * linhas diferentes no relatorio.
  */
 const POR_NOME = new Map(
   ESTADOS.map((e) => [
     e.nome
       .normalize("NFD")
-      .replace(/[̀-ͯ]/g, "")
+      .replace(/[\u0300-\u036f]/g, "")
       .toLowerCase(),
     e.uf,
   ]),
@@ -103,7 +103,7 @@ export function normalizarUF(province: string | null | undefined): UF | null {
 
   const semAcento = limpo
     .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "")
+    .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase();
 
   return POR_NOME.get(semAcento) ?? null;

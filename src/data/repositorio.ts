@@ -10,13 +10,26 @@
  */
 
 import type { CustoProduto, EntradaCustoProduto } from "@/types/dominio";
-import type { EntradaInfluencer, Influencer } from "@/types/dominio";
+import type {
+  DespesaInfluencer,
+  EntradaDespesaInfluencer,
+  EntradaInfluencer,
+  Influencer,
+} from "@/types/dominio";
 import type {
   AliquotaEstado,
   EntradaAliquotaEstado,
   EntradaImposto,
   Imposto,
 } from "@/types/fiscal";
+import type {
+  EntradaOrdem,
+  OrdemFabricacao,
+} from "@/types/ordemFabricacao";
+import type {
+  EntradaTaxaPlataforma,
+  TaxaPlataforma,
+} from "@/types/plataforma";
 import type {
   ContagemEstoque,
   EntradaContagemEstoque,
@@ -38,6 +51,14 @@ export interface RepositorioCadastros {
   salvarInfluencer(entrada: EntradaInfluencer, id?: string): Promise<Influencer>;
   removerInfluencer(id: string): Promise<void>;
 
+  /** Despesas de influencer de todos os meses. Quem separa por mes e a DRE. */
+  listarDespesasInfluencer(): Promise<DespesaInfluencer[]>;
+  salvarDespesaInfluencer(
+    entrada: EntradaDespesaInfluencer,
+    id?: string,
+  ): Promise<DespesaInfluencer>;
+  removerDespesaInfluencer(id: string): Promise<void>;
+
   // --- Impostos -----------------------------------------------------------
   listarImpostos(): Promise<Imposto[]>;
   salvarImposto(entrada: EntradaImposto, id?: string): Promise<Imposto>;
@@ -49,6 +70,11 @@ export interface RepositorioCadastros {
   salvarAliquotaEstadual(entrada: EntradaAliquotaEstado): Promise<AliquotaEstado>;
 
   // --- Produtos e kits ----------------------------------------------------
+  /** Taxas de plataforma e meio de pagamento. Chave: o metodo. */
+  listarTaxasPlataforma(): Promise<TaxaPlataforma[]>;
+  /** Salvar duas vezes o mesmo metodo atualiza, nao duplica. */
+  salvarTaxaPlataforma(entrada: EntradaTaxaPlataforma): Promise<TaxaPlataforma>;
+
   listarProdutos(): Promise<Produto[]>;
   salvarProduto(entrada: EntradaProduto, id?: string): Promise<Produto>;
   removerProduto(id: string): Promise<void>;
@@ -57,6 +83,28 @@ export interface RepositorioCadastros {
   listarContagens(): Promise<ContagemEstoque[]>;
   salvarContagem(entrada: EntradaContagemEstoque): Promise<ContagemEstoque>;
   removerContagem(id: string): Promise<void>;
+
+  // --- Ordens de fabricacao -----------------------------------------------
+
+  listarOrdens(): Promise<OrdemFabricacao[]>;
+  buscarOrdemPorId(id: string): Promise<OrdemFabricacao | null>;
+  /**
+   * Busca pelo token do link de assinatura.
+   *
+   * E um metodo separado de proposito, e nao um filtro sobre `listarOrdens`:
+   * a pagina publica de assinatura NAO pode carregar a lista inteira de ordens
+   * para achar uma. Aqui o repositorio devolve uma ou nenhuma.
+   */
+  buscarOrdemPorToken(token: string): Promise<OrdemFabricacao | null>;
+  criarOrdem(entrada: EntradaOrdem): Promise<OrdemFabricacao>;
+  /**
+   * Grava a ordem inteira, por id.
+   *
+   * Nao ha `salvarOrdem(entrada)` como nos outros cadastros porque ordem nao
+   * se edita: o unico caminho e criar e depois fechar (aprovando, recusando ou
+   * cancelando). Quem chama monta o registro fechado e grava de uma vez.
+   */
+  gravarOrdem(ordem: OrdemFabricacao): Promise<OrdemFabricacao>;
 
   // --- Usuarios -----------------------------------------------------------
   listarUsuarios(): Promise<Usuario[]>;

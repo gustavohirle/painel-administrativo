@@ -24,7 +24,7 @@ export function FormularioLogin({
     <div className="w-full max-w-md">
       <form action={acao} className="space-y-4">
         <label className="block">
-          <span className="text-sm font-medium text-tinta">Usuario</span>
+          <span className="text-sm font-medium text-tinta">Usuário</span>
           <input
             name="usuario"
             autoComplete="username"
@@ -72,11 +72,11 @@ export function FormularioLogin({
       {credenciais.length > 0 && (
         <div className="mt-8 rounded-xl border border-borda bg-fundo p-5">
           <p className="text-sm font-semibold text-tinta">
-            Credenciais de demonstracao
+            Credenciais de demonstração
           </p>
           <p className="mt-1 text-xs leading-relaxed text-tinta-media">
             Clique para preencher. Os dois perfis existem para mostrar que quem
-            cuida do estoque nao enxerga nenhum numero financeiro.
+            cuida do estoque não enxerga nenhum número financeiro.
           </p>
 
           <div className="mt-3 space-y-2">

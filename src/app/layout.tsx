@@ -1,4 +1,7 @@
 import type { Metadata, Viewport } from "next";
+import { Suspense } from "react";
+
+import { IndicadorNavegacao } from "@/components/IndicadorNavegacao";
 
 import "./globals.css";
 
@@ -18,7 +21,14 @@ export default function RootLayout({
 }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="pt-BR">
-      <body className="min-h-screen antialiased">{children}</body>
+      <body className="min-h-screen antialiased">
+        {/* Suspense: o indicador le a URL (useSearchParams), o que sem limite
+            obrigaria toda pagina estatica a renderizar no navegador. */}
+        <Suspense fallback={null}>
+          <IndicadorNavegacao />
+        </Suspense>
+        {children}
+      </body>
     </html>
   );
 }

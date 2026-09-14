@@ -80,17 +80,17 @@ export function GestaoCustos({
                 <strong className="numerico text-tinta">
                   {moeda(receitaSemCusto)}
                 </strong>{" "}
-                de receita no mes, ou{" "}
+                de receita no mês, ou{" "}
                 <strong className="numerico text-tinta">
                   {percentual(razaoSegura(receitaSemCusto, receitaTotal))}
                 </strong>{" "}
-                do total vendido. Enquanto nao forem informados, esses itens ficam
-                de fora do calculo de lucro.
+                do total vendido. Enquanto não forem informados, esses itens ficam
+                de fora do cálculo de lucro.
               </>
             ) : (
               <>
-                Enquanto o custo desses itens nao for informado, eles ficam de
-                fora do calculo de resultado da empresa.
+                Enquanto o custo desses itens não for informado, eles ficam de
+                fora do cálculo de resultado da empresa.
               </>
             )}
           </p>
@@ -130,19 +130,19 @@ export function GestaoCustos({
       </div>
 
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[760px] border-collapse text-sm">
+        <table className="tabela-ancorada w-full min-w-[760px] border-collapse text-sm">
           <thead>
             <tr className="border-b border-borda-forte text-left text-xs uppercase tracking-wider text-tinta-fraca">
               <th className="py-2.5 pr-4 font-semibold">Produto</th>
               <th className="py-2.5 pr-4 text-right font-semibold">Unidades</th>
               {podeVerFinanceiro && (
-                <th className="py-2.5 pr-4 text-right font-semibold">Preco medio</th>
+                <th className="py-2.5 pr-4 text-right font-semibold">Preço médio</th>
               )}
-              <th className="py-2.5 pr-4 text-right font-semibold">Custo unitario</th>
+              <th className="py-2.5 pr-4 text-right font-semibold">Custo unitário</th>
               {podeVerFinanceiro && (
                 <th className="py-2.5 pr-4 text-right font-semibold">Margem</th>
               )}
-              <th className="py-2.5 text-right font-semibold">Acao</th>
+              <th className="py-2.5 text-right font-semibold">Ação</th>
             </tr>
           </thead>
           <tbody>
@@ -179,7 +179,7 @@ export function GestaoCustos({
                     <td className="numerico py-3 pr-4 text-right">
                       {item.custoUnitario === null ? (
                         <span className="text-xs font-semibold uppercase text-naopago">
-                          nao cadastrado
+                          não cadastrado
                         </span>
                       ) : (
                         <span className="text-tinta">{moeda(item.custoUnitario)}</span>
@@ -220,13 +220,15 @@ export function GestaoCustos({
                   {aberto && (
                     <tr>
                       <td colSpan={colunas} className="p-0 pb-4">
+<div className="linha-de-edicao">
                         <FormularioCusto
                           item={item}
                           ficha={fichaDe(item)}
                           podeVerFinanceiro={podeVerFinanceiro}
                           aoFechar={() => setEditando(null)}
                         />
-                      </td>
+                      </div>
+</td>
                     </tr>
                   )}
                 </Fragment>
@@ -298,7 +300,7 @@ function FormularioCusto({
             {podeVerFinanceiro && (
               <>
                 {" "}
-                Preco medio de venda:{" "}
+                Preço médio de venda:{" "}
                 <strong className="numerico text-tinta">
                   {moeda(item.precoMedio)}
                 </strong>

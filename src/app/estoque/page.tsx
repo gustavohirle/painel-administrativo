@@ -74,10 +74,10 @@ export default async function PaginaEstoque({
           <NumeroDestaque
             rotulo="Itens controlados"
             valor={inteiro(resumo.itens)}
-            apoio="Kits sao montados sob demanda e nao tem saldo proprio"
+            apoio="Kits são montados sob demanda e não têm saldo próprio"
           />
           <NumeroDestaque
-            rotulo="Precisam de reposicao"
+            rotulo="Precisam de reposição"
             valor={inteiro(resumo.negativos + resumo.criticos)}
             apoio="Saldo negativo ou cobertura abaixo de uma semana"
             cor={
@@ -87,14 +87,14 @@ export default async function PaginaEstoque({
             }
           />
           <NumeroDestaque
-            rotulo="Em atencao"
+            rotulo="Em atenção"
             valor={inteiro(resumo.baixos)}
-            apoio="Cobertura entre uma e tres semanas"
+            apoio="Cobertura entre uma e três semanas"
           />
           <NumeroDestaque
             rotulo="Nunca contados"
             valor={inteiro(resumo.semContagem)}
-            apoio="Sem contagem, nao ha saldo a calcular"
+            apoio="Sem contagem, não há saldo a calcular"
             cor={
               resumo.semContagem > 0 ? "var(--color-naopago)" : "var(--color-tinta)"
             }
@@ -103,7 +103,7 @@ export default async function PaginaEstoque({
 
         <Cartao
           titulo="Saldo por item"
-          descricao="Saldo atual e a ultima contagem menos tudo que saiu depois dela."
+          descricao="Saldo atual é a última contagem menos tudo que saiu depois dela."
         >
           <GestaoEstoque saldos={saldos} />
         </Cartao>

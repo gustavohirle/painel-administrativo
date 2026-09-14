@@ -9,6 +9,12 @@
  * Como em `metrics.ts`: nada de React, nada de I/O.
  */
 
+import {
+  mesDaDespesa,
+  type DespesaAtribuida,
+  type DespesaInfluencer,
+} from "@/types/dominio";
+import { chaveMes } from "@/lib/metrics";
 import { paraNumero, type Pedido } from "@/types/nuvemshop";
 import {
   custoUnitarioTotal,
@@ -21,6 +27,7 @@ import {
   PROFUNDIDADE_MAXIMA_KIT,
   type Produto,
 } from "@/types/produto";
+import { PERCENTUAL_PARTICIPACAO_SOCIOS } from "@/lib/config";
 import { razaoSegura } from "@/lib/format";
 import {
   pedidosRecebidos,
@@ -34,6 +41,8 @@ import {
   type IndiceProdutos,
   type ResultadoImpostos,
 } from "@/lib/impostos";
+import { taxaDoPedido, type ResultadoTaxasPlataforma } from "@/lib/plataforma";
+import type { TaxaPlataforma } from "@/types/plataforma";
 
 // ---------------------------------------------------------------------------
 // Indice de custos
@@ -240,15 +249,17 @@ export function calcularComissoesPorInfluencer(
     if (!r) continue;
 
     const fracao = influencer.percentual / 100;
+    /*
+     * O frete fica FORA de toda base. Ele e cobrado do cliente por fora (produto
+     * de R$ 100 + R$ 19 de frete) e vai para a transportadora: nao e venda do
+     * influencer. Por isso "bruto" e o faturamento sem frete, e "recebido" sem
+     * frete coincide com a receita real.
+     */
     const valorBase =
-      influencer.baseComissao === "bruto"
-        ? r.bruto
-        : influencer.baseComissao === "recebido"
-          ? r.recebido
-          : r.receitaReal;
+      influencer.baseComissao === "bruto" ? r.brutoSemFrete : r.receitaReal;
 
     const valorComissao = valorBase * fracao;
-    const comissaoSeSobreBruto = r.bruto * fracao;
+    const comissaoSeSobreBruto = r.brutoSemFrete * fracao;
 
     linhas.push({
       influencerId: influencer.id,
@@ -270,6 +281,121 @@ export function totalComissoes(linhas: ComissaoInfluencer[]): number {
   return linhas.reduce((soma, l) => soma + l.valorComissao, 0);
 }
 
+/**
+ * Despesas de influencer que pertencem a este conjunto de pedidos.
+ *
+ * A DRE nao recebe periodo nem marca: recebe PEDIDOS, e o periodo e as marcas
+ * sao os deles. A despesa segue a mesma regra, e e isso que faz o lucro de uma
+ * marca no relatorio bater com o da tela inicial: entra se o mes dela tem
+ * pedido no conjunto E se o influencer dela e de uma marca com pedido no
+ * conjunto.
+ *
+ * Consequencia assumida: despesa num mes em que a marca nao vendeu nada nao
+ * entra. A comissao desse mes tambem seria zero e a marca nem apareceria.
+ *
+ * Despesa COMPARTILHADA ainda nao dividida nao tem dono nem marca, e fica de
+ * fora: quem chama passa as despesas por `ratearDespesas` antes.
+ */
+export function despesasQueCabem<T extends DespesaInfluencer>(
+  despesas: T[],
+  pedidos: Pedido[],
+  influencers: Influencer[],
+): T[] {
+  if (despesas.length === 0 || pedidos.length === 0) return [];
+
+  const meses = new Set(pedidos.map((p) => chaveMes(p.created_at)));
+  const marcas = new Set(pedidos.map((p) => p.marca));
+  const marcaDoInfluencer = new Map(influencers.map((i) => [i.id, i.marca]));
+
+  return despesas.filter((despesa) => {
+    if (despesa.influencerId === null) return false;
+    const marca = marcaDoInfluencer.get(despesa.influencerId);
+    return marca !== undefined && marcas.has(marca) && meses.has(mesDaDespesa(despesa));
+  });
+}
+
+/**
+ * Da dono a toda despesa: a propria passa igual, e cada COMPARTILHADA vira uma
+ * parte por influencer, proporcional ao faturamento SEM FRETE da marca dele no mes
+ * da despesa.
+ *
+ * Recebe TODOS os pedidos, nao o recorte da tela. A proporcao e a do mes
+ * inteiro; dividida sobre um recorte, a mesma despesa daria partes diferentes
+ * no painel e no relatorio filtrado por marca.
+ *
+ * Regras:
+ * - so recebe parte influencer ATIVO, e por marca so o primeiro ativo -- a
+ *   mesma regra de "um influencer por marca" da secao 5.9;
+ * - marca sem faturamento no mes nao recebe parte;
+ * - as partes sao arredondadas em centavos e a sobra do arredondamento vai
+ *   para a maior, para a soma fechar exatamente no total cadastrado;
+ * - mes sem faturamento nenhum nao gera parte: nao ha a quem atribuir.
+ *
+ * Nada disto e gravado. Muda a venda, muda a divisao na proxima leitura -- e o
+ * "atualizar toda vez" que o cliente pediu, sem registro para ficar velho.
+ */
+export function ratearDespesas(
+  despesas: DespesaInfluencer[],
+  pedidos: Pedido[],
+  influencers: Influencer[],
+): DespesaAtribuida[] {
+  const brutoPorMesEMarca = new Map<string, number>();
+  if (despesas.some((d) => d.influencerId === null)) {
+    for (const pedido of pedidos) {
+      const chave = `${chaveMes(pedido.created_at)}|${pedido.marca}`;
+      // Faturamento sem frete: o frete e do cliente, nao do influencer.
+      const semFrete = paraNumero(pedido.total) - paraNumero(pedido.shipping_cost_customer);
+      brutoPorMesEMarca.set(chave, (brutoPorMesEMarca.get(chave) ?? 0) + semFrete);
+    }
+  }
+
+  const donos: Influencer[] = [];
+  const marcasComDono = new Set<string>();
+  for (const influencer of influencers) {
+    if (!influencer.ativo || marcasComDono.has(influencer.marca)) continue;
+    marcasComDono.add(influencer.marca);
+    donos.push(influencer);
+  }
+
+  const atribuidas: DespesaAtribuida[] = [];
+
+  for (const despesa of despesas) {
+    if (despesa.influencerId !== null) {
+      atribuidas.push({ ...despesa, influencerId: despesa.influencerId, rateio: null });
+      continue;
+    }
+
+    const mes = mesDaDespesa(despesa);
+    const pesos = donos
+      .map((influencer) => ({
+        influencer,
+        bruto: brutoPorMesEMarca.get(`${mes}|${influencer.marca}`) ?? 0,
+      }))
+      .filter((p) => p.bruto > 0)
+      .sort((a, b) => b.bruto - a.bruto);
+
+    const soma = pesos.reduce((s, p) => s + p.bruto, 0);
+    if (soma <= 0) continue;
+
+    const totalCentavos = Math.round(despesa.valor * 100);
+    const centavos = pesos.map((p) => Math.floor((totalCentavos * p.bruto) / soma));
+    const sobra = totalCentavos - centavos.reduce((s, c) => s + c, 0);
+    centavos[0] = (centavos[0] ?? 0) + sobra;
+
+    pesos.forEach((p, n) => {
+      atribuidas.push({
+        ...despesa,
+        id: `${despesa.id}:${p.influencer.id}`,
+        influencerId: p.influencer.id,
+        valor: (centavos[n] ?? 0) / 100,
+        rateio: { despesaId: despesa.id, total: despesa.valor, fracao: p.bruto / soma },
+      });
+    });
+  }
+
+  return atribuidas;
+}
+
 // ---------------------------------------------------------------------------
 // DRE -- o raio-x completo
 // ---------------------------------------------------------------------------
@@ -280,17 +406,37 @@ export interface DemonstrativoResultado {
   comissoes: ComissaoInfluencer[];
   /** Soma das comissoes devidas pelos contratos cadastrados. */
   totalComissoes: number;
+  /** Despesas de influencer do periodo e das marcas destes pedidos. */
+  despesasInfluencers: DespesaInfluencer[];
+  totalDespesasInfluencers: number;
+  /**
+   * totalComissoes + totalDespesasInfluencers: tudo que os influencers
+   * custaram. E o valor da fatia da pizza -- ela so fecha se carregar os dois,
+   * porque os dois saem do lucro.
+   */
+  totalInfluencers: number;
 
   /** Apuracao fiscal do periodo. `null` quando nao ha cadastro de impostos. */
   impostos: ResultadoImpostos | null;
   /** DAS + tributos fora da guia unica. */
   totalImpostos: number;
+
   /**
-   * receitaReal - impostos.
+   * Taxas da plataforma e do gateway. `null` quando nao ha cadastro.
+   *
+   * Entra na conta ao lado dos impostos, e nao junto deles, porque nao e
+   * tributo: e preco de servico, negociavel, retido no ato da venda. Somar as
+   * duas coisas numa fatia so esconderia a unica das duas que da para
+   * renegociar.
+   */
+  taxasPlataforma: ResultadoTaxasPlataforma | null;
+  totalTaxasPlataforma: number;
+  /**
+   * receitaReal - impostos - taxas de plataforma.
    *
    * Repare que `receitaReal` continua sendo `recebido - frete`, como manda a
-   * secao 5.1: e o numero que sustenta a comparacao de comissao. O imposto
-   * entra como uma deducao DEPOIS dele, para nao mexer naquela tese.
+   * secao 5.1: e o numero que sustenta a comparacao de comissao. Imposto e
+   * taxa entram como deducoes DEPOIS dele, para nao mexer naquela tese.
    */
   receitaLiquida: number;
 
@@ -298,7 +444,15 @@ export interface DemonstrativoResultado {
   margemContribuicao: number;
   /** Fracao: margemContribuicao / receitaReal */
   margemContribuicaoPercentual: number;
-  /** margemContribuicao - totalComissoes */
+  /**
+   * Participacao dos socios: percentual fixo sobre o RECEBIDO
+   * (`PERCENTUAL_PARTICIPACAO_SOCIOS`). Custo fixo da operacao, com fatia
+   * propria na pizza -- sem ela a pizza nao fecha.
+   */
+  participacaoSocios: number;
+  /** Percentual aplicado, ex.: 6 para 6%. */
+  percentualParticipacaoSocios: number;
+  /** margemContribuicao - comissoes - despesas com influencers - socios */
   lucroOperacional: number;
   /** Fracao: lucroOperacional / receitaReal */
   margemOperacionalPercentual: number;
@@ -318,6 +472,16 @@ export interface OpcoesDemonstrativo {
   produtos?: Produto[];
   /** Apuracao fiscal do periodo. Omitir mantem o resultado antes de impostos. */
   impostos?: ResultadoImpostos | null;
+  /** Taxas de plataforma. Omitir mantem o resultado antes delas. */
+  taxasPlataforma?: ResultadoTaxasPlataforma | null;
+  /**
+   * TODAS as despesas de influencer cadastradas, de qualquer mes. A propria
+   * DRE separa as que cabem nos pedidos -- ver `despesasQueCabem`. Omitir
+   * mantem o resultado so com a comissao.
+   */
+  despesasInfluencers?: DespesaInfluencer[];
+  /** Participacao dos socios, em % do recebido. Padrao: `PERCENTUAL_PARTICIPACAO_SOCIOS`. */
+  percentualParticipacaoSocios?: number;
 }
 
 export function montarDemonstrativo(
@@ -330,27 +494,43 @@ export function montarDemonstrativo(
   const cmv = calcularCMV(pedidos, custos, opcoes.produtos ?? []);
   const comissoes = calcularComissoesPorInfluencer(pedidos, influencers);
   const total = totalComissoes(comissoes);
+  const despesas = despesasQueCabem(opcoes.despesasInfluencers ?? [], pedidos, influencers);
+  const totalDespesas = despesas.reduce((soma, d) => soma + d.valor, 0);
 
   const impostos = opcoes.impostos ?? null;
   const totalImpostos = impostos?.totalSobreVenda ?? 0;
 
-  const receitaLiquida = reconciliacao.receitaReal - totalImpostos;
+  const taxasPlataforma = opcoes.taxasPlataforma ?? null;
+  const totalTaxasPlataforma = taxasPlataforma?.total ?? 0;
+
+  const receitaLiquida =
+    reconciliacao.receitaReal - totalImpostos - totalTaxasPlataforma;
   const margemContribuicao = receitaLiquida - cmv.cmv;
-  const lucroOperacional = margemContribuicao - total;
+  const percentualParticipacaoSocios =
+    opcoes.percentualParticipacaoSocios ?? PERCENTUAL_PARTICIPACAO_SOCIOS;
+  const participacaoSocios = reconciliacao.recebido * (percentualParticipacaoSocios / 100);
+  const lucroOperacional = margemContribuicao - total - totalDespesas - participacaoSocios;
 
   return {
     reconciliacao,
     cmv,
     comissoes,
     totalComissoes: total,
+    despesasInfluencers: despesas,
+    totalDespesasInfluencers: totalDespesas,
+    totalInfluencers: total + totalDespesas,
     impostos,
     totalImpostos,
+    taxasPlataforma,
+    totalTaxasPlataforma,
     receitaLiquida,
     margemContribuicao,
     margemContribuicaoPercentual: razaoSegura(
       margemContribuicao,
       reconciliacao.receitaReal,
     ),
+    participacaoSocios,
+    percentualParticipacaoSocios,
     lucroOperacional,
     margemOperacionalPercentual: razaoSegura(
       lucroOperacional,
@@ -379,6 +559,18 @@ export interface LinhaRentabilidade {
   /** Preco medio praticado no periodo. */
   precoMedio: number;
   temCusto: boolean;
+  /**
+   * Taxa de plataforma atribuida a este produto.
+   *
+   * E RATEIO, e por isso vem em campo proprio em vez de ja descontada da
+   * margem: a taxa e cobrada sobre o PEDIDO, nao sobre o item. O criterio e a
+   * participacao do item na receita do pedido -- o unico que nao precisa de
+   * arbitragem, ja que a cobranca e proporcional ao valor. Num pedido de um
+   * item so, nao ha rateio nenhum.
+   */
+  taxaPlataforma: number;
+  /** margem - taxaPlataforma. `null` quando nao ha custo cadastrado. */
+  margemAposTaxa: number | null;
 }
 
 /**
@@ -390,6 +582,7 @@ export function rentabilidadePorProduto(
   pedidos: Pedido[],
   custos: CustoProduto[],
   produtos: Produto[] = [],
+  taxas: TaxaPlataforma[] = [],
 ): LinhaRentabilidade[] {
   const indice = indexarCustos(custos);
   const indiceProdutos = indexarProdutos(produtos);
@@ -401,11 +594,23 @@ export function rentabilidadePorProduto(
     receita: number;
     custo: number;
     unidadesComCusto: number;
+    taxa: number;
   }
 
   const mapa = new Map<number, Acumulado>();
 
   for (const pedido of pedidosRecebidos(pedidos)) {
+    /*
+     * A taxa e do PEDIDO. Calculada uma vez aqui e distribuida entre os itens
+     * pela participacao de cada um na receita -- o mesmo criterio da propria
+     * cobranca, que e proporcional ao valor.
+     */
+    const taxaDoPedidoInteiro = taxas.length ? taxaDoPedido(pedido, taxas) : 0;
+    const receitaDoPedido = pedido.products.reduce(
+      (soma, item) => soma + paraNumero(item.price) * item.quantity,
+      0,
+    );
+
     for (const item of pedido.products) {
       let acc = mapa.get(item.product_id);
       if (!acc) {
@@ -416,12 +621,15 @@ export function rentabilidadePorProduto(
           receita: 0,
           custo: 0,
           unidadesComCusto: 0,
+          taxa: 0,
         };
         mapa.set(item.product_id, acc);
       }
 
+      const receitaItem = paraNumero(item.price) * item.quantity;
       acc.unidades += item.quantity;
-      acc.receita += paraNumero(item.price) * item.quantity;
+      acc.receita += receitaItem;
+      acc.taxa += taxaDoPedidoInteiro * razaoSegura(receitaItem, receitaDoPedido);
 
       const unitario = custoUnitarioComKit(
         indice,
@@ -453,6 +661,8 @@ export function rentabilidadePorProduto(
       margemPercentual: margem === null ? null : razaoSegura(margem, acc.receita),
       precoMedio: razaoSegura(acc.receita, acc.unidades),
       temCusto,
+      taxaPlataforma: acc.taxa,
+      margemAposTaxa: margem === null ? null : margem - acc.taxa,
     });
   }
 
@@ -655,8 +865,8 @@ export interface LinhaComissaoContrato extends MarcaComContrato {
 
 /** O valor de uma linha correspondente a base pedida. */
 export function valorDaBase(linha: LinhaMarca, base: BaseComissao): number {
-  if (base === "bruto") return linha.bruto;
-  if (base === "recebido") return linha.recebido;
+  // Frete fora de toda base, como em `calcularComissoesPorInfluencer`.
+  if (base === "bruto") return linha.brutoSemFrete;
   return linha.receitaReal;
 }
 
@@ -664,7 +874,7 @@ export function valorDaBase(linha: LinhaMarca, base: BaseComissao): number {
  * Aplica o percentual do simulador sobre a base de cada contrato.
  *
  * O percentual vem do simulador e nao do contrato de proposito (seccao 5.2): o
- * cliente quer testar cenarios na reuniao. A BASE, essa sim, e sempre a do
+ * cliente quer testar cenários na reuniao. A BASE, essa sim, e sempre a do
  * contrato -- mostrar a comissao numa base que aquele influencer nao usa seria
  * um numero que nao existe.
  */
@@ -695,6 +905,80 @@ export function aplicarPercentualNosContratos(
         b.aMaisQueSobreReceitaReal - a.aMaisQueSobreReceitaReal ||
         b.comissao - a.comissao,
     );
+}
+
+/**
+ * Quanto cada MODALIDADE de contrato esta pagando de comissao.
+ *
+ * O simulador respondia "quanto sai no total" e "quanto sairia se tudo fosse
+ * sobre a receita real". Faltava a pergunta do meio, que e a que decide a
+ * conversa: das tres bases que os contratos usam hoje, quanto cada uma
+ * representa do que esta sendo efetivamente pago.
+ *
+ * Sem essa quebra, os R$ 912 mil parecem um numero unico com uma regra unica.
+ * Com ela fica visivel que quase tudo vem de uma base so, e que e ali que a
+ * negociacao tem efeito.
+ */
+export interface ComissaoPorBase {
+  base: BaseComissao;
+  /** Comissao efetivamente devida pelos contratos nesta base. */
+  comissao: number;
+  /** Soma dos valores sobre os quais o percentual incide. */
+  valorDaBase: number;
+  /** Fracao da comissao total do periodo que sai desta base. */
+  participacao: number;
+  /** Marcas cujo contrato usa esta base, em ordem alfabetica. */
+  marcas: string[];
+  /** A mesma comissao, se estas marcas fossem sobre a receita real. */
+  comissaoSeSobreReceitaReal: number;
+  /**
+   * Quanto esta base acrescenta em relacao a receita real.
+   *
+   * Zero na propria `receitaReal` -- ali nao ha duas bases para comparar, e
+   * essa e a leitura util: a diferenca do mes nasce nas outras duas.
+   */
+  aMaisQueSobreReceitaReal: number;
+}
+
+/** Ordem canonica: do mais distante do caixa para o mais proximo. */
+const ORDEM_DAS_BASES: BaseComissao[] = ["bruto", "recebido", "receitaReal"];
+
+/**
+ * Agrupa as linhas por base de contrato.
+ *
+ * Base que nenhum contrato usa NAO entra no resultado. Um cartao "Sobre a
+ * receita real -- R$ 0,00" afirmaria que existe uma modalidade rendendo zero,
+ * quando o que existe e nenhuma marca nela.
+ */
+export function agruparComissoesPorBase(
+  linhas: LinhaComissaoContrato[],
+): ComissaoPorBase[] {
+  const totalGeral = linhas.reduce((soma, l) => soma + l.comissao, 0);
+
+  return ORDEM_DAS_BASES.flatMap((base) => {
+    const doGrupo = linhas.filter((l) => l.baseComissao === base);
+    if (doGrupo.length === 0) return [];
+
+    const comissao = doGrupo.reduce((soma, l) => soma + l.comissao, 0);
+    const sobreReal = doGrupo.reduce(
+      (soma, l) => soma + l.comissaoSeSobreReceitaReal,
+      0,
+    );
+
+    return [
+      {
+        base,
+        comissao,
+        valorDaBase: doGrupo.reduce((soma, l) => soma + l.valorBase, 0),
+        participacao: razaoSegura(comissao, totalGeral),
+        marcas: doGrupo
+          .map((l) => l.marca)
+          .sort((a, b) => a.localeCompare(b, "pt-BR")),
+        comissaoSeSobreReceitaReal: sobreReal,
+        aMaisQueSobreReceitaReal: comissao - sobreReal,
+      },
+    ];
+  });
 }
 
 export interface TotalComissaoContratos {
