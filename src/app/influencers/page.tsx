@@ -15,6 +15,8 @@ import {
 } from "@/lib/costing";
 import { mesAnoLongo, moedaRedonda, percentual, razaoSegura } from "@/lib/format";
 import { filtrarPorMes, mesesDisponiveis, reconciliar } from "@/lib/metrics";
+import { apurarTaxasPlataforma } from "@/lib/plataforma";
+import { mesDaTela } from "@/lib/mesDaTelaServidor";
 import { exigirArea } from "@/lib/sessao";
 import { idDeOrigem, mesDaDespesa, ROTULO_BASE } from "@/types/dominio";
 
@@ -53,10 +55,11 @@ export default async function PaginaInfluencers({
   const fonte = obterFonteDePedidos();
   const repositorio = await obterRepositorioCadastros();
 
-  const [todosOsPedidos, influencers, despesasCadastradas] = await Promise.all([
+  const [todosOsPedidos, influencers, despesasCadastradas, taxasCadastradas] = await Promise.all([
     fonte.listarPedidos(),
     repositorio.listarInfluencers(),
     repositorio.listarDespesasInfluencer(),
+    repositorio.listarTaxasPlataforma(),
   ]);
 
   // Cada compartilhada vira a parte de cada influencer, pelo faturamento sem frete
@@ -64,12 +67,13 @@ export default async function PaginaInfluencers({
   const despesas = ratearDespesas(despesasCadastradas, todosOsPedidos, influencers);
 
   const meses = mesesDisponiveis(todosOsPedidos);
-  const mesSelecionado =
-    mesPedido && meses.includes(mesPedido) ? mesPedido : (meses[0] ?? "");
+  const mesSelecionado = await mesDaTela(meses, mesPedido);
   const pedidosDoMes = filtrarPorMes(todosOsPedidos, mesSelecionado);
 
   const reconciliacao = reconciliar(pedidosDoMes);
-  const calculadas = calcularComissoesPorInfluencer(pedidosDoMes, influencers);
+  // A base "o que cai na conta" desconta a mesma taxa que a DRE desconta.
+  const taxas = apurarTaxasPlataforma(pedidosDoMes, taxasCadastradas);
+  const calculadas = calcularComissoesPorInfluencer(pedidosDoMes, influencers, taxas.porMarca);
   const comissaoPorId = new Map(calculadas.map((c) => [c.influencerId, c]));
   const total = totalComissoes(calculadas);
   const totalSeTudoSobreBruto = calculadas.reduce((soma, c) => soma + c.comissaoSeSobreBruto, 0);

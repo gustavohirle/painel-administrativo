@@ -6,6 +6,7 @@ import { removerInfluencer, salvarInfluencer } from "@/app/influencers/actions";
 import { ESTADO_INICIAL } from "@/types/formulario";
 import { moeda, percentual } from "@/lib/format";
 import {
+  BASE_PADRAO_CONTRATO,
   EXPLICACAO_BASE,
   ROTULO_BASE,
   type BaseComissao,
@@ -204,7 +205,7 @@ function FormularioInfluencer({
     ESTADO_INICIAL,
   );
   const [base, setBase] = useState<BaseComissao>(
-    influencer?.baseComissao ?? "bruto",
+    influencer?.baseComissao ?? BASE_PADRAO_CONTRATO,
   );
   const [regime, setRegime] = useState<RegimeTributario>(
     influencer?.regime ?? "simples_nacional",
@@ -274,8 +275,9 @@ function FormularioInfluencer({
           <legend className="text-sm font-medium text-tinta">
             Base de cálculo da comissão
           </legend>
-          <div className="mt-2 grid gap-3 xl:grid-cols-3">
-            {(["bruto", "recebido", "receitaReal"] as const).map((valor) => (
+          <div className="mt-2 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            {/* A praticada primeiro; as outras ficam para contrato que fuja da regra. */}
+            {(["liquido", "bruto", "recebido", "receitaReal"] as const).map((valor) => (
               <label
                 key={valor}
                 className={`cursor-pointer rounded-lg border-2 px-4 py-3 transition-colors ${

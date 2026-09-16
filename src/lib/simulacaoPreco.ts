@@ -15,14 +15,16 @@
  *
  * Tres escolhas que mudam o resultado:
  *
- * 1. A comissao e o PERCENTUAL DO CONTRATO SOBRE O PRECO -- numa venda paga, o
- *    preco e o faturamento bruto dela. Decisao do cliente: a primeira versao
- *    usava o custo medio do contrato por venda paga (30% sobre o bruto saia
- *    ~39%, porque o contrato tambem paga pedido que nunca entrou), e ele pediu
- *    o percentual sobre o faturamento bruto. As despesas com influencer seguem
- *    a mesma regra: fracao do faturamento bruto do mes. Consequencia assumida:
- *    a simulacao sai mais otimista que a DRE na medida da comissao paga sobre
- *    pedido nao pago, e o teste mede essa diferenca em vez de esconde-la.
+ * 1. A comissao e o PERCENTUAL DO CONTRATO SOBRE A VENDA. Decisao do cliente:
+ *    a primeira versao usava o custo medio do contrato por venda paga (30%
+ *    sobre o bruto saia ~39%, porque o contrato tambem paga pedido que nunca
+ *    entrou), e ele pediu o percentual escrito. Numa venda paga, "bruto",
+ *    "recebido" e "receita real" valem o PRECO; "o que cai na conta" (a regra
+ *    praticada desde 16/09/2026) vale o preco menos a taxa do pagamento, que
+ *    incide sobre o valor pago com frete. As despesas com influencer sao
+ *    fracao do faturamento sem frete do mes. Consequencia assumida: com
+ *    contrato sobre o bruto, a simulacao sai mais otimista que a DRE na medida
+ *    da comissao paga sobre pedido nao pago, e o teste mede essa diferenca.
  *
  * 2. O frete NAO e custo: e cobrado do cliente POR FORA (produto de R$ 100 +
  *    R$ 19 de frete = R$ 119 pagos) e repassado a transportadora. Nao entra em
@@ -70,8 +72,13 @@ export interface PerfilDeCusto {
   fracaoInterestadual: number;
   /** Taxa da plataforma e do meio de pagamento, fracao do valor pago (com frete). */
   cargaTaxas: number;
-  /** Percentual do contrato como fracao, aplicado direto sobre o preco. */
+  /** Percentual do contrato como fracao. */
   cargaComissao: number;
+  /**
+   * Parte do valor pago que a comissao NAO ve: a taxa, quando o contrato e
+   * sobre o que cai na conta (igual a `cargaTaxas`); zero nas outras bases.
+   */
+  taxaForaDaComissao: number;
   /** Despesas cadastradas do influencer no mes, como fracao do faturamento sem frete. */
   cargaDespesas: number;
   /** Participacao dos socios, fracao do valor pago (com frete). */
@@ -160,8 +167,10 @@ export function montarPerfisDeCusto(entrada: EntradaPerfis): PerfilDeCusto[] {
           )
         : 0,
       cargaTaxas: razaoSegura(taxasDaMarca.total, recebido),
-      // Percentual escrito, sobre o faturamento bruto da venda (escolha 1).
+      // Percentual escrito, sobre a venda (escolha 1).
       cargaComissao: influencer.percentual / 100,
+      taxaForaDaComissao:
+        influencer.baseComissao === "liquido" ? razaoSegura(taxasDaMarca.total, recebido) : 0,
       cargaDespesas: razaoSegura(despesasDoMes, reconciliacao.brutoSemFrete),
       cargaSocios: PERCENTUAL_PARTICIPACAO_SOCIOS / 100,
       fretePorPedido,
@@ -216,7 +225,7 @@ export function simularPreco(
   // Taxa e socios incidem sobre o que o cliente paga, frete incluido.
   const pago = preco + perfil.fretePorUnidade;
   const taxas = pago * perfil.cargaTaxas;
-  const comissao = preco * perfil.cargaComissao;
+  const comissao = (preco - pago * perfil.taxaForaDaComissao) * perfil.cargaComissao;
   const despesas = preco * perfil.cargaDespesas;
   const socios = pago * perfil.cargaSocios;
   const frete = perfil.fretePorUnidade;
@@ -251,10 +260,18 @@ export function cargaProporcionalDo(perfil: PerfilDeCusto): number {
     perfil.cargaImpostos +
     perfil.cargaDifal +
     perfil.cargaTaxas +
-    perfil.cargaComissao +
+    perfil.cargaComissao * (1 - perfil.taxaForaDaComissao) +
     perfil.cargaDespesas +
     perfil.cargaSocios
   );
+}
+
+/**
+ * Quanto cada real de frete tira do lucro: taxa e socios incidem sobre ele, e
+ * a comissao sobre o que cai na conta devolve a parte da taxa que ela nao ve.
+ */
+function cargaSobreFrete(perfil: PerfilDeCusto): number {
+  return perfil.cargaTaxas + perfil.cargaSocios - perfil.cargaComissao * perfil.taxaForaDaComissao;
 }
 
 // ---------------------------------------------------------------------------
@@ -306,8 +323,8 @@ export const MARGENS_DE_REFERENCIA: readonly MargemDeReferencia[] = [
 /**
  * Preco que entrega `margem` de lucro sobre o proprio preco.
  *
- *   lucro = P × (1 − cargas) − frete − fabricacao = margem × P
- *   P     = (fabricacao + frete) ÷ (1 − cargas − margem)
+ *   lucro = P × (1 − cargas) − frete × cargaSobreFrete − fabricacao = margem × P
+ *   P     = (fabricacao + frete × cargaSobreFrete) ÷ (1 − cargas − margem)
  *
  * Com margem 0 e o preco minimo. `null` quando cargas + margem chegam a 100%:
  * cada real a mais no preco ja leva um real ou mais de custo, e preco nenhum
@@ -321,8 +338,7 @@ export function precoParaMargem(
   const denominador = 1 - cargaProporcionalDo(perfil) - margem;
   if (denominador <= 0) return null;
   // O frete so pesa pela taxa e pelos socios, que incidem sobre o valor pago.
-  const fixo =
-    custoFabricacao + perfil.fretePorUnidade * (perfil.cargaTaxas + perfil.cargaSocios);
+  const fixo = custoFabricacao + perfil.fretePorUnidade * cargaSobreFrete(perfil);
   return fixo / denominador;
 }
 

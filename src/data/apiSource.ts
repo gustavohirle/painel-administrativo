@@ -1,8 +1,8 @@
 /**
  * Implementacao de `FonteDePedidos` contra a API REAL da Nuvemshop.
  *
- * ESTADO: pronta e testada contra um servidor falso com o formato documentado,
- * mas NUNCA contra a loja real. O roteiro de ligar esta em `DADOS_REAIS.md`,
+ * ESTADO: ligada a loja real desde 16/09/2026 (secao 12 do CLAUDE.md, "O que a
+ * loja real mostrou"). O roteiro para uma loja nova esta em `DADOS_REAIS.md`,
  * e o primeiro passo e `npm run nuvemshop:testar`.
  *
  * Duas camadas:
@@ -18,15 +18,19 @@
  * Referencia: https://tiendanube.github.io/api-documentation/intro
  */
 
-import type { CarrinhoAbandonado, Pedido } from "@/types/nuvemshop";
+import type { CarrinhoAbandonado, ItemCatalogo, Pedido } from "@/types/nuvemshop";
 import {
   baseUrlNuvemshop,
+  lojasNuvemshop,
   userAgentNuvemshop,
   type LojaNuvemshop,
 } from "@/lib/config";
 import {
+  LIMITE_POR_CONSULTA,
   converterCarrinho,
   converterPedido,
+  converterProduto,
+  dividirJanela,
   esperaPeloLimite,
   proximaPaginaDoLink,
   type PedidoConvertido,
@@ -37,11 +41,46 @@ import { obterBaseNuvemshop } from "@/data/cachePedidos";
 /** Maximo aceito pela API. Menos que isso so aumenta o numero de chamadas. */
 const POR_PAGINA = 200;
 
-/** Trava de seguranca: evita loop infinito se a paginacao vier estranha. */
-const MAX_PAGINAS = 500;
+/** Alem desta pagina a API responde 422 (`LIMITE_POR_CONSULTA`). */
+const MAX_PAGINAS = LIMITE_POR_CONSULTA / POR_PAGINA;
+
+/** Trava contra recursao sem fim: 2^30 pedacos de um mes ja teriam menos de um segundo. */
+const MAX_DIVISOES = 30;
 
 /** Tentativas por chamada antes de desistir (erro de rede ou 5xx). */
 const TENTATIVAS = 4;
+
+/**
+ * Chamadas simultaneas a API, somadas todas as buscas do processo.
+ *
+ * Cada pagina de 200 pedidos leva ~10 s para a Nuvemshop montar (medido na
+ * loja real em 16/09/2026). Uma depois da outra, um mes de 20 mil pedidos
+ * levaria 17 minutos. Com 12 ao mesmo tempo a vazao fica perto de 1,2 chamada
+ * por segundo -- abaixo das 2 por segundo do menor limite documentado.
+ *
+ * O estado mora em `globalThis` pelo mesmo motivo do cache (armadilha 2): o
+ * Next carrega este modulo em mais de um grafo, e cada copia teria a sua fila.
+ */
+const SIMULTANEAS = 12;
+
+const global = globalThis as unknown as {
+  __filaNuvemshop?: { livres: number; esperando: Array<() => void> };
+};
+global.__filaNuvemshop ??= { livres: SIMULTANEAS, esperando: [] };
+const fila = global.__filaNuvemshop;
+
+async function naFila<T>(tarefa: () => Promise<T>): Promise<T> {
+  if (fila.livres > 0) fila.livres -= 1;
+  else await new Promise<void>((entrar) => fila.esperando.push(entrar));
+  try {
+    return await tarefa();
+  } finally {
+    // A vaga passa direto para quem espera; so volta ao total se ninguem esperar.
+    const proxima = fila.esperando.shift();
+    if (proxima) proxima();
+    else fila.livres += 1;
+  }
+}
 
 const dormir = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -73,6 +112,14 @@ interface Resposta {
   status: number;
   dados: unknown;
   link: string | null;
+  /** `x-total-count`: quantos registros a consulta inteira tem, somadas as paginas. */
+  total: number | null;
+}
+
+function totalDoCabecalho(valor: string | null): number | null {
+  if (valor === null || valor.trim() === "") return null;
+  const n = Number(valor);
+  return Number.isInteger(n) && n >= 0 ? n : null;
 }
 
 /**
@@ -81,8 +128,15 @@ interface Resposta {
  * Os dois cabecalhos de autenticacao vao juntos: a versao atual da API usa
  * `Authorization: Bearer`, a antiga (`/v1`) usa `Authentication: bearer`, e
  * quem escolhe a versao e `NUVEMSHOP_API_URL`. Cada versao ignora o outro.
+ *
+ * A espera de uma nova tentativa acontece SEGURANDO a vaga da fila: se a API
+ * pediu calma, as outras chamadas tambem devem esperar.
  */
-async function chamar(loja: LojaNuvemshop, url: string): Promise<Resposta> {
+function chamar(loja: LojaNuvemshop, url: string): Promise<Resposta> {
+  return naFila(() => chamarAgora(loja, url));
+}
+
+async function chamarAgora(loja: LojaNuvemshop, url: string): Promise<Resposta> {
   let ultimoErro: unknown = null;
 
   for (let tentativa = 1; tentativa <= TENTATIVAS; tentativa += 1) {
@@ -121,7 +175,7 @@ async function chamar(loja: LojaNuvemshop, url: string): Promise<Resposta> {
     // Pagina alem do fim: a API responde 404 com "Last page is N".
     if (resposta.status === 404 && url.includes("page=")) {
       const corpo = await resposta.text().catch(() => "");
-      if (/last page/i.test(corpo)) return { status: 200, dados: [], link: null };
+      if (/last page/i.test(corpo)) return { status: 200, dados: [], link: null, total: null };
       throw new ErroNuvemshop(explicarStatus(404, loja), 404);
     }
 
@@ -133,6 +187,7 @@ async function chamar(loja: LojaNuvemshop, url: string): Promise<Resposta> {
       status: resposta.status,
       dados: await resposta.json(),
       link: resposta.headers.get("link"),
+      total: totalDoCabecalho(resposta.headers.get("x-total-count")),
     };
   }
 
@@ -141,52 +196,147 @@ async function chamar(loja: LojaNuvemshop, url: string): Promise<Resposta> {
     : new ErroNuvemshop("não foi possível falar com a Nuvemshop.", 0);
 }
 
-/** Percorre todas as paginas de uma listagem. */
-async function listarTudo(
+/** Intervalo de datas de uma listagem, pelas duas pontas (a API inclui ambas). */
+interface Janela {
+  campo: "created_at" | "updated_at";
+  inicio: string;
+  fim: string;
+}
+
+const lista = (dados: unknown): unknown[] => (Array.isArray(dados) ? dados : []);
+
+/** Tira repetidos pelo id: a emenda de duas janelas devolve o mesmo pedido duas vezes. */
+function semRepetidos(brutos: unknown[]): unknown[] {
+  const vistos = new Set<unknown>();
+  return brutos.filter((bruto) => {
+    const id = bruto && typeof bruto === "object" ? (bruto as { id?: unknown }).id : undefined;
+    if (id === undefined || id === null) return true;
+    if (vistos.has(id)) return false;
+    vistos.add(id);
+    return true;
+  });
+}
+
+/**
+ * Todos os registros de uma janela de datas.
+ *
+ * A primeira pagina diz o total (`x-total-count`), e ele decide o caminho:
+ *
+ * - **acima de `LIMITE_POR_CONSULTA`**: a API recusaria as paginas do fim. A
+ *   janela se parte ao meio e cada metade repete a conta;
+ * - **com total conhecido**: as paginas restantes saem ao mesmo tempo, pela
+ *   fila. A contagem das paginas vem do total, e nao do `Link`, justamente
+ *   para nao esperar uma pagina para descobrir a proxima;
+ * - **sem total** (API que nao manda o cabecalho): uma pagina depois da
+ *   outra, seguindo o `Link`, como antes.
+ *
+ * Se vierem menos registros que o total, busca a janela uma segunda vez. Um
+ * pedido alterado no meio da busca muda de posicao na lista e empurra outro
+ * para uma pagina ja lida; repetir e o que o recupera.
+ */
+async function listarJanela(
   loja: LojaNuvemshop,
-  recurso: "orders" | "checkouts",
+  recurso: "orders" | "checkouts" | "products",
+  janela: Janela,
   filtros: Record<string, string>,
+  divisoes = 0,
+  segundaVez = false,
 ): Promise<unknown[]> {
-  const params = new URLSearchParams({ ...filtros, per_page: String(POR_PAGINA), page: "1" });
-  let url: string | null = `${baseUrlNuvemshop()}/${loja.storeId}/${recurso}?${params}`;
-  let pagina = 1;
-  const acumulado: unknown[] = [];
+  if (new Date(janela.inicio).getTime() > new Date(janela.fim).getTime()) return [];
 
-  while (url && pagina <= MAX_PAGINAS) {
-    const { dados, link } = await chamar(loja, url);
-    const lote = Array.isArray(dados) ? dados : [];
-    acumulado.push(...lote);
-    if (lote.length < POR_PAGINA) break;
+  const endereco = (pagina: number) => {
+    const params = new URLSearchParams({
+      ...filtros,
+      [`${janela.campo}_min`]: janela.inicio,
+      [`${janela.campo}_max`]: janela.fim,
+      per_page: String(POR_PAGINA),
+      page: String(pagina),
+    });
+    return `${baseUrlNuvemshop()}/${loja.storeId}/${recurso}?${params}`;
+  };
 
-    pagina += 1;
-    // Segue o `Link` quando existe, como a documentacao pede.
-    url = proximaPaginaDoLink(link);
-    if (!url) {
-      params.set("page", String(pagina));
-      url = `${baseUrlNuvemshop()}/${loja.storeId}/${recurso}?${params}`;
+  const primeira = await chamar(loja, endereco(1));
+  const total = primeira.total;
+
+  if (total !== null && total > LIMITE_POR_CONSULTA) {
+    const metades = divisoes < MAX_DIVISOES ? dividirJanela(janela.inicio, janela.fim) : null;
+    if (!metades) {
+      throw new ErroNuvemshop(
+        `a loja ${loja.marca} tem mais de ${LIMITE_POR_CONSULTA} registros no mesmo segundo (${janela.inicio}); não há como dividir a busca.`,
+        422,
+      );
     }
+    const partes = await Promise.all(
+      metades.map(([inicio, fim]) =>
+        listarJanela(loja, recurso, { ...janela, inicio, fim }, filtros, divisoes + 1),
+      ),
+    );
+    return semRepetidos(partes.flat());
   }
 
-  return acumulado;
+  const lote = lista(primeira.dados);
+  if (lote.length < POR_PAGINA) return lote;
+
+  let todos: unknown[];
+  if (total !== null) {
+    const paginas = Math.min(Math.ceil(total / POR_PAGINA), MAX_PAGINAS);
+    const resto = await Promise.all(
+      Array.from({ length: paginas - 1 }, (_, i) =>
+        chamar(loja, endereco(i + 2)).then((r) => lista(r.dados)),
+      ),
+    );
+    todos = semRepetidos([lote, ...resto].flat());
+  } else {
+    todos = [...lote];
+    let pagina = 2;
+    // Segue o `Link` quando existe, como a documentacao pede.
+    let url: string | null = proximaPaginaDoLink(primeira.link) ?? endereco(pagina);
+    while (url && pagina <= MAX_PAGINAS) {
+      const { dados, link } = await chamar(loja, url);
+      const proximo = lista(dados);
+      todos.push(...proximo);
+      if (proximo.length < POR_PAGINA) break;
+      pagina += 1;
+      url = proximaPaginaDoLink(link) ?? endereco(pagina);
+    }
+    todos = semRepetidos(todos);
+  }
+
+  if (total !== null && todos.length < total && !segundaVez) {
+    return listarJanela(loja, recurso, janela, filtros, divisoes, true);
+  }
+  return todos;
 }
 
-export interface FiltroPedidos {
-  criadosDesde?: string;
-  criadosAte?: string;
-  alteradosDesde?: string;
+/** A ponta final de uma busca nunca passa de agora. */
+function ateAgora(fim: string | undefined, agora: string): string {
+  if (!fim) return agora;
+  return new Date(fim).getTime() < new Date(agora).getTime() ? fim : agora;
 }
 
-/** Pedidos de uma loja, ja convertidos. Todos os status: o painel precisa dos nao pagos. */
+export type FiltroPedidos =
+  | { criadosDesde: string; criadosAte?: string }
+  | { alteradosDesde: string };
+
+/**
+ * Pedidos de uma loja, ja convertidos. Todos os status: o painel precisa dos nao pagos.
+ *
+ * A janela termina em "agora", mesmo quando o mes pedido ainda nao acabou: um
+ * pedido criado durante a busca entraria no topo da lista e empurraria os
+ * outros de pagina. Ele chega na proxima busca incremental, que comeca antes
+ * desta terminar (`SOBREPOSICAO_MS` em `cachePedidos.ts`).
+ */
 export async function buscarPedidosDaLoja(
   loja: LojaNuvemshop,
   filtro: FiltroPedidos,
 ): Promise<PedidoConvertido[]> {
-  const filtros: Record<string, string> = { status: "any", payment_status: "any" };
-  if (filtro.criadosDesde) filtros.created_at_min = filtro.criadosDesde;
-  if (filtro.criadosAte) filtros.created_at_max = filtro.criadosAte;
-  if (filtro.alteradosDesde) filtros.updated_at_min = filtro.alteradosDesde;
+  const agora = new Date().toISOString();
+  const janela: Janela =
+    "alteradosDesde" in filtro
+      ? { campo: "updated_at", inicio: filtro.alteradosDesde, fim: agora }
+      : { campo: "created_at", inicio: filtro.criadosDesde, fim: ateAgora(filtro.criadosAte, agora) };
 
-  const brutos = await listarTudo(loja, "orders", filtros);
+  const brutos = await listarJanela(loja, "orders", janela, { status: "any", payment_status: "any" });
   return brutos
     .map((bruto) => converterPedido(bruto, loja.marca))
     .filter((p): p is PedidoConvertido => p !== null);
@@ -197,10 +347,33 @@ export async function buscarCarrinhosDaLoja(
   loja: LojaNuvemshop,
   criadosDesde: string,
 ): Promise<CarrinhoAbandonado[]> {
-  const brutos = await listarTudo(loja, "checkouts", { created_at_min: criadosDesde });
+  const agora = new Date().toISOString();
+  const brutos = await listarJanela(
+    loja,
+    "checkouts",
+    { campo: "created_at", inicio: criadosDesde, fim: agora },
+    {},
+  );
   return brutos
     .map((bruto) => converterCarrinho(bruto, loja.marca))
     .filter((c): c is CarrinhoAbandonado => c !== null);
+}
+
+/**
+ * Catalogo de produtos de uma loja, uma entrada por variante.
+ *
+ * Nao passa pelo cache: so o botao de trazer produtos usa, e o catalogo e
+ * pequeno (78 produtos na loja real, uma chamada). A janela vai do comeco dos
+ * tempos ate agora so para reaproveitar a paginacao com limite.
+ */
+export async function buscarCatalogoDaLoja(loja: LojaNuvemshop): Promise<ItemCatalogo[]> {
+  const brutos = await listarJanela(
+    loja,
+    "products",
+    { campo: "created_at", inicio: "2000-01-01T00:00:00.000Z", fim: new Date().toISOString() },
+    {},
+  );
+  return brutos.flatMap((bruto) => converterProduto(bruto, loja.marca));
 }
 
 /** Dados cadastrais da loja. So o teste de conexao usa: prova que a chave vale. */
@@ -240,5 +413,11 @@ export class FonteNuvemshop implements FonteDePedidos {
   async listarCarrinhosAbandonados(periodo?: Periodo): Promise<CarrinhoAbandonado[]> {
     const { carrinhos } = await obterBaseNuvemshop();
     return periodo ? carrinhos.filter((c) => dentro(c.created_at, periodo)) : carrinhos;
+  }
+
+  async listarCatalogo(): Promise<ItemCatalogo[]> {
+    const lojas = lojasNuvemshop();
+    const porLoja = await Promise.all(lojas.map((loja) => buscarCatalogoDaLoja(loja)));
+    return porLoja.flat();
   }
 }

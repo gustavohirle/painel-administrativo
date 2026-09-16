@@ -17,17 +17,24 @@ import {
 import { chaveMes } from "@/lib/metrics";
 import { paraNumero, type Pedido } from "@/types/nuvemshop";
 import {
+  BASE_PADRAO_CONTRATO,
   custoUnitarioTotal,
   type BaseComissao,
   type CustoProduto,
   type Influencer,
 } from "@/types/dominio";
 import {
+  AVISO_KIT_SEM_COMPOSICAO,
+  chaveProduto,
+  pareceKit,
   partesDaChave,
   PROFUNDIDADE_MAXIMA_KIT,
+  type EntradaProduto,
   type Produto,
 } from "@/types/produto";
-import { PERCENTUAL_PARTICIPACAO_SOCIOS } from "@/lib/config";
+import type { Imposto } from "@/types/fiscal";
+import type { ItemCatalogo } from "@/types/nuvemshop";
+import { PERCENTUAL_PARTICIPACAO_SOCIOS, REGIME_SEM_INFLUENCER } from "@/lib/config";
 import { razaoSegura } from "@/lib/format";
 import {
   pedidosRecebidos,
@@ -36,6 +43,7 @@ import {
   type Reconciliacao,
 } from "@/lib/metrics";
 import {
+  idsMarcadosPorPadrao,
   indexarProdutos,
   produtoDoItem,
   type IndiceProdutos,
@@ -227,10 +235,16 @@ export interface ComissaoInfluencer {
 /**
  * Comissao devida por influencer, respeitando a base de cada contrato.
  * Influencers inativos sao ignorados.
+ *
+ * `taxasPorMarca` e o `porMarca` de `apurarTaxasPlataforma` sobre os MESMOS
+ * pedidos -- a base `liquido` desconta exatamente a taxa que a DRE desconta.
+ * Sem ele, a base `liquido` sai igual a receita real (antes das taxas), que e
+ * o mesmo que a DRE faz quando nao recebe as taxas.
  */
 export function calcularComissoesPorInfluencer(
   pedidos: Pedido[],
   influencers: Influencer[],
+  taxasPorMarca: Record<string, number> = {},
 ): ComissaoInfluencer[] {
   const reconciliacaoPorMarca = new Map<string, Reconciliacao>();
   const marcas = new Set(pedidos.map((p) => p.marca));
@@ -253,10 +267,13 @@ export function calcularComissoesPorInfluencer(
      * O frete fica FORA de toda base. Ele e cobrado do cliente por fora (produto
      * de R$ 100 + R$ 19 de frete) e vai para a transportadora: nao e venda do
      * influencer. Por isso "bruto" e o faturamento sem frete, e "recebido" sem
-     * frete coincide com a receita real.
+     * frete coincide com a receita real. "liquido" tira tambem as taxas.
      */
-    const valorBase =
-      influencer.baseComissao === "bruto" ? r.brutoSemFrete : r.receitaReal;
+    const valorBase = valorDaBaseDaMarca(
+      r,
+      influencer.baseComissao,
+      taxasPorMarca[influencer.marca] ?? 0,
+    );
 
     const valorComissao = valorBase * fracao;
     const comissaoSeSobreBruto = r.brutoSemFrete * fracao;
@@ -275,6 +292,20 @@ export function calcularComissoesPorInfluencer(
   }
 
   return linhas.sort((a, b) => b.valorComissao - a.valorComissao);
+}
+
+/**
+ * O valor sobre o qual o percentual incide, para cada base. Um lugar so, para
+ * a DRE e o cruzamento de contratos nao terem cada um a sua versao.
+ */
+function valorDaBaseDaMarca(
+  r: Pick<Reconciliacao, "brutoSemFrete" | "receitaReal">,
+  base: BaseComissao,
+  taxas: number,
+): number {
+  if (base === "bruto") return r.brutoSemFrete;
+  if (base === "liquido") return r.receitaReal - taxas;
+  return r.receitaReal;
 }
 
 export function totalComissoes(linhas: ComissaoInfluencer[]): number {
@@ -492,16 +523,20 @@ export function montarDemonstrativo(
 ): DemonstrativoResultado {
   const reconciliacao = reconciliar(pedidos);
   const cmv = calcularCMV(pedidos, custos, opcoes.produtos ?? []);
-  const comissoes = calcularComissoesPorInfluencer(pedidos, influencers);
+  const taxasPlataforma = opcoes.taxasPlataforma ?? null;
+  const totalTaxasPlataforma = taxasPlataforma?.total ?? 0;
+
+  const comissoes = calcularComissoesPorInfluencer(
+    pedidos,
+    influencers,
+    taxasPlataforma?.porMarca ?? {},
+  );
   const total = totalComissoes(comissoes);
   const despesas = despesasQueCabem(opcoes.despesasInfluencers ?? [], pedidos, influencers);
   const totalDespesas = despesas.reduce((soma, d) => soma + d.valor, 0);
 
   const impostos = opcoes.impostos ?? null;
   const totalImpostos = impostos?.totalSobreVenda ?? 0;
-
-  const taxasPlataforma = opcoes.taxasPlataforma ?? null;
-  const totalTaxasPlataforma = taxasPlataforma?.total ?? 0;
 
   const receitaLiquida =
     reconciliacao.receitaReal - totalImpostos - totalTaxasPlataforma;
@@ -790,6 +825,139 @@ export function catalogoVendido(
   return lista.sort((a, b) => b.receita - a.receita);
 }
 
+/**
+ * O que falta no cadastro de produtos: o catalogo da loja mais o que vendeu.
+ *
+ * Na demonstracao o cadastro nasce semeado; com a loja real ele nasce vazio, e
+ * a tela de produtos ficaria em branco ate alguem digitar item por item. Isto
+ * devolve as entradas prontas para gravar: uma por variante que nenhum
+ * cadastro cobre -- nem o da variante, nem o do produto inteiro.
+ *
+ * As duas fontes se completam. O catalogo traz o que ainda nao vendeu (e o
+ * nome atual); as vendas trazem o que saiu do catalogo mas entrou no mes, e
+ * sem cadastro ficaria sem imposto e sem custo. Sem `catalogo`, so as vendas.
+ *
+ * Cada entrada ja sai com dono e impostos, pela MESMA regra da apuracao: o
+ * primeiro influencer ativo da marca (5.9) e, sem ele, `REGIME_SEM_INFLUENCER`.
+ * Dos impostos, so os que nascem marcados (`idsMarcadosPorPadrao`): no Lucro
+ * Presumido, ICMS, ICMS-ST e IPI. PIS e COFINS entram desmarcados e passam a
+ * valer quando alguem os marcar -- imposto sobre receita so incide onde o
+ * produto o marcou.
+ *
+ * Nome e SKU sao os da venda mais recente, porque o produto pode ter sido
+ * renomeado na loja. Maior receita primeiro.
+ */
+export function produtosParaCadastrar(
+  pedidos: Pedido[],
+  cadastro: Produto[],
+  impostos: Imposto[],
+  influencers: Influencer[],
+  catalogo: ItemCatalogo[] = [],
+): EntradaProduto[] {
+  const indice = indexarProdutos(cadastro);
+
+  const donoDaMarca = new Map<string, Influencer>();
+  for (const influencer of influencers) {
+    if (influencer.ativo && !donoDaMarca.has(influencer.marca)) {
+      donoDaMarca.set(influencer.marca, influencer);
+    }
+  }
+
+  interface Visto {
+    produtoId: number;
+    varianteId: number;
+    nome: string;
+    sku: string | null;
+    marca: string;
+    receita: number;
+    vendidoEm: string;
+    /** `null` quando o catalogo nao foi consultado ou nao tem o item. */
+    publicado: boolean | null;
+  }
+  const vistos = new Map<string, Visto>();
+
+  for (const pedido of pedidosRecebidos(pedidos)) {
+    for (const item of pedido.products) {
+      if (produtoDoItem(indice, item.product_id, item.variant_id)) continue;
+
+      const chave = chaveProduto(item.product_id, item.variant_id);
+      const receita = paraNumero(item.price) * item.quantity;
+      const visto = vistos.get(chave);
+      if (!visto) {
+        vistos.set(chave, {
+          produtoId: item.product_id,
+          varianteId: item.variant_id,
+          nome: item.name,
+          sku: item.sku,
+          marca: pedido.marca,
+          receita,
+          vendidoEm: pedido.created_at,
+          publicado: null,
+        });
+        continue;
+      }
+      visto.receita += receita;
+      if (pedido.created_at >= visto.vendidoEm) {
+        visto.nome = item.name;
+        visto.sku = item.sku;
+        visto.marca = pedido.marca;
+        visto.vendidoEm = pedido.created_at;
+      }
+    }
+  }
+
+  // O catalogo manda no nome e no SKU: e o que a loja mostra hoje.
+  for (const item of catalogo) {
+    if (produtoDoItem(indice, item.produtoId, item.varianteId)) continue;
+    const chave = chaveProduto(item.produtoId, item.varianteId);
+    const visto = vistos.get(chave);
+    vistos.set(chave, {
+      produtoId: item.produtoId,
+      varianteId: item.varianteId,
+      nome: item.nome,
+      sku: item.sku ?? visto?.sku ?? null,
+      marca: item.marca,
+      receita: visto?.receita ?? 0,
+      vendidoEm: visto?.vendidoEm ?? "",
+      publicado: item.publicado,
+    });
+  }
+
+  return [...vistos.entries()]
+    .sort((a, b) => b[1].receita - a[1].receita || a[1].nome.localeCompare(b[1].nome, "pt-BR"))
+    .map(([chave, visto]) => {
+      const dono = donoDaMarca.get(visto.marca) ?? null;
+      const ehKit = pareceKit(visto.nome);
+      const observacao =
+        [
+          ehKit ? AVISO_KIT_SEM_COMPOSICAO : null,
+          visto.publicado === false ? "Não publicado na loja Nuvemshop." : null,
+          visto.publicado === null && catalogo.length > 0
+            ? "Vendido, mas não está mais no catálogo da Nuvemshop."
+            : null,
+        ]
+          .filter(Boolean)
+          .join(" ") || null;
+      return {
+        chave,
+        produtoId: visto.produtoId,
+        varianteId: visto.varianteId,
+        nome: visto.nome,
+        sku: visto.sku,
+        ncm: null,
+        origem: "nuvemshop" as const,
+        influencerId: dono?.id ?? null,
+        // So os que nascem marcados; o resto e escolha de quem cadastra.
+        impostosIds: idsMarcadosPorPadrao(impostos, dono?.regime ?? REGIME_SEM_INFLUENCER),
+        // A composicao a Nuvemshop nao informa: fica para o cadastro.
+        ehKit,
+        componentes: [],
+        ativo: true,
+        observacao,
+      };
+    });
+}
+
 // ---------------------------------------------------------------------------
 // 5.3 Comissao por marca, na base do contrato
 // ---------------------------------------------------------------------------
@@ -809,15 +977,18 @@ export interface MarcaComContrato extends LinhaMarca {
   percentualContrato: number | null;
   /** Base do contrato. Sem influencer vinculado, cai em `BASE_SEM_CONTRATO`. */
   baseComissao: BaseComissao;
+  /** Taxas de plataforma da marca no periodo, para a base `liquido`. */
+  taxasPlataforma: number;
 }
 
 /**
  * Base do contrato de uma marca sem influencer ativo vinculado.
  *
- * `bruto` de proposito: e o que o cliente faz hoje, e assumir a base mais
- * favorravel a empresa mostraria uma comissao menor do que a que ele paga.
+ * A que o cliente pratica (`BASE_PADRAO_CONTRATO`). Era `bruto` enquanto a
+ * pratica descrita era pagar sobre o bruto; em 16/09/2026 o cliente disse que
+ * paga sobre o que cai na conta, sem frete.
  */
-export const BASE_SEM_CONTRATO: BaseComissao = "bruto";
+export const BASE_SEM_CONTRATO: BaseComissao = BASE_PADRAO_CONTRATO;
 
 /**
  * Cruza as linhas por marca com o contrato de cada influencer.
@@ -829,6 +1000,7 @@ export const BASE_SEM_CONTRATO: BaseComissao = "bruto";
 export function cruzarMarcasComContratos(
   marcas: LinhaMarca[],
   influencers: Influencer[],
+  taxasPorMarca: Record<string, number> = {},
 ): MarcaComContrato[] {
   const contratoPorMarca = new Map<string, Influencer>();
   for (const influencer of influencers) {
@@ -845,6 +1017,7 @@ export function cruzarMarcasComContratos(
       influencerNome: contrato?.nome ?? null,
       percentualContrato: contrato?.percentual ?? null,
       baseComissao: contrato?.baseComissao ?? BASE_SEM_CONTRATO,
+      taxasPlataforma: taxasPorMarca[linha.marca] ?? 0,
     };
   });
 }
@@ -864,10 +1037,12 @@ export interface LinhaComissaoContrato extends MarcaComContrato {
 }
 
 /** O valor de uma linha correspondente a base pedida. */
-export function valorDaBase(linha: LinhaMarca, base: BaseComissao): number {
+export function valorDaBase(
+  linha: LinhaMarca & { taxasPlataforma?: number },
+  base: BaseComissao,
+): number {
   // Frete fora de toda base, como em `calcularComissoesPorInfluencer`.
-  if (base === "bruto") return linha.brutoSemFrete;
-  return linha.receitaReal;
+  return valorDaBaseDaMarca(linha, base, linha.taxasPlataforma ?? 0);
 }
 
 /**
@@ -941,7 +1116,7 @@ export interface ComissaoPorBase {
 }
 
 /** Ordem canonica: do mais distante do caixa para o mais proximo. */
-const ORDEM_DAS_BASES: BaseComissao[] = ["bruto", "recebido", "receitaReal"];
+const ORDEM_DAS_BASES: BaseComissao[] = ["bruto", "recebido", "receitaReal", "liquido"];
 
 /**
  * Agrupa as linhas por base de contrato.

@@ -7,7 +7,7 @@
  * diferenca -- e por isso que a troca nao vai exigir reescrita de regra.
  */
 
-import type { CarrinhoAbandonado, Pedido } from "@/types/nuvemshop";
+import type { CarrinhoAbandonado, ItemCatalogo, Pedido } from "@/types/nuvemshop";
 
 /** Intervalo de datas em ISO 8601. Ambos os limites sao inclusivos. */
 export interface Periodo {
@@ -24,6 +24,12 @@ export interface FonteDePedidos {
 
   /** Carrinhos abandonados no periodo. */
   listarCarrinhosAbandonados(periodo?: Periodo): Promise<CarrinhoAbandonado[]>;
+
+  /**
+   * Catalogo de produtos das lojas, uma entrada por variante. Na fonte real e
+   * uma chamada a API; so o cadastro de produtos usa, sob clique.
+   */
+  listarCatalogo(): Promise<ItemCatalogo[]>;
 }
 
 /** Filtro de periodo aplicado em memoria, para fontes que nao filtram sozinhas. */

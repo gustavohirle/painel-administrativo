@@ -215,6 +215,24 @@ export interface CarrinhoAbandonado {
 }
 
 /**
+ * Uma variante do catalogo da loja (`GET /v1/{store_id}/products`), ja
+ * achatada e so com o que o cadastro de produtos usa.
+ *
+ * O catalogo NAO diz de que um kit e feito: na loja real `is_kit` vem falso em
+ * todos e nao ha endpoint de componentes. A composicao continua sendo cadastro.
+ */
+export interface ItemCatalogo {
+  produtoId: number;
+  varianteId: number;
+  /** Nome do produto, com os valores da variante quando ha mais de uma. */
+  nome: string;
+  sku: string | null;
+  /** `false` quando o produto esta escondido na loja. */
+  publicado: boolean;
+  marca: string;
+}
+
+/**
  * Converte string decimal da API em numero.
  * Use SEMPRE na borda (ao ler o pedido), nunca no meio de um calculo.
  */

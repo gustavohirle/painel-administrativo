@@ -11,6 +11,7 @@ import { apurarTaxasPlataforma } from "@/lib/plataforma";
 import { GestaoTaxas } from "@/components/GestaoTaxas";
 import { mesAnoLongo } from "@/lib/format";
 import { filtrarPorMes, mesesDisponiveis } from "@/lib/metrics";
+import { mesDaTela } from "@/lib/mesDaTelaServidor";
 import { exigirArea } from "@/lib/sessao";
 
 export const dynamic = "force-dynamic";
@@ -43,8 +44,7 @@ export default async function PaginaImpostos({
   ]);
 
   const meses = mesesDisponiveis(todosOsPedidos);
-  const mesSelecionado =
-    mesPedido && meses.includes(mesPedido) ? mesPedido : (meses[0] ?? "");
+  const mesSelecionado = await mesDaTela(meses, mesPedido);
   const pedidosDoMes = filtrarPorMes(todosOsPedidos, mesSelecionado);
 
   const resultado = apurarImpostos(

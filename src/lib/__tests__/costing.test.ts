@@ -16,6 +16,8 @@ import {
   totalComissoes,
 } from "@/lib/costing";
 import { reconciliar, type LinhaMarca } from "@/lib/metrics";
+import { apurarTaxasPlataforma } from "@/lib/plataforma";
+import type { TaxaPlataforma } from "@/types/plataforma";
 import type { CustoProduto, DespesaInfluencer, Influencer } from "@/types/dominio";
 import type { Pedido } from "@/types/nuvemshop";
 
@@ -81,6 +83,19 @@ function custo(parcial: Partial<CustoProduto> = {}): CustoProduto {
     custoIndireto: 2,
     atualizadoEm: "2026-09-01T00:00:00.000Z",
     ...parcial,
+  };
+}
+
+function taxaCartao(percentual: number): TaxaPlataforma {
+  return {
+    metodo: "credit_card",
+    percentual,
+    valorFixo: 0,
+    base: "recebido",
+    ativa: true,
+    confirmadaNaFatura: false,
+    observacao: null,
+    atualizadoEm: "2026-09-01T00:00:00.000Z",
   };
 }
 
@@ -217,6 +232,34 @@ describe("calcularComissoesPorInfluencer", () => {
     }
   });
 
+  it("aplica o percentual sobre o que cai na conta: receita real menos as taxas da marca", () => {
+    const [linha] = calcularComissoesPorInfluencer(
+      pedidos,
+      [influencer({ baseComissao: "liquido" })],
+      { "Marca Teste": 45, "Outra Marca": 999 },
+    );
+    expect(linha!.valorBase).toBe(855);
+    expect(linha!.valorComissao).toBeCloseTo(256.5, 6);
+  });
+
+  it("o exemplo do cliente: R$ 100 + R$ 19 de frete, com 5% de taxa sobre os R$ 119", () => {
+    // O que cai na conta sem o frete: 119 - 5,95 de taxa - 19 de frete = 94,05.
+    const venda = [pedido({ total: "119.00", payment_status: "paid", shipping_cost_customer: "19.00" })];
+    const taxas = apurarTaxasPlataforma(venda, [taxaCartao(5)]);
+    const [linha] = calcularComissoesPorInfluencer(
+      venda,
+      [influencer({ baseComissao: "liquido", percentual: 25 })],
+      taxas.porMarca,
+    );
+    expect(linha!.valorBase).toBeCloseTo(94.05, 6);
+    expect(linha!.valorComissao).toBeCloseTo(23.5125, 6);
+  });
+
+  it("sem as taxas, o que cai na conta sai igual a receita real", () => {
+    const [linha] = calcularComissoesPorInfluencer(pedidos, [influencer({ baseComissao: "liquido" })]);
+    expect(linha!.valorBase).toBe(900);
+  });
+
   it("aplica o percentual sobre a receita real", () => {
     const [linha] = calcularComissoesPorInfluencer(pedidos, [influencer({ baseComissao: "receitaReal" })]);
     expect(linha!.valorBase).toBe(900);
@@ -268,6 +311,22 @@ describe("montarDemonstrativo", () => {
     expect(dre.totalComissoes).toBeCloseTo(90, 6); // 10% de 900 (bruto sem o frete de 100)
     expect(dre.participacaoSocios).toBeCloseTo(60, 6); // 6% de 1000 (recebido)
     expect(dre.lucroOperacional).toBeCloseTo(450, 6);
+  });
+
+  it("com contrato sobre o que cai na conta, a comissao desconta a mesma taxa que a DRE", () => {
+    const pedidos = [
+      pedido({ total: "1000.00", payment_status: "paid", shipping_cost_customer: "100.00" }),
+      pedido({ total: "500.00", payment_status: "paid", marca: "Outra Marca" }),
+    ];
+    const taxasPlataforma = apurarTaxasPlataforma(pedidos, [taxaCartao(4)]);
+    const dre = montarDemonstrativo(pedidos, [], [influencer({ baseComissao: "liquido", percentual: 25 })], {
+      taxasPlataforma,
+    });
+
+    // Marca Teste: receita real 900, taxa 4% de 1000 = 40. A taxa da outra marca nao entra.
+    expect(taxasPlataforma.total).toBeCloseTo(60, 6);
+    expect(dre.comissoes[0]!.valorBase).toBeCloseTo(860, 6);
+    expect(dre.totalComissoes).toBeCloseTo(215, 6);
   });
 
   it("participacao dos socios e 6% do RECEBIDO, nao do bruto", () => {
@@ -430,12 +489,10 @@ describe("cruzarMarcasComContratos", () => {
     expect(linha!.baseComissao).toBe("recebido");
   });
 
-  it("marca sem influencer assume a base bruta, que e a praticada hoje", () => {
-    // Assumir a base mais favoravel a empresa mostraria uma comissao MENOR do
-    // que a que o cliente efetivamente paga.
+  it("marca sem influencer assume a base praticada: o que cai na conta, sem frete", () => {
     const [linha] = cruzarMarcasComContratos([linhaMarca()], []);
 
-    expect(linha!.baseComissao).toBe("bruto");
+    expect(linha!.baseComissao).toBe("liquido");
     expect(linha!.influencerNome).toBeNull();
     expect(linha!.percentualContrato).toBeNull();
   });

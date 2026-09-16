@@ -48,12 +48,18 @@ export function custoUnitarioTotal(custo: CustoProduto): number {
  *                  cancelado e boleto nunca pago. E como o cliente paga hoje.
  * `recebido`    -- percentual sobre o dinheiro que efetivamente entrou.
  * `receitaReal` -- percentual sobre o recebido menos o frete.
+ * `liquido`     -- percentual sobre o que CAI NA CONTA, sem o frete: a receita
+ *                  real menos as taxas da Nuvemshop e do meio de pagamento.
+ *                  E como o cliente paga os influencers (16/09/2026).
  *
  * Em NENHUMA base entra o frete: ele e cobrado do cliente por fora e vai para
  * a transportadora. Com isso `recebido` e `receitaReal` dao o mesmo valor --
  * as duas continuam existindo para nao invalidar contratos ja cadastrados.
  */
-export type BaseComissao = "bruto" | "recebido" | "receitaReal";
+export type BaseComissao = "bruto" | "recebido" | "receitaReal" | "liquido";
+
+/** Base de todo contrato novo: e a regra que o cliente pratica. */
+export const BASE_PADRAO_CONTRATO: BaseComissao = "liquido";
 
 /**
  * Como cada base se chama e o que ela quer dizer, na tela.
@@ -66,6 +72,7 @@ export const ROTULO_BASE: Record<BaseComissao, string> = {
   bruto: "Faturamento bruto",
   recebido: "Dinheiro recebido",
   receitaReal: "Receita real (sem frete)",
+  liquido: "O que cai na conta (sem frete)",
 };
 
 export const EXPLICACAO_BASE: Record<BaseComissao, string> = {
@@ -74,6 +81,8 @@ export const EXPLICACAO_BASE: Record<BaseComissao, string> = {
   recebido:
     "Somente pedidos efetivamente pagos, sem o frete cobrado do cliente — na prática, o mesmo valor da receita real.",
   receitaReal: "Pedidos pagos, sem o frete cobrado do cliente.",
+  liquido:
+    "Pedidos pagos, sem o frete e sem as taxas da Nuvemshop e do meio de pagamento — o que de fato cai na conta da empresa.",
 };
 
 /**

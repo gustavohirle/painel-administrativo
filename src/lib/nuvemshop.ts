@@ -11,6 +11,7 @@
 
 import type {
   CarrinhoAbandonado,
+  ItemCatalogo,
   Pedido,
   ProdutoDoPedido,
   StatusEnvio,
@@ -256,6 +257,34 @@ export function converterCarrinho(bruto: unknown, marca: string): CarrinhoAbando
   };
 }
 
+/**
+ * Produto cru do catalogo (`GET /products`) -> uma entrada por variante.
+ *
+ * Variante sem id nao casa com venda nenhuma e fica de fora. Com mais de uma
+ * variante, o nome leva os valores dela ("Creme (30ml)"), que e como o pedido
+ * escreve o item; com uma so, fica o nome do produto.
+ */
+export function converterProduto(bruto: unknown, marca: string): ItemCatalogo[] {
+  const p = objeto(bruto);
+  const produtoId = inteiro(p.id);
+  if (produtoId === null) return [];
+
+  const nomeBase = nomeDoProduto(p.name);
+  const variantes = Array.isArray(p.variants) ? p.variants.map(objeto) : [];
+  const publicado = p.published !== false;
+
+  return variantes.flatMap((v) => {
+    const varianteId = inteiro(v.id);
+    if (varianteId === null) return [];
+    const valores = (Array.isArray(v.values) ? v.values : [])
+      .map((valor) => nomeDoProduto(valor))
+      .filter((valor) => valor !== "Produto sem nome");
+    const nome =
+      variantes.length > 1 && valores.length > 0 ? `${nomeBase} (${valores.join(", ")})` : nomeBase;
+    return [{ produtoId, varianteId, nome, sku: texto(v.sku), publicado, marca }];
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Sincronizacao
 // ---------------------------------------------------------------------------
@@ -310,6 +339,37 @@ export function situacoesDesconhecidas(pedidos: Pedido[]): Record<string, number
 }
 
 /**
+ * Quantos registros uma consulta pode alcancar, somadas todas as paginas.
+ *
+ * Passou disso, a API recusa a pagina com 422 ("Query exceeds max allowed
+ * limit of 10000") -- na loja real, a pagina 51 de um mes com 25 mil pedidos.
+ * Nao e permissao da chave: vale para qualquer uma.
+ */
+export const LIMITE_POR_CONSULTA = 10_000;
+
+/**
+ * Parte um intervalo de datas ao meio, para cada metade caber no limite.
+ *
+ * As duas metades COMPARTILHAM o instante do meio: os filtros da API incluem as
+ * pontas, e deixar um segundo de fora perderia o pedido criado nele. O pedido
+ * repetido na emenda sai por id, depois. Abaixo de dois segundos nao ha o que
+ * dividir, e a resposta e `null`.
+ */
+export function dividirJanela(
+  inicio: string,
+  fim: string,
+): [[string, string], [string, string]] | null {
+  const a = new Date(inicio).getTime();
+  const b = new Date(fim).getTime();
+  if (!Number.isFinite(a) || !Number.isFinite(b) || b - a < 2_000) return null;
+  const meio = new Date(Math.floor((a + b) / 2_000) * 1_000).toISOString();
+  return [
+    [new Date(a).toISOString(), meio],
+    [meio, new Date(b).toISOString()],
+  ];
+}
+
+/**
  * Proxima pagina segundo o cabecalho `Link` (`<url>; rel="next"`).
  *
  * A documentacao pede para seguir o `Link` em vez de montar a URL. Sem o
@@ -327,8 +387,9 @@ export function proximaPaginaDoLink(link: string | null): string | null {
 /**
  * Quanto esperar antes da proxima chamada, em milissegundos.
  *
- * A API usa balde de 40 chamadas que esvazia 2 por segundo, e informa quanto
- * falta em `x-rate-limit-reset` -- em MILISSEGUNDOS. A primeira versao do
+ * A documentacao fala em balde de 40 chamadas que esvazia 2 por segundo (a
+ * loja real informou `x-rate-limit-limit: 400`), e a API diz quanto falta em
+ * `x-rate-limit-reset` -- em MILISSEGUNDOS. A primeira versao do
  * cliente lia como segundos e, num 429, esperaria horas.
  *
  * Com folga no balde, nao espera. Perto do fim, espera o suficiente para uma

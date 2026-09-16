@@ -525,11 +525,12 @@ function FormularioImposto({
             />
             <span>
               <span className="block text-sm font-medium text-tinta">
-                Incide apenas nos produtos marcados
+                Já vem marcado no cadastro de produto
               </span>
               <span className="block text-xs text-tinta-media">
-                Use para tributos que dependem do NCM, como ICMS-ST e IPI.
-                Desmarcado, incide sobre toda a receita da marca.
+                Todo tributo sobre a receita incide só nos produtos que o
+                marcaram. Esta opção diz apenas se ele nasce marcado — use para
+                os que dependem do NCM, como ICMS, ICMS-ST e IPI.
               </span>
             </span>
           </label>

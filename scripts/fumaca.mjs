@@ -74,6 +74,7 @@ const AREA_DA_ROTA = {
   "/difal": "fiscal",
   "/custos": "custos",
   "/produtos": "produtos",
+  "/kits": "produtos",
   "/ordens": "produtos",
   "/estoque": "estoque",
 };

@@ -268,13 +268,13 @@ function Resultado({
     },
     {
       rotulo: "Comissão do influencer",
-      // O percentual incide direto sobre o preco: numa venda paga, o preco e o
-      // faturamento bruto dela. Contrato cadastrado com outra base continua
-      // possivel, e ai a linha diz qual e.
+      // Numa venda paga, bruto, recebido e receita real valem o preco. So o
+      // contrato sobre o que cai na conta desconta a taxa -- e a linha mostra
+      // sobre quanto o percentual incidiu.
       detalhe:
-        perfil.baseComissao === "bruto"
-          ? `${perfil.percentualContrato.toLocaleString("pt-BR")}% sobre o preço do produto, sem frete`
-          : `${perfil.percentualContrato.toLocaleString("pt-BR")}% sobre o preço de venda (contrato sobre ${ROTULO_BASE[perfil.baseComissao].toLowerCase()})`,
+        perfil.baseComissao === "liquido"
+          ? `${perfil.percentualContrato.toLocaleString("pt-BR")}% sobre o que cai na conta, sem frete (${moeda(resultado.preco - (resultado.preco + resultado.frete) * perfil.taxaForaDaComissao)})`
+          : `${perfil.percentualContrato.toLocaleString("pt-BR")}% sobre o preço do produto, sem frete (contrato sobre ${ROTULO_BASE[perfil.baseComissao].toLowerCase()})`,
       valor: resultado.comissao,
       cor: "var(--color-comissao)",
     },

@@ -8,6 +8,7 @@ import { modoDemonstracao } from "@/lib/config";
 import { apurarImpostos } from "@/lib/impostos";
 import { inteiro, mesAnoLongo, moeda, moedaRedonda, percentual } from "@/lib/format";
 import { filtrarPorMes, mesesDisponiveis } from "@/lib/metrics";
+import { mesDaTela } from "@/lib/mesDaTelaServidor";
 import { exigirArea } from "@/lib/sessao";
 
 export const dynamic = "force-dynamic";
@@ -38,8 +39,7 @@ export default async function PaginaDifal({
   ]);
 
   const meses = mesesDisponiveis(todosOsPedidos);
-  const mesSelecionado =
-    mesPedido && meses.includes(mesPedido) ? mesPedido : (meses[0] ?? "");
+  const mesSelecionado = await mesDaTela(meses, mesPedido);
   const pedidosDoMes = filtrarPorMes(todosOsPedidos, mesSelecionado);
 
   const resultado = apurarImpostos(

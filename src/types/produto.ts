@@ -42,6 +42,28 @@ export function partesDaChave(chave: ChaveProduto): {
  */
 export const PROFUNDIDADE_MAXIMA_KIT = 5;
 
+/**
+ * O nome diz que o item e kit?
+ *
+ * A Nuvemshop nao diz: na loja real `is_kit` vem falso em todos os produtos,
+ * inclusive nos 31 kits e combos. O que diz e o nome -- "Kit Aurora: Body
+ * Splash + Loção", "Combo: Tha Easy PDRN + Espuma", "Shampoo + Condicionador".
+ * "Body Splash Sortido" NAO e kit: e uma unidade de fragrancia escolhida na hora.
+ *
+ * E so a sugestao da importacao; a marcacao continua editavel no cadastro.
+ */
+export function pareceKit(nome: string): boolean {
+  return /\bkit\b/i.test(nome) || /\bcombo\b/i.test(nome) || /\s\+\s/.test(nome);
+}
+
+/**
+ * Observacao que a importacao grava no kit ainda sem composicao. A aba de kits
+ * a retira quando os itens sao informados -- senao o cadastro continuaria
+ * dizendo "falta" depois de montado.
+ */
+export const AVISO_KIT_SEM_COMPOSICAO =
+  "Kit pelo nome na Nuvemshop: falta informar os componentes. Até lá, o custo vem da ficha do próprio kit (aba Custos).";
+
 /** Um componente de kit: qual item e quantas unidades ele consome. */
 export interface ComponenteKit {
   /** Chave do produto componente. */

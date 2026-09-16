@@ -15,6 +15,7 @@ import {
   razaoSegura,
 } from "@/lib/format";
 import { filtrarPorMes, mesesDisponiveis, reconciliar } from "@/lib/metrics";
+import { mesDaTela } from "@/lib/mesDaTelaServidor";
 import { exigirArea } from "@/lib/sessao";
 import { podeAcessar } from "@/types/usuario";
 
@@ -38,8 +39,7 @@ export default async function PaginaCustos({
   ]);
 
   const meses = mesesDisponiveis(todosOsPedidos);
-  const mesSelecionado =
-    mesPedido && meses.includes(mesPedido) ? mesPedido : (meses[0] ?? "");
+  const mesSelecionado = await mesDaTela(meses, mesPedido);
   const pedidosDoMes = filtrarPorMes(todosOsPedidos, mesSelecionado);
 
   const vendidos = catalogoVendido(pedidosDoMes, custos, produtos);

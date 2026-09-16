@@ -15,6 +15,7 @@ const ITENS: Array<{ href: string; rotulo: string; area: Area }> = [
   { href: "/impostos", rotulo: "Impostos", area: "fiscal" },
   { href: "/difal", rotulo: "DIFAL", area: "fiscal" },
   { href: "/produtos", rotulo: "Produtos", area: "produtos" },
+  { href: "/kits", rotulo: "Kits", area: "produtos" },
   { href: "/ordens", rotulo: "Ordens", area: "produtos" },
   { href: "/estoque", rotulo: "Estoque", area: "estoque" },
 ];

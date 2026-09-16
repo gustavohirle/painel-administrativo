@@ -43,6 +43,14 @@ export interface ResultadoTaxasPlataforma {
   /** Valor por metodos SEM taxa cadastrada -- lacuna declarada. */
   recebidoSemTaxa: number;
   metodosSemTaxa: string[];
+  /**
+   * O mesmo `total`, separado por marca.
+   *
+   * E daqui que sai a base "o que cai na conta" da comissao (`liquido`): a
+   * comissao desconta exatamente a taxa que a DRE desconta, e nao uma segunda
+   * conta parecida.
+   */
+  porMarca: Record<string, number>;
 }
 
 const VAZIO: ResultadoTaxasPlataforma = {
@@ -53,6 +61,7 @@ const VAZIO: ResultadoTaxasPlataforma = {
   temTaxaNaoConfirmada: false,
   recebidoSemTaxa: 0,
   metodosSemTaxa: [],
+  porMarca: {},
 };
 
 /**
@@ -80,6 +89,7 @@ export function apurarTaxasPlataforma(
     fixa: number;
   }
   const mapa = new Map<string, Acumulado>();
+  const porMarca: Record<string, number> = {};
 
   for (const pedido of pedidos) {
     const metodo = metodoDoPedido(pedido);
@@ -107,8 +117,10 @@ export function apurarTaxasPlataforma(
       acc.base += valor;
 
       if (taxa?.ativa) {
-        acc.percentual += (taxa.percentual / 100) * valor;
+        const percentual = (taxa.percentual / 100) * valor;
+        acc.percentual += percentual;
         acc.fixa += taxa.valorFixo;
+        porMarca[pedido.marca] = (porMarca[pedido.marca] ?? 0) + percentual + taxa.valorFixo;
       }
     }
 
@@ -157,6 +169,7 @@ export function apurarTaxasPlataforma(
     ),
     recebidoSemTaxa: semTaxa.reduce((s, l) => s + l.base, 0),
     metodosSemTaxa: semTaxa.map((l) => l.metodo),
+    porMarca,
   };
 }
 

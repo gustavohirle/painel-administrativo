@@ -1,5 +1,6 @@
 import { moeda, moedaRedonda, percentual, razaoSegura } from "@/lib/format";
 import type { DemonstrativoResultado } from "@/lib/costing";
+import { INTERMEDIARIO_FRETE } from "@/lib/config";
 
 /*
  * Para onde foi cada real faturado.
@@ -10,8 +11,9 @@ import type { DemonstrativoResultado } from "@/lib/costing";
  *
  * A pizza so fecha porque as parcelas somam EXATAMENTE o bruto:
  *
- *   bruto = nao pago + cancelado + reembolsado + frete + impostos + DIFAL
- *         + taxa + fabricacao + influencers + socios + lucro
+ *   bruto = nao pago + cancelado + reembolsado + frete da transportadora
+ *         + intermediario de frete + impostos + DIFAL + taxas + fabricacao
+ *         + influencers + socios + lucro
  *
  * Se mexer nessa conta, a pizza deixa de fechar -- e e o primeiro lugar onde
  * o erro aparece.
@@ -31,6 +33,8 @@ interface Fatia {
   cor: string;
   /** O que sobra no fim -- sai do circulo e ganha destaque na legenda. */
   resultado?: boolean;
+  /** Some da legenda quando e zero: fatia que so existe em algumas lojas. */
+  opcional?: boolean;
 }
 
 function montarFatias(dre: DemonstrativoResultado): Fatia[] {
@@ -45,13 +49,21 @@ function montarFatias(dre: DemonstrativoResultado): Fatia[] {
     { rotulo: "Não pagos", valor: r.naoPago, cor: "var(--color-naopago)" },
     { rotulo: "Cancelados", valor: r.cancelado, cor: "var(--color-cancelado)" },
     { rotulo: "Reembolsados", valor: r.reembolsado, cor: "var(--color-reembolsado)" },
-    { rotulo: "Frete", valor: r.frete, cor: "var(--color-frete)" },
+    // O frete cobrado se divide entre quem o recebe; as duas somam r.frete.
+    { rotulo: "Frete (transportadora)", valor: r.freteTransportadora, cor: "var(--color-frete)" },
+    {
+      rotulo: INTERMEDIARIO_FRETE,
+      valor: r.freteIntermediario,
+      cor: "var(--color-intermediario-frete)",
+      opcional: true,
+    },
     { rotulo: "Impostos", valor: outrosImpostos, cor: "var(--color-imposto)" },
     { rotulo: "DIFAL", valor: difal, cor: "var(--color-difal)" },
     // Fatia propria, nao somada aos impostos: taxa e preco de servico, a unica
     // das duas que da para renegociar.
+    // Todas as taxas juntas: a da Nuvemshop e as do cartao e do pix.
     {
-      rotulo: "Taxa Nuvemshop",
+      rotulo: "Taxas Nuvemshop, cartão e pix",
       valor: dre.totalTaxasPlataforma,
       cor: "var(--color-taxa)",
     },
@@ -137,7 +149,7 @@ function desenhar(fatias: Fatia[], total: number): FatiaDesenhada[] {
 
 export function ComposicaoFaturamento({ dre }: { dre: DemonstrativoResultado }) {
   const r = dre.reconciliacao;
-  const fatias = montarFatias(dre);
+  const fatias = montarFatias(dre).filter((f) => !(f.opcional && f.valor === 0));
 
   const prejuizo = dre.lucroOperacional < 0;
 

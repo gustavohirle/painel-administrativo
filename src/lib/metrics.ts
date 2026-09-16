@@ -67,6 +67,14 @@ export interface Reconciliacao {
   recebido: number;
   /** Frete cobrado do cliente nos pedidos recebidos: entra na conta, nao e receita. */
   frete: number;
+  /**
+   * `frete` dividido entre quem o recebe: a transportadora
+   * (`shipping_cost_owner`) e o intermediario de frete, que fica com a
+   * diferenca -- na loja real, R$ 0,73 por pedido para a Intelipost
+   * (`INTERMEDIARIO_FRETE`). As duas partes somam `frete`.
+   */
+  freteTransportadora: number;
+  freteIntermediario: number;
   /** recebido - frete. O numero que o cliente deveria estar olhando. */
   receitaReal: number;
   /**
@@ -97,6 +105,7 @@ export function reconciliar(pedidos: Pedido[]): Reconciliacao {
   let reembolsado = 0;
   let recebido = 0;
   let frete = 0;
+  let freteTransportadora = 0;
   let freteTotal = 0;
 
   const quantidade = {
@@ -125,11 +134,22 @@ export function reconciliar(pedidos: Pedido[]): Reconciliacao {
         naoPago += total;
         quantidade.naoPago += 1;
         break;
-      case "recebido":
+      case "recebido": {
         recebido += total;
-        frete += paraNumero(pedido.shipping_cost_customer);
+        const cobrado = paraNumero(pedido.shipping_cost_customer);
+        const pagoATransportadora = paraNumero(pedido.shipping_cost_owner);
+        frete += cobrado;
+        /*
+         * Sem o custo da transportadora (campo ausente vira zero na borda), o
+         * frete inteiro fica com ela: jogar tudo no intermediario inventaria
+         * um custo. E a loja pagando MAIS que cobrou (frete gratis) nao e
+         * modelado aqui -- o painel so divide o que o cliente pagou.
+         */
+        freteTransportadora +=
+          pagoATransportadora > 0 ? Math.min(cobrado, pagoATransportadora) : cobrado;
         quantidade.recebido += 1;
         break;
+      }
     }
   }
 
@@ -140,6 +160,8 @@ export function reconciliar(pedidos: Pedido[]): Reconciliacao {
     reembolsado,
     recebido,
     frete,
+    freteTransportadora,
+    freteIntermediario: frete - freteTransportadora,
     receitaReal: recebido - frete,
     freteTotal,
     brutoSemFrete: bruto - freteTotal,

@@ -40,6 +40,7 @@ function perfil(parcial: Partial<PerfilDeCusto> = {}): PerfilDeCusto {
     fracaoInterestadual: 0.6,
     cargaTaxas: 0.03,
     cargaComissao: 0.35,
+    taxaForaDaComissao: 0,
     cargaDespesas: 0,
     cargaSocios: 0,
     fretePorPedido: 20,
@@ -113,6 +114,27 @@ describe("simularPreco", () => {
     expect(simularPreco(p, 30, precoMinimo!).lucro).toBeCloseTo(0, 8);
   });
 
+  it("contrato sobre o que cai na conta: a comissão não vê a taxa, nem a do frete", () => {
+    const p = perfil({ baseComissao: "liquido", taxaForaDaComissao: 0.03 });
+    const r = simularPreco(p, 30, 100);
+
+    // Pago = 100 + 10 de frete; a taxa de 3% sobre ele não é base de comissão.
+    expect(r.taxas).toBeCloseTo(3.3, 10);
+    expect(r.comissao).toBeCloseTo((100 - 3.3) * 0.35, 10);
+    expect(simularPreco(p, 30, r.precoMinimo!).lucro).toBeCloseTo(0, 8);
+    expect(precoParaMargem(p, 30, 0.15)! * 0.15).toBeCloseTo(
+      simularPreco(p, 30, precoParaMargem(p, 30, 0.15)!).lucro,
+      8,
+    );
+  });
+
+  it("contrato sobre o que cai na conta: frete maior devolve a parte da taxa na comissão", () => {
+    const base = { baseComissao: "liquido" as const, taxaForaDaComissao: 0.03, cargaSocios: 0.06 };
+    const sem = simularPreco(perfil({ ...base, fretePorUnidade: 0 }), 30, 100);
+    const com = simularPreco(perfil({ ...base, fretePorUnidade: 19 }), 30, 100);
+    expect(sem.lucro - com.lucro).toBeCloseTo(19 * (0.03 + 0.06 - 0.35 * 0.03), 10);
+  });
+
   it("sem preço mínimo quando as cargas proporcionais chegam a 100%", () => {
     const r = simularPreco(perfil({ cargaComissao: 0.85 }), 30, 100);
     expect(r.cargaProporcional).toBeGreaterThanOrEqual(1);
@@ -153,6 +175,40 @@ describe("montarPerfisDeCusto", () => {
 
       expect(
         Math.abs(simulado.lucro * unidades - dre.lucroOperacional - foraDaSimulacao),
+      ).toBeLessThan(0.01);
+    }
+  });
+
+  it("com contratos sobre o que cai na conta, a simulação e a DRE só diferem nas despesas", () => {
+    const cenario = cenarioDemo();
+    const influencers = cenario.influencers.map((i) => ({ ...i, baseComissao: "liquido" as const }));
+    const { pedidosDoMes, pedidos, impostos, produtos, aliquotas, taxas, despesas, custos } = cenario;
+    const perfis = montarPerfisDeCusto({
+      pedidosDoMes,
+      influencers,
+      impostos: apurarImpostos(pedidosDoMes, pedidos, produtos, impostos, influencers, aliquotas),
+      taxas,
+      despesas,
+    });
+    expect(perfis.length).toBeGreaterThan(0);
+
+    for (const p of perfis) {
+      expect(p.taxaForaDaComissao).toBeCloseTo(p.cargaTaxas, 12);
+      const daMarca = pedidosDoMes.filter((x) => x.marca === p.marca);
+      const dre = montarDemonstrativo(daMarca, custos, influencers, {
+        produtos,
+        impostos: apurarImpostos(daMarca, pedidos, produtos, impostos, influencers, aliquotas),
+        taxasPlataforma: apurarTaxasPlataforma(daMarca, taxas),
+        despesasInfluencers: despesas,
+      });
+      const r = dre.reconciliacao;
+      const simulado = simularPreco(p, dre.cmv.cmv / p.unidadesPagas, r.receitaReal / p.unidadesPagas);
+
+      // A comissão bate inteira: a base "o que cai na conta" só tem pedido pago.
+      expect(simulado.comissao * p.unidadesPagas).toBeCloseTo(dre.totalComissoes, 4);
+      const foraDaSimulacao = dre.totalDespesasInfluencers * (1 - r.receitaReal / r.brutoSemFrete);
+      expect(
+        Math.abs(simulado.lucro * p.unidadesPagas - dre.lucroOperacional - foraDaSimulacao),
       ).toBeLessThan(0.01);
     }
   });

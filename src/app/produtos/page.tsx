@@ -2,14 +2,17 @@ import { Cabecalho } from "@/components/Cabecalho";
 import { Cartao, NumeroDestaque } from "@/components/Cartao";
 import { GestaoProdutos } from "@/components/GestaoProdutos";
 import { RodapeDemonstracao } from "@/components/RodapeDemonstracao";
+import { TrazerProdutosVendidos } from "@/components/TrazerProdutosVendidos";
 
 import { obterFonteDePedidos, obterRepositorioCadastros } from "@/data";
 import { modoDemonstracao } from "@/lib/config";
+import { produtosParaCadastrar } from "@/lib/costing";
 import { unidadesConsumidas } from "@/lib/estoque";
 import { indexarProdutos } from "@/lib/impostos";
 import { inteiro, mesAnoLongo } from "@/lib/format";
 import { filtrarPorMes, mesesDisponiveis, pedidosRecebidos } from "@/lib/metrics";
 import { chaveProduto } from "@/types/produto";
+import { mesDaTela } from "@/lib/mesDaTelaServidor";
 import { exigirArea } from "@/lib/sessao";
 import { podeAcessar } from "@/types/usuario";
 
@@ -34,8 +37,7 @@ export default async function PaginaProdutos({
   ]);
 
   const meses = mesesDisponiveis(todosOsPedidos);
-  const mesSelecionado =
-    mesPedido && meses.includes(mesPedido) ? mesPedido : (meses[0] ?? "");
+  const mesSelecionado = await mesDaTela(meses, mesPedido);
   const pedidosDoMes = filtrarPorMes(todosOsPedidos, mesSelecionado);
 
   // Duas leituras diferentes de "vendas", e cada linha precisa da sua:
@@ -62,6 +64,8 @@ export default async function PaginaProdutos({
 
   const kits = produtos.filter((p) => p.ehKit);
   const semDono = produtos.filter((p) => !p.influencerId);
+  // Base inteira, nao so o mes: produto que vendeu em julho tambem precisa de cadastro.
+  const faltando = produtosParaCadastrar(todosOsPedidos, produtos, impostos, influencers).length;
 
   // So o que a tela precisa saber de cada influencer -- nao o contrato inteiro.
   const opcoesInfluencer = influencers
@@ -114,6 +118,8 @@ export default async function PaginaProdutos({
             apoio={`${opcoesInfluencer.length} influencer(s) ativo(s)`}
           />
         </div>
+
+        <TrazerProdutosVendidos faltando={faltando} />
 
         <Cartao
           titulo="Cadastro de produtos"

@@ -3,6 +3,7 @@
 import { Fragment, useActionState, useMemo, useState } from "react";
 
 import { removerProduto, salvarProduto } from "@/app/produtos/actions";
+import { idsMarcadosPorPadrao } from "@/lib/impostos";
 import { inteiro } from "@/lib/format";
 import { ESTADO_INICIAL } from "@/types/formulario";
 import type { Imposto, RegimeTributario } from "@/types/fiscal";
@@ -48,10 +49,11 @@ export function GestaoProdutos({
   const [filtro, setFiltro] = useState<"todos" | "kits" | "semDono">("todos");
   const [editando, setEditando] = useState<Produto | null | "novo">(null);
 
+  // Kit tambem pode ser componente ("Combo: Kit Golden Hour + Colônia"); o
+  // proprio item sai da lista dentro do formulario.
   const opcoes: OpcaoComponente[] = useMemo(
     () =>
       produtos
-        .filter((p) => !p.ehKit)
         .map((p) => ({ chave: p.chave, nome: p.nome }))
         .sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR")),
     [produtos],
@@ -137,7 +139,7 @@ export function GestaoProdutos({
               <th className="py-2.5 pr-4 font-semibold">Influencer</th>
               <th className="py-2.5 pr-4 font-semibold">NCM</th>
               <th className="py-2.5 pr-4 font-semibold">Tipo</th>
-              <th className="py-2.5 pr-4 font-semibold">Impostos do regime</th>
+              <th className="py-2.5 pr-4 font-semibold">Impostos do produto</th>
               {podeVerFinanceiro && (
                 <th
                   className="py-2.5 pr-4 text-right font-semibold"
@@ -199,7 +201,11 @@ export function GestaoProdutos({
                     )}
                   </td>
                   <td className="py-3 pr-4">
-                    {produto.ehKit ? (
+                    {produto.ehKit && produto.componentes.length === 0 ? (
+                      <span className="rounded-full bg-alerta-fundo px-2.5 py-0.5 text-xs font-semibold text-naopago">
+                        kit · montar
+                      </span>
+                    ) : produto.ehKit ? (
                       <span className="rounded-full bg-real-claro px-2.5 py-0.5 text-xs font-semibold text-real">
                         kit de {produto.componentes.length}
                       </span>
@@ -312,8 +318,14 @@ function FormularioProduto({
   const [componentes, setComponentes] = useState<ComponenteKit[]>(
     produto?.componentes ?? [],
   );
+  // Um kit nao pode conter a si mesmo (a action tambem barra).
+  const opcoesDoKit = opcoes.filter((o) => o.chave !== produto?.chave);
 
-  const [influencerId, setInfluencerId] = useState(produto?.influencerId ?? "");
+  // Um influencer ativo so: o dono e ele, e a tela nao pergunta.
+  const unico = influencers.length === 1 ? influencers[0]! : null;
+  const [influencerId, setInfluencerId] = useState(
+    produto?.influencerId ?? unico?.id ?? "",
+  );
   const dono = influencers.find((i) => i.id === influencerId) ?? null;
 
   /*
@@ -329,22 +341,18 @@ function FormularioProduto({
     : [];
 
   const [marcados, setMarcados] = useState<string[]>(
-    produto?.impostosIds ?? [],
+    produto?.impostosIds ?? idsMarcadosPorPadrao(impostos, dono?.regime ?? "lucro_presumido"),
   );
 
   function trocarInfluencer(novoId: string) {
     setInfluencerId(novoId);
     const novoDono = influencers.find((i) => i.id === novoId) ?? null;
     // Ao trocar o dono, os impostos do novo regime entram ja marcados.
-    setMarcados(
-      novoDono
-        ? impostos.filter((i) => i.regimes.includes(novoDono.regime)).map((i) => i.id)
-        : [],
-    );
+    setMarcados(novoDono ? idsMarcadosPorPadrao(impostos, novoDono.regime) : []);
   }
 
   function adicionarComponente() {
-    const primeira = opcoes[0];
+    const primeira = opcoesDoKit[0];
     if (!primeira) return;
     setComponentes((atual) => [
       ...atual,
@@ -415,28 +423,50 @@ function FormularioProduto({
           </label>
         </div>
 
-        <label className="block">
+        {/*
+          Cada loja Nuvemshop e de UM influencer, e a chave da API e por loja:
+          havendo um influencer ativo so, o dono nao e escolha -- vem preenchido
+          e a tela so informa. Com dois ou mais a escolha volta, porque produto
+          criado a mao nao tem loja de origem.
+        */}
+        <div className="block">
           <span className="text-sm font-medium text-tinta">
             Influencer dono deste produto
           </span>
-          <select
-            name="influencerId"
-            value={influencerId}
-            onChange={(e) => trocarInfluencer(e.target.value)}
-            className="mt-1 w-full rounded-lg border border-borda-forte bg-superficie px-3 py-2 text-tinta focus:border-tinta focus:outline-none"
-          >
-            <option value="">Sem influencer vinculado</option>
-            {influencers.map((i) => (
-              <option key={i.id} value={i.id}>
-                {i.nome} — {i.marca} ({ROTULO_REGIME[i.regime]})
-              </option>
-            ))}
-          </select>
-          <span className="mt-1 block text-xs leading-relaxed text-tinta-media">
-            Um produto pertence a um influencer só. É o regime dele que define
-            quais impostos incidem sobre este item.
-          </span>
-        </label>
+          {unico ? (
+            <>
+              <input type="hidden" name="influencerId" value={unico.id} />
+              <p className="mt-1 rounded-lg border border-borda bg-fundo px-3 py-2 text-tinta">
+                {unico.nome} — {unico.marca} ({ROTULO_REGIME[unico.regime]})
+              </p>
+              <span className="mt-1 block text-xs leading-relaxed text-tinta-media">
+                É o único influencer cadastrado, e cada loja da Nuvemshop é de um
+                influencer: todo produto é dele. É o regime dele que define quais
+                impostos incidem sobre este item.
+              </span>
+            </>
+          ) : (
+            <>
+              <select
+                name="influencerId"
+                value={influencerId}
+                onChange={(e) => trocarInfluencer(e.target.value)}
+                className="mt-1 w-full rounded-lg border border-borda-forte bg-superficie px-3 py-2 text-tinta focus:border-tinta focus:outline-none"
+              >
+                <option value="">Sem influencer vinculado</option>
+                {influencers.map((i) => (
+                  <option key={i.id} value={i.id}>
+                    {i.nome} — {i.marca} ({ROTULO_REGIME[i.regime]})
+                  </option>
+                ))}
+              </select>
+              <span className="mt-1 block text-xs leading-relaxed text-tinta-media">
+                Um produto pertence a um influencer só. É o regime dele que define
+                quais impostos incidem sobre este item.
+              </span>
+            </>
+          )}
+        </div>
 
         <div className="grid gap-4 sm:grid-cols-2">
           <label className="block">
@@ -490,51 +520,66 @@ function FormularioProduto({
           ) : (
             <>
               <p className="mb-3 text-xs leading-relaxed text-tinta-media">
-                Preenchidos a partir do regime{" "}
+                Do regime{" "}
                 <strong className="text-tinta">{ROTULO_REGIME[dono.regime]}</strong>,
-                de {dono.nome}. Desmarcar aqui tira o imposto só deste produto.
+                de {dono.nome}. O imposto só é cobrado nos produtos marcados:
+                desmarcar tira o imposto deste item.
               </p>
 
               <div className="grid gap-3 sm:grid-cols-2">
-                {doRegime.map((imposto) => (
-                  <label key={imposto.id} className="flex items-start gap-2">
-                    <input
-                      type="checkbox"
-                      name="impostosIds"
-                      value={imposto.id}
-                      checked={marcados.includes(imposto.id)}
-                      onChange={(e) =>
-                        setMarcados((atual) =>
-                          e.target.checked
-                            ? [...atual, imposto.id]
-                            : atual.filter((id) => id !== imposto.id),
-                        )
-                      }
-                      className="mt-0.5 h-4 w-4 accent-[var(--color-tinta)]"
-                    />
-                    <span>
-                      <span className="block text-sm font-medium text-tinta">
-                        {imposto.sigla}{" "}
-                        <span className="numerico font-normal text-tinta-media">
-                          {imposto.aliquota > 0
-                            ? `${String(imposto.aliquota).replace(".", ",")}%`
-                            : ""}
-                        </span>
-                        {!imposto.ativo && (
-                          <span className="ml-1 text-xs font-normal text-naopago">
-                            (sem alíquota informada)
+                {doRegime.map((imposto) => {
+                  /*
+                   * Todo tributo sobre RECEITA e marcavel: ele so incide onde o
+                   * produto o marcou. O de LUCRO (IRPJ, CSLL) aparece sem
+                   * clique -- a base dele e a presuncao sobre a receita da
+                   * marca inteira, que nao se reparte por produto. Escondê-lo
+                   * seria pior: a empresa paga e a tela nao diria.
+                   */
+                  const marcavel = imposto.baseIncidencia !== "lucro";
+                  return (
+                    <label
+                      key={imposto.id}
+                      className={`flex items-start gap-2 ${
+                        marcavel ? "" : "opacity-70"
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        name="impostosIds"
+                        value={imposto.id}
+                        disabled={!marcavel}
+                        checked={marcavel && marcados.includes(imposto.id)}
+                        onChange={(e) =>
+                          setMarcados((atual) =>
+                            e.target.checked
+                              ? [...atual, imposto.id]
+                              : atual.filter((id) => id !== imposto.id),
+                          )
+                        }
+                        className="mt-0.5 h-4 w-4 accent-[var(--color-tinta)]"
+                      />
+                      <span>
+                        <span className="block text-sm font-medium text-tinta">
+                          {imposto.sigla}{" "}
+                          <span className="numerico font-normal text-tinta-media">
+                            {String(imposto.aliquota).replace(".", ",")}%
                           </span>
-                        )}
+                          {!imposto.ativo && (
+                            <span className="ml-1 text-xs font-normal text-naopago">
+                              (desativado no cadastro de impostos)
+                            </span>
+                          )}
+                        </span>
+                        <span className="block text-xs text-tinta-media">
+                          {imposto.nome}
+                          {marcavel
+                            ? ""
+                            : " · incide sobre o lucro presumido da marca, não sobre o produto"}
+                        </span>
                       </span>
-                      <span className="block text-xs text-tinta-media">
-                        {imposto.nome}
-                        {imposto.aplicacaoPorProduto
-                          ? " · depende do produto"
-                          : " · incide sobre toda a receita"}
-                      </span>
-                    </span>
-                  </label>
-                ))}
+                    </label>
+                  );
+                })}
               </div>
 
               {dono.regime === "simples_nacional" && (
@@ -582,7 +627,7 @@ function FormularioProduto({
                   <select
                     value={componente.chave}
                     onChange={(e) => {
-                      const opcao = opcoes.find((o) => o.chave === e.target.value);
+                      const opcao = opcoesDoKit.find((o) => o.chave === e.target.value);
                       setComponentes((atual) =>
                         atual.map((c, i) =>
                           i === indice && opcao
@@ -593,7 +638,7 @@ function FormularioProduto({
                     }}
                     className="min-w-[260px] flex-1 rounded-lg border border-borda-forte bg-superficie px-3 py-2 text-sm text-tinta"
                   >
-                    {opcoes.map((opcao) => (
+                    {opcoesDoKit.map((opcao) => (
                       <option key={opcao.chave} value={opcao.chave}>
                         {opcao.nome}
                       </option>
@@ -639,7 +684,10 @@ function FormularioProduto({
 
               {componentes.length === 0 && (
                 <p className="text-sm text-naopago">
-                  Um kit precisa de pelo menos um componente.
+                  Composição ainda não informada. Até lá, o custo do kit vem da
+                  ficha do próprio kit (aba Custos), e o estoque o conta como um
+                  item só. Componente que não é vendido avulso se cadastra em
+                  &quot;Novo produto&quot;.
                 </p>
               )}
             </div>

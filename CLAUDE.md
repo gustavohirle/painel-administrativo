@@ -157,8 +157,8 @@ As três decisões que valem daqui para frente:
    formulário nascia com 900px numa tela de 390 e só era alcançável arrastando
    de lado. A classe prende a largura na tela e gruda o bloco à esquerda, para
    ele não sumir quando a tabela rolar.
-4. **A barra de abas rola de lado, não quebra em linhas.** São dez seções;
-   em 390px elas somam ~600px. Até aqui as abas dividiam a linha do cabeçalho
+4. **A barra de abas rola de lado, não quebra em linhas.** São onze seções;
+   em 390px elas somam ~650px. Até aqui as abas dividiam a linha do cabeçalho
    com o logo e o menu do usuário num `flex-wrap` único, e a lista quebrava no
    meio: a segunda fileira começava embaixo do logo, desalinhada de tudo. O
    problema não era o espaço — era a barra tentar ser uma linha só quando não
@@ -187,6 +187,27 @@ coluna âncora, ou formulário de edição maior que a tela. Ver seção 11.
 auditoria media a página parada e por isso não viu o formulário de edição
 estourando — o formulário nem existe no HTML inicial. Ao acrescentar checagem
 nova, pergunte se o defeito aparece só depois de um clique.
+
+### 2.2 O mês escolhido vale para todas as abas
+
+Pedido do cliente: escolhido um mês no cabeçalho, ele fica **até ser trocado**.
+Antes o mês morava só na URL (`?mes=`), os links das abas não o levavam, e
+trocar de aba voltava para o último mês — setembro numa tela, julho na outra,
+sem aviso.
+
+O seletor grava a escolha num **cookie de sessão** (`painel_mes`), e toda
+página decide o mês por `mesDaTela`: o da URL, depois o do cookie, depois o
+mais recente (`escolherMes`, com teste). Mês que saiu da base é ignorado.
+
+Duas decisões:
+
+- **O mês padrão não é gravado.** Só a troca e o `?mes=` escrito no endereço
+  (link compartilhado) viram cookie. Se o padrão fosse gravado, quando outubro
+  começasse o painel continuaria em setembro sem ninguém ter escolhido isso.
+- **Cookie de sessão, sem validade.** Fechar o navegador volta para o mês mais
+  recente — que é o que a pessoa espera ao abrir o painel no dia seguinte.
+
+Relatórios não usa esse mês: tem período próprio, na URL.
 
 ---
 
@@ -268,12 +289,18 @@ origem nesse campo. Em modo live ele vem do `store_id` de cada credencial.
 **Atenção:** valores monetários vêm como **string** (`"5190.00"`). Converta uma
 vez, na borda, com `paraNumero()`. Não faça aritmética em string.
 
-Endpoints: `GET /2025-03/{store_id}/orders` e `GET /2025-03/{store_id}/checkouts`
+Endpoints: `GET /v1/{store_id}/orders` e `GET /v1/{store_id}/checkouts`
 em `https://api.nuvemshop.com.br`, com filtros `created_at_min`,
-`created_at_max`, `updated_at_min`, `status=any`, `page`, `per_page` (máx. 200).
-Autenticação por `Authorization: Bearer {token}` na versão atual; a antiga
-(`/v1`) usava `Authentication: bearer`, e o cliente manda os dois. `User-Agent`
-com nome do aplicativo e contato é obrigatório (sem ele, 400).
+`created_at_max`, `updated_at_min`, `updated_at_max`, `status=any`,
+`payment_status=any`, `page`, `per_page` (máx. 200). Autenticação por
+`Authorization: Bearer {token}` na versão nova; a `/v1` usa
+`Authentication: bearer`, e o cliente manda os dois. `User-Agent` com nome do
+aplicativo e contato é obrigatório (sem ele, 400).
+
+**A versão é a `v1`, não a `2025-03`.** Na loja real, a listagem da 2025-03
+veio sem `shipping_cost_customer`, sem `shipping_cost_owner` e sem `shipping_*`
+— o frete foi para `fulfillments[]`, que só traz transportadora e modalidade.
+O frete entraria zerado. Ver seção 12, "O que a loja real mostrou".
 
 O exemplo da própria documentação mistura tipos: `total` vem como texto,
 `shipping_cost_customer` como número, `quantity` como texto e as datas em UTC
@@ -298,7 +325,8 @@ frete           = soma de shipping_cost_customer dos pedidos recebidos
 receita real    = recebido − frete
 ```
 
-Exibida como **gráfico de pizza**, com onze fatias. É o herói da tela.
+Exibida como **gráfico de pizza**, com onze fatias (doze na loja real, com a
+Intelipost). É o herói da tela.
 
 A cascata foi tentada e descartada: com a cadeia completa (ver 5.8) ela vira
 onze barras em degrau, com os rótulos em alturas diferentes e os textos de
@@ -308,8 +336,9 @@ precisa funcionar.
 A pizza só fecha porque as parcelas **somam exatamente** o bruto:
 
 ```
-bruto = não pago + cancelado + reembolsado + frete + impostos + DIFAL
-      + taxa da plataforma + fabricação + influencers + sócios + lucro operacional
+bruto = não pago + cancelado + reembolsado + frete da transportadora + Intelipost
+      + impostos + DIFAL + taxas (Nuvemshop, cartão e pix) + fabricação
+      + influencers + sócios + lucro operacional
 ```
 
 A fatia **Influencers** é comissão **mais** despesas cadastradas (5.16). As duas
@@ -317,6 +346,22 @@ saem do lucro, então a fatia precisa carregar as duas para a pizza fechar.
 
 Se mexer nessa conta, a pizza deixa de fechar — e é o primeiro lugar onde o
 erro aparece.
+
+**O frete se divide em duas fatias.** O cliente paga, por pedido, o frete da
+transportadora (`shipping_cost_owner`) mais R$ 0,73 que vão para a
+**Intelipost**, a plataforma de frete da loja real (`INTERMEDIARIO_FRETE`).
+Os R$ 0,73 apareceram como diferença entre `shipping_cost_customer` e
+`shipping_cost_owner` em todo pedido pago desde julho/2026 (em fevereiro, zero),
+e o dono confirmou de quem são. `reconciliar` devolve `freteTransportadora`
+e `freteIntermediario`, que somam `frete`: nenhuma conta muda, só a leitura.
+A fatia da Intelipost some quando é zero (a demonstração não tem). Custo da
+transportadora ausente (`"0.00"`) deixa o frete inteiro com ela, e a loja
+pagando mais que cobrou (frete grátis) não é modelado.
+
+**A fatia de taxas é uma só**: Nuvemshop, cartão e pix juntos. O cadastro é por
+meio de pagamento, e a taxa do plano da Nuvemshop, se houver, entra somada ao
+percentual de cada meio. Na loja real o pix é **0,99%, só sobre pix pago**
+(Nuvem Pago, informado pelo dono); o cartão ainda é a referência de 4,99%.
 
 O **DIFAL é fatia própria**, separada dos demais impostos, porque é devido ao
 estado de DESTINO e não ao de origem — decisão diferente, conversa diferente.
@@ -353,6 +398,7 @@ receita da operação.
 |---|---|---|
 | Comissão, base "bruto" | faturamento **sem frete** (`brutoSemFrete`, todos os pedidos) | `calcularComissoesPorInfluencer` |
 | Comissão, base "recebido" / "receita real" | receita real (recebido − frete) — as duas passam a dar o mesmo valor | idem |
+| **Comissão, base "o que cai na conta"** (`liquido`, a praticada) | receita real − taxas da Nuvemshop e do pagamento (`porMarca` de `apurarTaxasPlataforma`) | idem |
 | Impostos, DAS, Presumido, RBT12 | receita real | `apurarImpostos`, `calcularRBT12` |
 | DIFAL | valor da operação − frete | `apurarDifal` |
 | Divisão das despesas compartilhadas | faturamento sem frete | `ratearDespesas` |
@@ -369,6 +415,42 @@ dos impostos foi pedido do cliente e deixa o imposto do painel **menor** do que
 o que pode ser devido. Se o contador discordar, a mudança é voltar a base de
 `apurarGrupo`, `calcularRBT12` e `apurarDifal` para o recebido com frete — a
 comissão fica como está.
+
+### 5.1.2 A comissão é sobre o que cai na conta
+
+Regra do cliente, dita em 16/09/2026 ao ligar a loja real: **o influencer
+ganha sobre o produto, sem o frete, sem a taxa da Nuvemshop e sem a taxa do
+cartão** — "basicamente o que cai na conta da empresa, fora o frete".
+
+```
+base "liquido" = recebido − frete − taxas de plataforma e pagamento
+               = receita real − taxas
+```
+
+Virou a quarta base (`liquido`, "O que cai na conta (sem frete)"), a primeira do
+formulário e o padrão de contrato novo (`BASE_PADRAO_CONTRATO`) e de marca sem
+contrato (`BASE_SEM_CONTRATO`). As outras três continuam, para contrato que
+fuja da regra. A base da demonstração **não** mudou: os contratos semeados
+seguem sobre o bruto, que é a tese da seção 1.
+
+Três decisões:
+
+1. **A taxa descontada é a MESMA que a DRE desconta.** `apurarTaxasPlataforma`
+   devolve `porMarca`, e é esse número que `calcularComissoesPorInfluencer`
+   recebe — inclusive a taxa sobre pedido não pago, quando a linha da taxa
+   incide sobre todo pedido criado. Uma segunda conta de taxa só para a
+   comissão seria o mesmo número por outro caminho, e um dia divergiria.
+2. **A taxa sobre o frete também sai.** O gateway cobra sobre o valor pago com
+   frete; "o que cai na conta, fora o frete" é o valor pago − taxa − frete.
+3. **Sem as taxas, a base sai igual à receita real** — o mesmo que a DRE faz
+   quando não recebe as taxas ("antes delas").
+
+Os dois simuladores seguem a regra. No de preço, a comissão de uma venda é
+`% × (preço − (preço + frete) × taxa)`, e o preço mínimo ganha o termo
+`frete × (taxa + sócios − comissão × taxa)`; no de influencer,
+`% × (receita real − taxa)`. Os testes de identidade com a DRE continuam
+fechando — no de preço, com contrato `liquido`, a comissão bate **inteira**,
+porque essa base só tem pedido pago.
 
 ### 5.2 Comissão de influencer (simulador)
 
@@ -516,7 +598,7 @@ do percentual do simulador da 5.2. Um é a realidade, o outro é cenário.
 ### 5.9 Cadastro de comissões
 
 Cada influencer tem: nome, marca, percentual, base de cálculo
-(`bruto` | `recebido` | `receitaReal`), **regime tributário** (ver 5.10) e
+(`liquido` | `bruto` | `recebido` | `receitaReal`, ver 5.1.2), **regime tributário** (ver 5.10) e
 ativo/inativo. Influencer inativo não entra em nenhum cálculo, nem de comissão
 nem de imposto.
 
@@ -581,6 +663,27 @@ presumido**: base = `presunção × receita − dedução mensal`. A dedução e
 por causa do adicional de IRPJ, que é 10% sobre o que exceder R$ 20 mil/mês da
 base presumida — sem ela, seria cobrado desde o primeiro real.
 
+**A marcação do produto decide o tributo sobre a RECEITA.** Desde 16/09/2026,
+por pedido do cliente: um tributo de `baseIncidencia: "receita"` só incide
+sobre a receita dos produtos que o marcaram; sem nenhum produto marcado, ele
+não é cobrado. Antes, só quem tinha `aplicacaoPorProduto` lia a marcação e o
+resto incidia sobre a marca inteira — marcar PIS ou COFINS num produto não
+mudava número nenhum, o que fazia a tela prometer uma escolha que não existia.
+
+Duas consequências que precisam continuar visíveis:
+
+- **Tributo sobre o LUCRO (IRPJ, CSLL) não se reparte por produto**: a base é a
+  presunção sobre a receita real da marca, marcado ou não. No cadastro de
+  produto ele aparece sem caixa de marcar, com a razão escrita ao lado.
+- **Receita sem cadastro fiscal continua declarada** (`receitaSemCadastro`): com
+  a regra nova, produto fora do cadastro deixa de pagar imposto sobre receita,
+  e é esse aviso que impede a lacuna de passar por "imposto baixo".
+
+`aplicacaoPorProduto` deixou de mandar na conta e passou a significar **"já vem
+marcado no produto novo"** (`idsMarcadosPorPadrao`): no Lucro Presumido, os que
+dependem do NCM — ICMS, ICMS-ST e IPI. PIS e COFINS nascem desmarcados e valem
+assim que alguém os marcar.
+
 **Tributo do regime que está inativo não some em silêncio.** Ele volta em
 `inativosDoRegime` e a tela diz "o ICMS não está nesta conta", em vez de exibir
 um total menor sem explicar por quê.
@@ -637,10 +740,20 @@ A Nuvemshop sabe o que vendeu e por quanto. Ela **não** sabe de quem é o
 produto, o NCM, nem que um "Kit Barba" consome um tônico e um shampoo — ela
 entrega o kit como **um** produto, com `product_id` próprio.
 
-Cada produto aponta para **um** influencer (`influencerId`). Os impostos vêm
-marcados sozinhos, a partir do regime desse influencer, e continuam editáveis:
-o cadastro sugere, quem entende decide. Desmarcar tira o imposto só daquele
-produto.
+Cada produto aponta para **um** influencer (`influencerId`). **Com um
+influencer ativo só, o produto é dele e a tela não pergunta**: a chave da API
+da Nuvemshop é por loja, e cada loja é de um influencer, então o dono não é
+escolha. O campo vira leitura e o servidor atribui (a action confere, porque é
+endpoint público, 5.13); com dois ou mais influencers a escolha volta, para o
+produto criado à mão, que não veio de loja nenhuma.
+
+**Todo tributo sobre receita é marcável, e só é cobrado onde estiver marcado**
+(5.10). O de lucro (IRPJ, CSLL) aparece na lista sem caixa: a base dele é a
+marca inteira. Os que nascem marcados são os que dependem do NCM
+(`idsMarcadosPorPadrao`) — no Lucro Presumido, ICMS, ICMS-ST e IPI; alíquota
+zero entra marcada de propósito, para o produto já estar pronto quando o
+contador informar a alíquota. PIS e COFINS nascem desmarcados, por decisão do
+cliente, e passam a valer no produto assim que ele os marcar.
 
 ```
 custo do kit = ficha própria, se houver
@@ -652,6 +765,74 @@ Ficha própria vence: a fábrica pode ter custo de montagem e embalagem do kit
 diferente da soma das partes. Componente sem custo torna o kit **inteiro**
 `null` — somar a parte conhecida daria um número que parece certo e está errado
 para menos, inflando a margem.
+
+**Com a loja real o cadastro nasce vazio**, e a tela de produtos ficava em
+branco. O botão "Trazer da Nuvemshop" grava uma entrada por variante que nenhum
+cadastro cobre (`produtosParaCadastrar`, em `costing.ts`). Na loja real, em
+16/09/2026: 82 produtos, 33 deles kits. Quatro decisões:
+
+1. **A lista junta o catálogo (`GET /products`, pela API) e as vendas.** O
+   catálogo traz o que ainda não vendeu e o nome atual; as vendas trazem o que
+   saiu do catálogo mas vendeu no período (4 na loja real, com observação
+   dizendo isso). O catálogo não passa pelo cache: só o clique chama a API
+   (`FonteDePedidos.listarCatalogo`; na demonstração vem de `catalogo.ts`).
+   Se a API falhar, vêm só as vendas, e a mensagem diz. A action não recebe a
+   lista do navegador; monta no servidor.
+2. **Kit é reconhecido pelo nome** (`pareceKit`: "Kit", "Combo" ou " + "). A
+   Nuvemshop não diz — `is_kit` vem falso nos 33 — nem informa a composição
+   (não há endpoint de componentes). O kit entra com a composição vazia e uma
+   observação; o formulário aceita salvar assim, e a lista mostra "kit ·
+   montar". Até ser montado, o custo vem da ficha do próprio kit e o estoque o
+   conta como item único (os dois já tratavam kit sem componente assim). Kit
+   pode ser componente de outro ("Combo: Kit Golden Hour + Colônia").
+3. **Cada produto já entra com dono e impostos**, pela regra da apuração: o
+   primeiro influencer ativo da marca e, sem ele, `REGIME_SEM_INFLUENCER`. Com a
+   lista de impostos vazia, o produto passaria a contar como "com cadastro
+   fiscal" e o ICMS por produto continuaria fora — a lacuna sumiria da tela sem
+   ter sido resolvida. Por isso, **cadastre o influencer antes** de trazer os
+   produtos.
+4. **Não é replicar catálogo** (seção 8): o registro guarda só o que a
+   Nuvemshop não sabe (dono, NCM, kit, impostos); nome e SKU vão junto porque a
+   tela precisa de um rótulo.
+
+### 5.11.1 Aba Kits
+
+Aba `/kits`, área `produtos` (a mesma da aba Produtos), pedida pelo cliente
+para montar a composição dos kits trazidos da Nuvemshop. A composição **não
+existe na API**: conferido nas duas versões — `is_kit` falso nos 33 kits,
+`custom-fields` vazio, nenhum endpoint de componentes, metacampos ou
+"bundles", e cada kit com estoque próprio (a loja não usa o recurso de kit da
+Nuvemshop). Ela só aparece no **texto da descrição** de cada kit ("O kit
+contém: 1 Body Splash…"), em formato livre demais para ser lido por programa
+com segurança. Por isso é cadastro, escolhido à mão.
+
+A tela lista os kits (mais vendidos no mês primeiro, filtro "A montar" /
+"Montados") num cartão cada, com os itens e — para quem tem a área `custos` —
+o custo do kit como o CMV o enxerga (`listarKits`, em `lib/kits.ts`, que usa o
+mesmo `custoUnitarioComKit`; há teste comparando os dois). "Montar"/"Editar"
+abre o editor: um campo com lista de sugestões (`<datalist>`, nativo e
+offline) sobre **todos** os produtos do cadastro, com nome e SKU no rótulo
+(`rotulosParaEscolha` acrescenta o número do produto quando dois rótulos
+empatam — o Watermelon antigo e o novo), a quantidade e "Adicionar". Item que
+não é vendido sozinho (a loção de um kit) precisa existir na aba Produtos.
+
+Três decisões, todas em `validarComposicao`:
+
+1. **Do formulário vêm só chave e quantidade.** O nome é resolvido no
+   servidor, a partir do cadastro (Server Action é endpoint público, 5.13).
+2. **Item repetido vira uma linha, com as quantidades somadas**; quantidade é
+   inteira de 1 a 999 (`Number("")` vira zero e é recusado, armadilha 8).
+3. **Ciclo é recusado**: um kit não pode conter a si mesmo, nem por outro kit.
+   Kit dentro de kit sem ciclo é aceito ("Combo: Kit Golden Hour + Colônia").
+
+Salvar com itens tira da observação o aviso de "falta montar"
+(`AVISO_KIT_SEM_COMPOSICAO`, `limparAvisoDeKit`). Salvar sem itens é aceito e
+devolve o kit ao estado "a montar". "Faltou algum kit?" marca como kit um
+produto que o nome não denunciou. Desmarcar continua sendo na aba Produtos.
+
+A auditoria de celular também clica em "Montar" (`ABRIR_EDICAO` em
+`celular.mjs`), e o editor usa `.linha-de-edicao` com
+`--recuo-da-tabela: 4.5rem` — mediu 318px em 390.
 
 ### 5.12 Estoque
 
@@ -1171,7 +1352,8 @@ própria, esse teste quebra.
 Quatro escolhas que mudam a resposta:
 
 1. **A comissão é o percentual do contrato sobre o preço** — numa venda paga, o
-   preço é o faturamento bruto dela. Foi decisão do cliente. A primeira versão
+   preço é o faturamento bruto dela; com contrato sobre o que cai na conta
+   (5.1.2), sobre o preço menos a taxa do valor pago. Foi decisão do cliente. A primeira versão
    usava o custo médio do contrato por venda paga (30% sobre o bruto saía ~39%,
    porque o contrato também paga pedido que nunca entrou), e ele pediu o
    percentual sobre o faturamento bruto. **Consequência assumida:** a simulação
@@ -1227,7 +1409,7 @@ aviso de alíquota não confirmada quando houver.
 #### Comissão de influencer
 
 A pergunta: **"se eu fechar com um influencer a X% e ele faturar Y por mês,
-sobra dinheiro?"** Campos: percentual (sobre o faturamento, como os contratos atuais),
+sobra dinheiro?"** Campos: percentual (sobre o que cai na conta, sem frete — 5.1.2),
 faturamento esperado por mês **sem frete** e regime (automático pelo porte, ou
 escolhido). A tela não mostra linhas de recebido nem de frete: uma nota diz
 quanto de frete o cliente paga à parte.
@@ -1244,7 +1426,7 @@ faturamento  = informado, SEM frete (5.1.1)
 receita real = faturamento × (receita real ÷ faturamento sem frete das marcas atuais)
 recebido     = receita real + frete (o cliente paga o frete por fora)
 lucro        = receita real − impostos − DIFAL − taxa (sobre o recebido) − fabricação
-             − comissão (% × faturamento) − parte nas compartilhadas − sócios
+             − comissão (% × (receita real − taxa)) − parte nas compartilhadas − sócios
 ```
 
 O teste que segura isso: montada a referência com uma marca só e estimado o
@@ -1522,6 +1704,15 @@ Não implemente nada disto. Está aqui para não tomar decisões que fechem port
   consulta de status e rastreio de pedido.
 - **Multi-usuário.** Hoje não há login. Quando houver, o `RepositorioCadastros`
   ganha um escopo de organização.
+- **Bling (ERP), se o cliente quiser.** Ele já usa o Bling ligado à Nuvemshop, e
+  de lá sairia o que a API da loja não tem: **composição de kit**
+  (`GET /produtos/estruturas/{id}` devolve `componentes[{produto, quantidade}]`),
+  NCM (`tributacao.ncm`) e custo (`fornecedor.precoCusto`). É OAuth 2.0 na conta
+  do cliente: autorização em `https://www.bling.com.br/Api/v3/oauth/authorize`,
+  token em `/Api/v3/oauth/token` (Basic + cabeçalho `enable-jwt: 1`), refresh de
+  30 dias que **gira a cada uso** — ou seja, o token precisa de lugar gravável,
+  não do `.env`. O vínculo com o produto da Nuvemshop sai do SKU (`codigo`) ou
+  de `GET /produtos/lojas`. Nada disso foi implementado.
 
 Implicação prática para hoje: mantenha `lib/metrics.ts` e `lib/costing.ts`
 puros, e `FonteDePedidos`/`RepositorioCadastros` como interfaces.
@@ -1601,7 +1792,7 @@ em 1366×768. Isso é `npm test` e olho na tela.
 
 | Pergunta | Onde |
 |---|---|
-| A conta está certa? | `npm test` — 380 testes sobre as funções puras |
+| A conta está certa? | `npm test` — 439 testes sobre as funções puras |
 | A chave da Nuvemshop vale? Os pedidos chegam como esperado? | `npm run nuvemshop:testar` |
 | A página monta? O perfil bloqueia? | `npm run fumaca` |
 | Funciona no celular? | `npm run celular` |
@@ -1613,12 +1804,33 @@ em 1366×768. Isso é `npm test` e olho na tela.
 
 Roteiro de uso em `DADOS_REAIS.md`. Aqui ficam as decisões.
 
-**Estado:** tudo pronto e testado ponta a ponta contra uma API falsa que
-imita a documentada (paginação com `Link`, 404 "Last page is N", balde de 40
-chamadas a 2/s com 429, chave recusada, tipos misturados). **Nunca rodou
-contra a loja real.** O primeiro contato é `npm run nuvemshop:testar`, que
-existe para mostrar como o pedido real chega antes de qualquer número ir para a
-tela.
+**Estado:** ligado à loja real desde 16/09/2026 (Tha Beauty, loja 5018407),
+com os pedidos de julho/2026 em diante (`NUVEMSHOP_MESES=3`; o resto vem
+depois, voltando para 13). O primeiro contato com uma loja nova continua sendo
+`npm run nuvemshop:testar`, que mostra como o pedido chega antes de qualquer
+número ir para a tela.
+
+### O que a loja real mostrou
+
+A API falsa imitava a documentação, e a loja real diferiu dela em cinco pontos:
+
+| Achado | Consequência |
+|---|---|
+| A `2025-03` lista pedidos **sem frete** (`shipping_cost_*` sumiram) | padrão virou a `v1`, onde `total = subtotal − desconto + frete` fecha |
+| **Nenhuma consulta passa de 10.000 registros** (422 na página 51) | a janela se divide ao meio até caber (`dividirJanela`) |
+| Cada página de 200 leva **~10 s** para chegar | páginas em paralelo, 12 por vez (`SIMULTANEAS`); 3 meses (25.751 pedidos) em 5 min |
+| Sem `read_customers`, o pedido vem **sem `customer`** | recompra fica errada até uma chave com essa permissão; o resto não depende dela |
+| Pix não pago vira `cancelled` + `voided` + `cancel_reason: automatic` | "não pago" sai zerado e o vazamento aparece em "cancelado" |
+
+Também apareceram `payment_status` fora da lista: `partially_refunded` e
+`chargeback`, que `classificarPedido` conta como recebido. São ~11 pedidos em
+25 mil; a regra para eles ainda não foi decidida.
+
+O balde de chamadas desta loja é de **400** (`x-rate-limit-limit`), não 40.
+Com páginas de 10 s, 12 simultâneas ficam abaixo de 2 por segundo de qualquer
+jeito. A janela termina em "agora", nunca no fim do mês: pedido criado durante
+a busca entraria no topo da lista e empurraria os outros de página. Se vierem
+menos registros que o `x-total-count`, a janela é buscada uma segunda vez.
 
 ### Roda ao lado da demonstração, não no lugar dela
 
@@ -1640,7 +1852,10 @@ segundo, são minutos. Por isso `cachePedidos.ts`:
 
 1. a primeira busca traz `NUVEMSHOP_MESES` (13) meses, **mês a mês**, de
    preferência por `npm run nuvemshop:sincronizar` antes de subir. Medido na
-   API falsa: 45.024 pedidos, 383 chamadas, 170 s, nenhuma recusada;
+   loja real: 25.751 pedidos e 6.925 carrinhos em 293 s. A loja tem ~240 mil
+   pedidos em 13 meses (~222 MB no `pedidos.json`, perto do teto de ~512 MB de
+   uma string no Node); com mais lojas, o cache precisa virar um arquivo por
+   mês;
 2. depois a página responde com o disco e, se a cópia passou de
    `NUVEMSHOP_ATUALIZAR_MINUTOS` (10), pede em segundo plano só o que mudou
    (`updated_at_min` com 10 minutos de sobreposição). Boleto pago e pedido
@@ -1714,11 +1929,32 @@ está listado abaixo **não está**, de propósito.
   roda no desktop de casa (`npm start`, porta 3000), acessada pelo IP fixo
   `177.223.44.178:3000` ou por túnel rápido da Cloudflare (endereço muda a cada
   vez; ver `DEMONSTRACAO.md`).
-- **Modo real pronto, esperando a chave** da Nuvemshop (aplicativo
-  "painel-de-relatrios"). Nada rodou contra a loja real ainda. Próximos
-  passos em `DADOS_REAIS.md`, a partir do passo 1.
-- Ainda não se sabe quantas lojas são nem os nomes exatos das marcas; os
-  contratos precisam usar o mesmo texto de `marca` do `NUVEMSHOP_LOJAS`.
+- **Modo real ligado à loja Tha Beauty** (5018407), no notebook, com o
+  Postgres 18 instalado ali. Marca configurada como `"Tha Beauty"` — os
+  contratos precisam usar esse texto. Pedidos de julho/2026 em diante. A chave
+  lê pedidos, carrinhos e produtos, mas não clientes. Influencer cadastrado:
+  **Tha**, 25% sobre o que cai na conta (5.1.2), Lucro Presumido, GO — a API não informa nada
+  disso; veio do dono. A razão social na Nuvemshop é CRIAR MARKETING DIGITTAL
+  LTDA. Produtos já trazidos (82, com 33 kits ainda sem composição), todos do
+  Tha. O dono vem mexendo no cadastro fiscal pela tela: apagou ICMS-ST e IPI,
+  deixou o **ICMS em 4%** (marcado nos 82) e marcou PIS e COFINS num produto
+  para testar a regra nova (5.10) — os dois passaram a incidir só sobre ele.
+  Próximo passo: montar os kits na aba Kits (5.11.1) e cadastrar os custos.
+- **Os custos de fabricação gravados são PROVISÓRIOS**: 35% do preço de venda,
+  a pedido do dono, só para o painel ter base até os custos reais chegarem. São
+  76 fichas, com o valor inteiro em "matéria-prima" e os outros três componentes
+  em zero — é por aí que se acham para trocar. Com eles, setembro fechou em
+  R$ 101,9 mil de lucro operacional (18% da receita real), e os dois simuladores
+  batem: R$ 17,89 por R$ 100 de produto contra R$ 18,01 do simulador de
+  influencer.
+- **Seis produtos ficaram sem ficha porque não têm preço.** Cinco saem a R$ 0
+  nos pedidos e sem preço no catálogo — são brindes ou itens que acompanham kit
+  (Beauty Balm Sortido, com 7.833 unidades no período, os dois Body Splash
+  "Sortido" e as versões novas do Watermelon), e o sexto nunca vendeu. Eles
+  consomem estoque e custam para fabricar, e a **cobertura de custo não os
+  denuncia**: ela é medida por receita, e a receita deles é zero. Quando os
+  custos reais chegarem, são os primeiros a olhar.
+- Ainda não se sabe se há outras lojas.
 
 ### O que não vem pelo git
 
@@ -1736,6 +1972,6 @@ pós-instalação (armadilha 6), `npx prisma generate` antes do
 
 ### Conferido no fim da sessão
 
-380 testes, tipos sem erro, `npm run fumaca` na demonstração, e o modo real
-de ponta a ponta contra a API falsa (seção 12): sincronização completa e
-incremental, semente, login, todas as telas com cadastro vazio, 390px.
+439 testes, tipos sem erro, `npm run fumaca:live` contra a loja real (todas as
+telas, os dois perfis), sincronização de 3 meses. Ainda **não** conferido: um
+mês fechado contra o relatório da própria Nuvemshop.

@@ -5,7 +5,8 @@
  * da fonte real e nenhum componente precisa mudar quando a troca acontecer.
  */
 
-import type { CarrinhoAbandonado, Pedido } from "@/types/nuvemshop";
+import type { CarrinhoAbandonado, ItemCatalogo, Pedido } from "@/types/nuvemshop";
+import { todasAsVariantes } from "@/data/catalogo";
 import { baseDemonstracao } from "@/data/geradorPedidos";
 import { dentroDoPeriodo, type FonteDePedidos, type Periodo } from "@/data/source";
 
@@ -24,5 +25,16 @@ export class FonteDemonstracao implements FonteDePedidos {
     const { carrinhos } = baseDemonstracao();
     if (!periodo) return carrinhos;
     return carrinhos.filter((c) => dentroDoPeriodo(c.created_at, periodo));
+  }
+
+  async listarCatalogo(): Promise<ItemCatalogo[]> {
+    return todasAsVariantes().map((v) => ({
+      produtoId: v.produtoId,
+      varianteId: v.id,
+      nome: `${v.produtoNome} ${v.rotulo}`.trim(),
+      sku: v.sku,
+      publicado: true,
+      marca: v.marca,
+    }));
   }
 }

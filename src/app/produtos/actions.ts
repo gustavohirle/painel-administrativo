@@ -3,7 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
-import { obterRepositorioCadastros } from "@/data";
+import { obterFonteDePedidos, obterRepositorioCadastros } from "@/data";
+import { produtosParaCadastrar } from "@/lib/costing";
 import { exigirArea } from "@/lib/sessao";
 import { chaveProduto } from "@/types/produto";
 import type { EstadoFormulario } from "@/types/formulario";
@@ -103,12 +104,9 @@ export async function salvarProduto(
   if (dados.componentes === null) {
     return { ok: false, mensagem: "Composição do kit inválida." };
   }
-  if (dados.ehKit && dados.componentes.length === 0) {
-    return {
-      ok: false,
-      mensagem: "Um kit precisa de pelo menos um componente.",
-    };
-  }
+  // Kit sem componentes e aceito: a importacao da Nuvemshop marca os kits pelo
+  // nome e a composicao vem depois. Ate la ele conta como item unico no
+  // estoque, e o custo sai da ficha do proprio kit.
 
   // Produto novo sem id da Nuvemshop ganha um id interno na faixa reservada.
   const produtoId =
@@ -123,6 +121,19 @@ export async function salvarProduto(
 
   try {
     const repositorio = await obterRepositorioCadastros();
+
+    /*
+     * Cada loja Nuvemshop e de UM influencer. Havendo um influencer ativo so,
+     * o produto e dele -- inclusive o criado a mao, que nao veio de loja
+     * nenhuma. Resolvido no servidor: a tela manda o campo escondido, e
+     * Server Action e endpoint publico (5.13).
+     */
+    let influencerId = dados.influencerId;
+    if (!influencerId) {
+      const ativos = (await repositorio.listarInfluencers()).filter((i) => i.ativo);
+      if (ativos.length === 1) influencerId = ativos[0]!.id;
+    }
+
     await repositorio.salvarProduto(
       {
         chave,
@@ -132,7 +143,7 @@ export async function salvarProduto(
         sku: dados.sku ?? null,
         ncm: dados.ncm ?? null,
         origem: dados.origem,
-        influencerId: dados.influencerId,
+        influencerId,
         impostosIds: dados.impostosIds,
         ehKit: dados.ehKit,
         componentes: dados.ehKit ? dados.componentes : [],
@@ -157,6 +168,72 @@ export async function salvarProduto(
   revalidatePath("/");
 
   return { ok: true, mensagem: `Produto "${dados.nome}" salvo.` };
+}
+
+/**
+ * Grava no cadastro os produtos da Nuvemshop que ainda nao estao nele: o
+ * catalogo da loja (pela API) mais o que vendeu.
+ *
+ * Nao recebe nada do formulario alem do clique: a lista sai do catalogo e dos
+ * pedidos, no servidor. Aceitar a lista do navegador deixaria quem chama a
+ * action (que e um endpoint publico, 5.13) gravar produto com qualquer id e nome.
+ *
+ * Se a API falhar, traz o que vendeu e diz que o catalogo ficou de fora --
+ * melhor que nao trazer nada.
+ */
+export async function trazerProdutosDaNuvemshop(
+  _anterior: EstadoFormulario,
+  _formData: FormData,
+): Promise<EstadoFormulario> {
+  await exigirArea("produtos");
+
+  try {
+    const repositorio = await obterRepositorioCadastros();
+    const fonte = obterFonteDePedidos();
+    const [pedidos, produtos, impostos, influencers] = await Promise.all([
+      fonte.listarPedidos(),
+      repositorio.listarProdutos(),
+      repositorio.listarImpostos(),
+      repositorio.listarInfluencers(),
+    ]);
+
+    let catalogo: Awaited<ReturnType<typeof fonte.listarCatalogo>> = [];
+    let avisoCatalogo = "";
+    try {
+      catalogo = await fonte.listarCatalogo();
+    } catch (erro) {
+      avisoCatalogo = ` O catálogo da Nuvemshop não respondeu (${
+        erro instanceof Error ? erro.message : "erro desconhecido"
+      }); vieram só os produtos vendidos.`;
+    }
+
+    const novos = produtosParaCadastrar(pedidos, produtos, impostos, influencers, catalogo);
+    if (novos.length === 0) {
+      return {
+        ok: avisoCatalogo === "",
+        mensagem: `Todos os produtos da Nuvemshop já estão no cadastro.${avisoCatalogo}`,
+      };
+    }
+    for (const entrada of novos) await repositorio.salvarProduto(entrada);
+
+    revalidatePath("/produtos");
+    revalidatePath("/estoque");
+    revalidatePath("/custos");
+    revalidatePath("/impostos");
+    revalidatePath("/");
+
+    return {
+      ok: true,
+      mensagem: `${novos.length} produto(s) trazido(s) da Nuvemshop. Confira o influencer, o NCM e monte os kits.${avisoCatalogo}`,
+    };
+  } catch (erro) {
+    return {
+      ok: false,
+      mensagem: `Não foi possível trazer os produtos: ${
+        erro instanceof Error ? erro.message : "erro desconhecido"
+      }`,
+    };
+  }
 }
 
 export async function removerProduto(

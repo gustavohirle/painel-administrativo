@@ -30,6 +30,7 @@ import {
   mesesDisponiveis,
   reconciliar,
 } from "@/lib/metrics";
+import { mesDaTela } from "@/lib/mesDaTelaServidor";
 import { exigirArea } from "@/lib/sessao";
 
 /* Os numeros sao recalculados a cada carga: dado financeiro em cache mente. */
@@ -67,8 +68,7 @@ export default async function PaginaPainel({
   ]);
 
   const meses = mesesDisponiveis(todosOsPedidos);
-  const mesSelecionado =
-    mesPedido && meses.includes(mesPedido) ? mesPedido : (meses[0] ?? "");
+  const mesSelecionado = await mesDaTela(meses, mesPedido);
 
   const pedidosDoMes = filtrarPorMes(todosOsPedidos, mesSelecionado);
   const carrinhos = await fonte.listarCarrinhosAbandonados(

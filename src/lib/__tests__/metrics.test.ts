@@ -105,6 +105,34 @@ describe("classificarPedido", () => {
 // ---------------------------------------------------------------------------
 
 describe("reconciliar", () => {
+  it("divide o frete cobrado entre a transportadora e o intermediário, sem mudar o total", () => {
+    // O caso real: o cliente paga R$ 15,46, a transportadora recebe R$ 14,73 e
+    // a Intelipost fica com R$ 0,73.
+    const r = reconciliar([
+      pedido({ total: "125.36", shipping_cost_customer: "15.46", shipping_cost_owner: "14.73" }),
+      pedido({ total: "70.41", shipping_cost_customer: "20.51", shipping_cost_owner: "19.78" }),
+      // Nao pago: nao entra em nenhuma das duas partes.
+      pedido({ payment_status: "pending", shipping_cost_customer: "30.00", shipping_cost_owner: "29.27" }),
+    ]);
+    expect(r.frete).toBeCloseTo(35.97, 10);
+    expect(r.freteTransportadora).toBeCloseTo(34.51, 10);
+    expect(r.freteIntermediario).toBeCloseTo(1.46, 10);
+    expect(r.receitaReal).toBeCloseTo(125.36 + 70.41 - 35.97, 10);
+  });
+
+  it("sem o custo da transportadora, o frete inteiro fica com ela", () => {
+    // Campo ausente vira "0.00" na borda; jogar tudo no intermediario inventaria custo.
+    const r = reconciliar([pedido({ shipping_cost_customer: "19.00", shipping_cost_owner: "0.00" })]);
+    expect(r.freteTransportadora).toBe(19);
+    expect(r.freteIntermediario).toBe(0);
+  });
+
+  it("loja pagando mais do que cobrou não gera intermediário negativo", () => {
+    const r = reconciliar([pedido({ shipping_cost_customer: "10.00", shipping_cost_owner: "14.00" })]);
+    expect(r.freteTransportadora).toBe(10);
+    expect(r.freteIntermediario).toBe(0);
+  });
+
   it("fecha a aritmetica da cascata", () => {
     const pedidos = [
       pedido({ total: "1000.00", payment_status: "paid", shipping_cost_customer: "50.00" }),

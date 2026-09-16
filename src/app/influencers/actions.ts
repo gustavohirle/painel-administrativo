@@ -32,7 +32,7 @@ const esquemaInfluencer = z.object({
   nome: z.string().trim().min(1, "Informe o nome do influencer").max(120),
   marca: z.string().trim().min(1, "Selecione a marca").max(120),
   percentual: percentualDigitado,
-  baseComissao: z.enum(["bruto", "recebido", "receitaReal"], {
+  baseComissao: z.enum(["bruto", "recebido", "receitaReal", "liquido"], {
     errorMap: () => ({ message: "Base de cálculo inválida" }),
   }),
   // O regime mora no influencer: cada marca e uma operacao separada, com o

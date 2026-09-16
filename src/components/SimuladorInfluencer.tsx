@@ -111,7 +111,8 @@ export function SimuladorInfluencer({ referencia, rotuloMes }: SimuladorInfluenc
             className="w-full rounded-lg border border-borda-forte px-3 py-2.5 text-right text-lg"
           />
           <span className="mt-1 block text-xs text-tinta-fraca">
-            Sobre o faturamento sem frete, como os contratos atuais.
+            Sobre o que cai na conta, sem frete: a receita menos as taxas da
+            Nuvemshop e do pagamento.
           </span>
         </label>
 
@@ -258,7 +259,7 @@ function ResultadoInfluencer({
               <strong className="numerico">
                 {e.comissaoMaximaSemPrejuizo.toLocaleString("pt-BR", { maximumFractionDigits: 1 })}%
               </strong>{" "}
-              sobre o faturamento sem frete
+              sobre o que cai na conta, sem frete
             </>
           ) : (
             <>Nem sem comissão esta operação dá lucro com os custos atuais.</>
@@ -306,7 +307,7 @@ function ResultadoInfluencer({
         />
         <Linha
           rotulo="Comissão do influencer"
-          detalhe={`${e.percentual.toLocaleString("pt-BR", { maximumFractionDigits: 2 })}% sobre o faturamento sem frete`}
+          detalhe={`${e.percentual.toLocaleString("pt-BR", { maximumFractionDigits: 2 })}% sobre o que cai na conta, sem frete (${moeda(e.baseComissao)})`}
           valor={-e.comissao}
           percentualTexto={sobreBruto(e.comissao)}
           marcador="var(--color-comissao)"

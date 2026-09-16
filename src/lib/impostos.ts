@@ -107,6 +107,28 @@ export function idsSugeridosPorRegime(
   return impostosDoRegime(impostos, regime).map((i) => i.id);
 }
 
+/**
+ * Os tributos que ja nascem MARCADOS num produto do regime.
+ *
+ * E so a sugestao: quem marca de verdade e quem cadastra. `aplicacaoPorProduto`
+ * passou a significar exatamente isso -- "vem marcado" --, porque a conta nao
+ * o le mais: desde 16/09/2026 todo tributo sobre receita incide apenas onde o
+ * produto o marcou (`apurarGrupo`).
+ *
+ * No Lucro Presumido isso deixa ICMS, ICMS-ST e IPI: os que dependem do NCM.
+ * PIS e COFINS ficam desmarcados, por decisao do cliente, e passam a valer
+ * assim que ele marcar. Aliquota zero entra marcada de proposito: nao muda o
+ * total hoje e deixa o produto pronto para quando a aliquota chegar.
+ */
+export function idsMarcadosPorPadrao(
+  impostos: Imposto[],
+  regime: RegimeTributario,
+): string[] {
+  return impostosDoRegime(impostos, regime)
+    .filter((i) => i.aplicacaoPorProduto && i.ativo)
+    .map((i) => i.id);
+}
+
 // ---------------------------------------------------------------------------
 // RBT12
 // ---------------------------------------------------------------------------
@@ -315,18 +337,24 @@ function apurarGrupo(
   for (const imposto of doRegime) {
     if (!imposto.ativo || imposto.dentroDoDAS) continue;
 
+    /*
+     * Tributo sobre a RECEITA so incide onde o produto o marcou: e o cadastro
+     * de produto que diz o que cada item paga. Nenhum produto marcado, nenhuma
+     * base -- e a tela mostra a receita sem cadastro fiscal, para a lacuna nao
+     * passar por "imposto baixo".
+     *
+     * Tributo sobre o LUCRO (IRPJ, CSLL) nao se reparte por produto: a base e
+     * a presuncao sobre a receita da marca inteira, menos a deducao mensal (o
+     * adicional de IRPJ so incide sobre o que passa de R$ 20 mil).
+     */
     const base =
       imposto.baseIncidencia === "lucro"
-        ? // Base presumida: um percentual da receita, menos a deducao mensal
-          // (o adicional de IRPJ so incide sobre o que passa de R$ 20 mil).
-          Math.max(
+        ? Math.max(
             0,
             (baseReceita * (imposto.percentualPresuncao ?? 100)) / 100 -
               (imposto.deducaoMensal ?? 0),
           )
-        : imposto.aplicacaoPorProduto
-          ? (porImposto.get(imposto.id) ?? 0)
-          : baseReceita;
+        : (porImposto.get(imposto.id) ?? 0);
 
     if (base <= 0 || imposto.aliquota <= 0) continue;
 
@@ -339,7 +367,8 @@ function apurarGrupo(
       base,
       valor: (base * imposto.aliquota) / 100,
       confirmado: imposto.confirmadoPeloContador,
-      porProduto: imposto.aplicacaoPorProduto,
+      // Depende da marcacao do produto? Todo tributo sobre receita depende.
+      porProduto: imposto.baseIncidencia !== "lucro",
     });
   }
 

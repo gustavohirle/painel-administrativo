@@ -67,6 +67,19 @@ describe("custoDaTransacao", () => {
 });
 
 describe("apurarTaxasPlataforma", () => {
+  it("separa o total por marca, e as marcas somam o total", () => {
+    const pedidos = [
+      pedido({ total: "200.00", marca: "A" }),
+      pedido({ total: "100.00", marca: "B" }),
+      pedido({ total: "100.00", marca: "B", payment_details: { method: "pix", credit_card_company: null, installments: null } }),
+      pedido({ total: "300.00", marca: "A", status: "cancelled" }),
+    ];
+    const r = apurarTaxasPlataforma(pedidos, [taxa({ valorFixo: 1 }), taxa({ metodo: "pix", percentual: 1 })]);
+    // A: 5% de 200 + 1 (o cancelado nao entra na base "recebido"). B: 5% de 100 + 1, mais 1% de 100.
+    expect(r.porMarca).toEqual({ A: 11, B: 7 });
+    expect(r.porMarca.A! + r.porMarca.B!).toBeCloseTo(r.total, 10);
+  });
+
   it("cobra so dos pedidos recebidos", () => {
     // Boleto gerado e nunca pago nao gera cobranca do gateway. Somar a taxa
     // dele inventaria um custo que ninguem debitou.

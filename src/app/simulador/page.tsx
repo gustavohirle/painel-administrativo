@@ -12,6 +12,7 @@ import { ratearDespesas } from "@/lib/costing";
 import { mesAnoLongo } from "@/lib/format";
 import { apurarImpostos } from "@/lib/impostos";
 import { filtrarPorMes, mesesDisponiveis } from "@/lib/metrics";
+import { mesDaTela } from "@/lib/mesDaTelaServidor";
 import { exigirArea } from "@/lib/sessao";
 import { montarReferencia } from "@/lib/simulacaoInfluencer";
 import { montarPerfisDeCusto } from "@/lib/simulacaoPreco";
@@ -69,8 +70,7 @@ export default async function PaginaSimulador({
   ]);
 
   const meses = mesesDisponiveis(todosOsPedidos);
-  const mesSelecionado =
-    mesPedido && meses.includes(mesPedido) ? mesPedido : (meses[0] ?? "");
+  const mesSelecionado = await mesDaTela(meses, mesPedido);
   const pedidosDoMes = filtrarPorMes(todosOsPedidos, mesSelecionado);
   const rotuloMes = mesAnoLongo(mesSelecionado);
 

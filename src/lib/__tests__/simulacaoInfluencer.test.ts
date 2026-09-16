@@ -87,7 +87,12 @@ describe("montarReferencia", () => {
 describe("estimarInfluencer", () => {
   it("estimar o faturamento de uma marca do Presumido reproduz a DRE dela", () => {
     const c = cenario();
-    const aurora = c.influencers.find((i) => i.id === "influencer-aurora")!;
+    // O simulador usa a base praticada (o que cai na conta); o contrato da
+    // conferencia precisa usar a mesma, senao as duas contas comparam bases.
+    const aurora = {
+      ...c.influencers.find((i) => i.id === "influencer-aurora")!,
+      baseComissao: "liquido" as const,
+    };
     const lista = [aurora];
     const doMes = c.pedidosDoMes.filter((p) => p.marca === aurora.marca);
     const historico = c.pedidos.filter((p) => p.marca === aurora.marca);
@@ -170,11 +175,25 @@ describe("estimarInfluencer", () => {
     expect(noLimite.lucro).toBeCloseTo(0, 6);
   });
 
-  it("cada ponto de comissão custa 1% do faturamento bruto", () => {
+  it("cada ponto de comissão custa 1% do que cai na conta, sem frete", () => {
     const { referencia } = cenario();
     const a = estimarInfluencer(referencia, { percentual: 20, faturamento: 250_000, regime: "lucro_presumido" });
     const b = estimarInfluencer(referencia, { percentual: 30, faturamento: 250_000, regime: "lucro_presumido" });
-    expect(a.lucro - b.lucro).toBeCloseTo(25_000, 6);
+    // O que cai na conta: receita real menos a taxa, que incide sobre o valor pago.
+    expect(a.baseComissao).toBeCloseTo(a.receitaReal - a.taxas, 6);
+    expect(a.baseComissao).toBeLessThan(250_000);
+    expect(a.lucro - b.lucro).toBeCloseTo(a.baseComissao * 0.1, 6);
+  });
+
+  it("a comissão máxima sem prejuízo zera o lucro, na mesma base", () => {
+    const { referencia } = cenario();
+    const e = estimarInfluencer(referencia, { percentual: 10, faturamento: 250_000, regime: "lucro_presumido" });
+    const limite = estimarInfluencer(referencia, {
+      percentual: e.comissaoMaximaSemPrejuizo!,
+      faturamento: 250_000,
+      regime: "lucro_presumido",
+    });
+    expect(limite.lucro).toBeCloseTo(0, 6);
   });
 
   it("a participação dos sócios é 6% do recebido estimado", () => {

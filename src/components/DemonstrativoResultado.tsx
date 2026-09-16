@@ -2,6 +2,7 @@ import Link from "next/link";
 
 import { moeda, moedaRedonda, percentual, razaoSegura } from "@/lib/format";
 import type { DemonstrativoResultado as DRE } from "@/lib/costing";
+import { INTERMEDIARIO_FRETE } from "@/lib/config";
 import { idDeOrigem } from "@/types/dominio";
 
 /*
@@ -47,11 +48,22 @@ function montarLinhas(dre: DRE): Linha[] {
       tipo: "subtotal",
     },
     {
-      rotulo: "Frete cobrado do cliente",
-      explicacao: "Entrou junto com a venda, mas nao e receita de produto",
-      valor: -r.frete,
+      rotulo: "Frete das transportadoras",
+      explicacao: "Cobrado do cliente junto com a venda e repassado à transportadora",
+      valor: -r.freteTransportadora,
       tipo: "deducao",
     },
+    // So aparece na loja que tem intermediario de frete (a demonstracao nao tem).
+    ...(r.freteIntermediario > 0
+      ? [
+          {
+            rotulo: INTERMEDIARIO_FRETE,
+            explicacao: "Parte do frete cobrado do cliente que vai para a plataforma de frete, e não para a transportadora",
+            valor: -r.freteIntermediario,
+            tipo: "deducao" as const,
+          },
+        ]
+      : []),
     {
       rotulo: "Receita real",
       explicacao: "O que sobra da venda dos produtos",
@@ -68,10 +80,10 @@ function montarLinhas(dre: DRE): Linha[] {
       tipo: "deducao",
     },
     {
-      rotulo: "Taxa Nuvemshop e meio de pagamento",
+      rotulo: "Taxas Nuvemshop, cartão e pix",
       explicacao: dre.taxasPlataforma
         ? `${percentual(dre.taxasPlataforma.cargaSobreRecebido)} do recebido, ` +
-          `cobrado por ${dre.taxasPlataforma.porMetodo.length} meio(s) de pagamento`
+          `somando as taxas de ${dre.taxasPlataforma.porMetodo.filter((l) => l.total > 0).length} meio(s) de pagamento`
         : "Nenhuma taxa cadastrada ainda",
       valor: -dre.totalTaxasPlataforma,
       tipo: "deducao",

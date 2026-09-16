@@ -13,7 +13,8 @@
  *   - impostos e DIFAL                     (pelo regime -- ver abaixo)
  *   - taxa da plataforma                   (fracao media do recebido)
  *   - custo de fabricacao                  (fracao media da receita real)
- *   - comissao                             (informada, sobre o bruto)
+ *   - comissao                             (informada, sobre o que cai na
+ *                                           conta: receita real - taxa)
  *   - parte nas despesas compartilhadas    (proporcional ao bruto)
  *   - participacao dos socios              (percentual fixo do recebido)
  *   = lucro operacional estimado
@@ -191,7 +192,10 @@ export function regimeSugerido(
 }
 
 export interface EntradaEstimativa {
-  /** Percentual sobre o faturamento bruto: 30 = 30%. */
+  /**
+   * Percentual sobre o que cai na conta, sem frete (receita real - taxas): 25 = 25%.
+   * E a regra que o cliente pratica (`BASE_PADRAO_CONTRATO`).
+   */
   percentual: number;
   /** Faturamento bruto esperado por mes, SEM frete, em reais. */
   faturamento: number;
@@ -215,6 +219,8 @@ export interface EstimativaInfluencer {
   difal: number;
   taxas: number;
   cmv: number;
+  /** Sobre o que a comissao incide: receita real - taxas. */
+  baseComissao: number;
   comissao: number;
   parteCompartilhada: number;
   /** Participacao dos socios sobre o recebido. */
@@ -226,7 +232,7 @@ export interface EstimativaInfluencer {
   margem: number;
   lucroAnual: number;
   /**
-   * Maior percentual de comissao, sobre o bruto, que ainda nao da prejuizo.
+   * Maior percentual de comissao, na mesma base, que ainda nao da prejuizo.
    * `null` quando nem sem comissao sobra dinheiro.
    */
   comissaoMaximaSemPrejuizo: number | null;
@@ -267,7 +273,9 @@ export function estimarInfluencer(
 
   const taxas = recebido * referencia.cargaTaxas;
   const cmv = receitaReal * referencia.cmvSobreReceitaReal;
-  const comissao = bruto * (entrada.percentual / 100);
+  // O que cai na conta, sem o frete: e sobre isso que o influencer recebe.
+  const baseComissao = receitaReal - taxas;
+  const comissao = baseComissao * (entrada.percentual / 100);
   const parteCompartilhada =
     referencia.despesasCompartilhadas * razaoSegura(bruto, referencia.brutoTotal + bruto);
 
@@ -290,6 +298,7 @@ export function estimarInfluencer(
     difal,
     taxas,
     cmv,
+    baseComissao,
     comissao,
     parteCompartilhada,
     socios,
@@ -298,7 +307,9 @@ export function estimarInfluencer(
     margem: razaoSegura(lucro, receitaReal),
     lucroAnual: lucro * 12,
     comissaoMaximaSemPrejuizo:
-      lucroSemComissao > 0 && bruto > 0 ? (lucroSemComissao / bruto) * 100 : null,
+      lucroSemComissao > 0 && baseComissao > 0
+        ? (lucroSemComissao / baseComissao) * 100
+        : null,
     rbt12Projetado,
     acimaDoTetoSimples:
       entrada.regime === "simples_nacional" && rbt12Projetado > TETO_SIMPLES_NACIONAL,

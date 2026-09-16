@@ -17,6 +17,7 @@ import {
   resumirOrdens,
   type DonoDoProduto,
 } from "@/lib/ordens";
+import { mesDaTela } from "@/lib/mesDaTelaServidor";
 import { exigirArea } from "@/lib/sessao";
 
 export const dynamic = "force-dynamic";
@@ -53,8 +54,7 @@ export default async function PaginaOrdens({
   ]);
 
   const meses = mesesDisponiveis(todosOsPedidos);
-  const mesSelecionado =
-    mesPedido && meses.includes(mesPedido) ? mesPedido : (meses[0] ?? "");
+  const mesSelecionado = await mesDaTela(meses, mesPedido);
 
   /*
    * O saldo aparece ao lado do produto no formulario, so como informacao.

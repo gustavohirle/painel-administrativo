@@ -37,6 +37,9 @@
   --color-cancelado: #c4320a;
   --color-reembolsado: #b54708;
   --color-frete: #64748b;
+  /* Intermediario de frete (Intelipost): mesma familia do frete, mais escuro,
+     porque as duas fatias sao o mesmo dinheiro dividido. */
+  --color-intermediario-frete: #334155;
   --color-imposto: #7c3aed;
   /* Mesma familia do imposto, bem mais escuro: o DIFAL e um pedaco do ICMS,
      e as duas fatias ficam lado a lado na pizza. */

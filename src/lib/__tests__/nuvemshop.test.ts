@@ -4,6 +4,7 @@ import { chaveMes, reconciliar } from "@/lib/metrics";
 import {
   converterCarrinho,
   converterPedido,
+  converterProduto,
   esperaPeloLimite,
   limitesDoMes,
   mesclarPedidos,
@@ -52,6 +53,57 @@ function pedidoCru(extra: Record<string, unknown> = {}) {
     ...extra,
   };
 }
+
+describe("converterProduto", () => {
+  it("vira uma entrada por variante, com o nome em português e o SKU", () => {
+    // Formato da loja real (16/09/2026): nome por idioma, variantes com values vazios.
+    const itens = converterProduto(
+      {
+        id: 259902774,
+        name: { pt: "Kit maresia: Body Splash + Loção Hidratante" },
+        published: true,
+        is_kit: false,
+        variants: [{ id: 1152820434, sku: "MAR001", values: [], price: "119.90", cost: null }],
+      },
+      "Loja A",
+    );
+    expect(itens).toEqual([
+      {
+        produtoId: 259902774,
+        varianteId: 1152820434,
+        nome: "Kit maresia: Body Splash + Loção Hidratante",
+        sku: "MAR001",
+        publicado: true,
+        marca: "Loja A",
+      },
+    ]);
+  });
+
+  it("com mais de uma variante, o nome leva os valores dela", () => {
+    const itens = converterProduto(
+      {
+        id: 1,
+        name: { pt: "Creme" },
+        published: false,
+        variants: [
+          { id: 11, sku: "C30", values: [{ pt: "30ml" }] },
+          { id: 12, sku: "", values: [{ pt: "200ml" }] },
+          { sku: "sem-id" },
+        ],
+      },
+      "Loja A",
+    );
+    expect(itens.map((i) => [i.varianteId, i.nome, i.sku, i.publicado])).toEqual([
+      [11, "Creme (30ml)", "C30", false],
+      [12, "Creme (200ml)", null, false],
+    ]);
+  });
+
+  it("produto sem id não vira nada", () => {
+    expect(converterProduto({ name: "X", variants: [{ id: 1 }] }, "Loja A")).toEqual([]);
+    expect(converterProduto(null, "Loja A")).toEqual([]);
+  });
+});
 
 describe("converterPedido", () => {
   it("aceita dinheiro como número e quantidade como texto, que é como a documentação mostra", () => {

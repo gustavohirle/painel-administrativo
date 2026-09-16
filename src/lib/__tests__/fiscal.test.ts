@@ -10,6 +10,7 @@ import {
 import {
   apurarImpostos,
   calcularRBT12,
+  idsMarcadosPorPadrao,
   idsSugeridosPorRegime,
   impostosDoRegime,
   linhasConsolidadas,
@@ -17,9 +18,10 @@ import {
 import { SUBLIMITE_ICMS_SIMPLES, TETO_SIMPLES_NACIONAL } from "@/types/fiscal";
 import type { Imposto } from "@/types/fiscal";
 import type { Influencer } from "@/types/dominio";
-import { chaveProduto, type Produto } from "@/types/produto";
-import type { Pedido } from "@/types/nuvemshop";
+import { chaveProduto, pareceKit, type Produto } from "@/types/produto";
+import type { ItemCatalogo, Pedido } from "@/types/nuvemshop";
 import { REGIME_SEM_INFLUENCER } from "@/lib/config";
+import { produtosParaCadastrar } from "@/lib/costing";
 
 // ---------------------------------------------------------------------------
 // Fabricas
@@ -318,7 +320,8 @@ describe("apurarImpostos", () => {
     const r = apurarImpostos(
       pedidos,
       pedidos,
-      [],
+      // O PIS so incide onde o produto o marcou; os dois pedidos usam este item.
+      [produto({ produtoId: 1, varianteId: 11, impostosIds: ["pis"] })],
       [pis],
       [
         influencer({ id: "a", marca: "Pequena", regime: "simples_nacional", rbt12Manual: 1_000_000 }),
@@ -523,7 +526,7 @@ describe("apurarImpostos", () => {
     const r = apurarImpostos(
       pedidos,
       pedidos,
-      [],
+      [produto({ produtoId: 1, varianteId: 11, impostosIds: ["pis"] })],
       [pis],
       [
         influencer({ id: "a", marca: "A", regime: "lucro_presumido" }),
@@ -542,5 +545,223 @@ describe("apurarImpostos", () => {
     expect(Number.isNaN(r.totalSobreVenda)).toBe(false);
     expect(r.cargaSobreReceita).toBe(0);
     expect(r.porInfluencer).toHaveLength(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Produtos vendidos que ainda nao estao no cadastro
+// ---------------------------------------------------------------------------
+
+describe("a marcação do produto manda no imposto sobre receita", () => {
+  // Pedido de R$ 1.000 com item de R$ 1.000: receita real e receita de itens batem.
+  const icms = imposto({ id: "icms", sigla: "ICMS", aliquota: 10, regimes: ["lucro_presumido"], aplicacaoPorProduto: true });
+  const pis = imposto({ id: "pis", sigla: "PIS", aliquota: 0.65, regimes: ["lucro_presumido"] });
+  const irpj = imposto({
+    id: "irpj",
+    sigla: "IRPJ",
+    aliquota: 15,
+    baseIncidencia: "lucro",
+    percentualPresuncao: 8,
+    regimes: ["lucro_presumido"],
+  });
+  const lista = [icms, pis, irpj];
+  const apurar = (impostosIds: string[]) =>
+    apurarImpostos(
+      [pedido()],
+      [pedido()],
+      [produto({ produtoId: 1, varianteId: 11, impostosIds })],
+      lista,
+      [],
+    );
+
+  it("desmarcado não é cobrado; marcado incide sobre a receita dos produtos marcados", () => {
+    const semPis = apurar(["icms"]);
+    const comPis = apurar(["icms", "pis"]);
+    expect(semPis.porInfluencer[0]!.linhas.find((l) => l.sigla === "PIS")).toBeUndefined();
+    expect(comPis.porInfluencer[0]!.linhas.find((l) => l.sigla === "PIS")!.valor).toBeCloseTo(6.5, 6);
+    expect(comPis.totalSobreVenda - semPis.totalSobreVenda).toBeCloseTo(6.5, 6);
+  });
+
+  it("imposto sobre o LUCRO não depende da marcação: é da marca inteira", () => {
+    // 15% sobre 8% de R$ 1.000 = R$ 12, marcado ou nao.
+    for (const marcados of [[], ["irpj"], ["icms"]]) {
+      const linha = apurar(marcados).porInfluencer[0]!.linhas.find((l) => l.sigla === "IRPJ");
+      expect(linha!.valor, marcados.join(",")).toBeCloseTo(12, 6);
+    }
+  });
+
+  it("produto sem imposto marcado só paga o que incide sobre o lucro", () => {
+    expect(apurar([]).porInfluencer[0]!.linhas.map((l) => l.sigla)).toEqual(["IRPJ"]);
+  });
+});
+
+describe("idsMarcadosPorPadrao", () => {
+  const icms = imposto({ id: "icms", sigla: "ICMS", aliquota: 10, regimes: ["lucro_presumido"], aplicacaoPorProduto: true });
+  const ipi = imposto({ id: "ipi", sigla: "IPI", aliquota: 0, regimes: ["lucro_presumido"], aplicacaoPorProduto: true });
+  const pis = imposto({ id: "pis", sigla: "PIS", aliquota: 0.65, regimes: ["lucro_presumido"] });
+  const st = imposto({ id: "st", sigla: "ICMS-ST", regimes: ["simples_nacional"], aplicacaoPorProduto: true });
+  const desligado = imposto({ id: "off", sigla: "OFF", regimes: ["lucro_presumido"], aplicacaoPorProduto: true, ativo: false });
+  const lista = [icms, ipi, pis, st, desligado];
+
+  it("nascem marcados os do regime que dependem do NCM, inclusive os de alíquota zero", () => {
+    expect(idsMarcadosPorPadrao(lista, "lucro_presumido")).toEqual(["icms", "ipi"]);
+    expect(idsMarcadosPorPadrao(lista, "simples_nacional")).toEqual(["st"]);
+  });
+
+  it("PIS e COFINS nascem desmarcados, mas continuam na lista do regime", () => {
+    expect(idsMarcadosPorPadrao(lista, "lucro_presumido")).not.toContain("pis");
+    expect(idsSugeridosPorRegime(lista, "lucro_presumido")).toContain("pis");
+  });
+
+  it("imposto desativado não nasce marcado", () => {
+    expect(idsMarcadosPorPadrao(lista, "lucro_presumido")).not.toContain("off");
+  });
+});
+
+describe("pareceKit", () => {
+  it("reconhece os kits e combos da loja real pelo nome", () => {
+    for (const nome of [
+      "Kit Aurora: Body Splash + Loção Hidratante",
+      "Kit Costa Amalfitana - 4 Body Splash",
+      "Kit World Tour - Body Splash",
+      "Combo Encanto Body Splash",
+      "Combo: Tha Easy PDRN + Espuma de Limpeza Facial",
+      "Shampoo Antiqueda + Condicionador Noite estrelada",
+      "Kit Lovely: Deo Colonia + Body Splash",
+    ]) {
+      expect(pareceKit(nome), nome).toBe(true);
+    }
+  });
+
+  it("não confunde produto avulso com kit", () => {
+    for (const nome of [
+      "Body Splash Sortido",
+      "Beauty Balm Sortido",
+      "Noite Estrelada - Desodorante Colônia 100ml",
+      "PRÉ VENDA - Body Splash Jardim Secreto: Jhenny Keller x Tha Beauty",
+      "Tha Easy Sérum Clareador facial - 30ml",
+      "Kitten Perfume",
+    ]) {
+      expect(pareceKit(nome), nome).toBe(false);
+    }
+  });
+});
+
+describe("produtosParaCadastrar", () => {
+  const doCatalogo = (produtoId: number, nome: string, extra: Partial<ItemCatalogo> = {}): ItemCatalogo => ({
+    produtoId,
+    varianteId: produtoId * 10,
+    nome,
+    sku: `CAT-${produtoId}`,
+    publicado: true,
+    marca: "Marca",
+    ...extra,
+  });
+
+  it("junta o catálogo às vendas: o que não vendeu entra, depois dos vendidos", () => {
+    const pedidos = [pedido({ products: [item(1, 10, "Nome antigo na venda")] })];
+    const catalogo = [
+      doCatalogo(1, "Nome atual no catálogo"),
+      doCatalogo(2, "Zeta sem venda"),
+      doCatalogo(3, "Alfa sem venda", { publicado: false }),
+    ];
+    const novos = produtosParaCadastrar(pedidos, [], [], [], catalogo);
+    expect(novos.map((n) => n.chave)).toEqual(["1:10", "3:30", "2:20"]);
+    // O catálogo manda no nome e no SKU: é o que a loja mostra hoje.
+    expect(novos[0]).toMatchObject({ nome: "Nome atual no catálogo", sku: "CAT-1", observacao: null });
+    expect(novos[1]!.observacao).toContain("Não publicado");
+  });
+
+  it("vendido que saiu do catálogo entra, e a observação diz isso", () => {
+    const pedidos = [pedido({ products: [item(9, 90, "Kit que saiu")] })];
+    const [novo] = produtosParaCadastrar(pedidos, [], [], [], [doCatalogo(1, "Outro")]);
+    expect(novo!.chave).toBe("9:90");
+    expect(novo!.observacao).toContain("não está mais no catálogo");
+  });
+
+  it("kit pelo nome entra marcado como kit, sem componentes e com aviso", () => {
+    const novos = produtosParaCadastrar([], [], [], [], [
+      doCatalogo(1, "Kit Aurora: Body Splash + Loção Hidratante"),
+      doCatalogo(2, "Body Splash Sortido"),
+    ]);
+    const kit = novos.find((n) => n.chave === "1:10");
+    const avulso = novos.find((n) => n.chave === "2:20");
+    expect(kit).toMatchObject({ nome: "Kit Aurora: Body Splash + Loção Hidratante", ehKit: true, componentes: [] });
+    expect(kit!.observacao).toContain("falta informar os componentes");
+    expect(avulso).toMatchObject({ ehKit: false, observacao: null });
+  });
+
+  it("item do catálogo já cadastrado não volta", () => {
+    const novos = produtosParaCadastrar([], [produto({ produtoId: 1, varianteId: 10 })], [], [], [doCatalogo(1, "Já existe")]);
+    expect(novos).toHaveLength(0);
+  });
+
+  const item = (product_id: number, variant_id: number, name: string, price = "100.00", quantity = 1) => ({
+    id: product_id * 100 + variant_id,
+    product_id,
+    variant_id,
+    name,
+    price,
+    quantity,
+    sku: `SKU-${product_id}`,
+  });
+  const icms = imposto({ id: "icms", sigla: "ICMS", regimes: ["lucro_presumido"], aplicacaoPorProduto: true });
+  const das = imposto({ id: "st", sigla: "ICMS-ST", regimes: ["simples_nacional"], aplicacaoPorProduto: true });
+
+  it("traz uma entrada por variante vendida e paga, a de maior receita primeiro", () => {
+    const pedidos = [
+      pedido({ products: [item(1, 11, "Creme"), item(2, 21, "Sérum", "300.00")] }),
+      pedido({ products: [item(1, 11, "Creme", "100.00", 2)] }),
+      pedido({ status: "cancelled", products: [item(3, 31, "Só cancelado")] }),
+    ];
+    const novos = produtosParaCadastrar(pedidos, [], [icms], []);
+    expect(novos.map((n) => n.chave)).toEqual(["1:11", "2:21"]);
+    expect(novos[1]).toMatchObject({ produtoId: 2, varianteId: 21, nome: "Sérum", sku: "SKU-2", origem: "nuvemshop", ehKit: false, ativo: true });
+  });
+
+  it("pula o que já está cadastrado, pela variante ou pelo produto inteiro", () => {
+    const pedidos = [pedido({ products: [item(1, 11, "A"), item(2, 21, "B"), item(3, 31, "C")] })];
+    const cadastro = [produto({ produtoId: 1, varianteId: 11 }), produto({ produtoId: 2, varianteId: null })];
+    expect(produtosParaCadastrar(pedidos, cadastro, [], []).map((n) => n.chave)).toEqual(["3:31"]);
+  });
+
+  it("usa o nome da venda mais recente, porque o produto pode ter sido renomeado", () => {
+    const pedidos = [
+      pedido({ created_at: "2026-09-20T10:00:00.000-03:00", products: [item(1, 11, "Nome novo")] }),
+      pedido({ created_at: "2026-07-02T10:00:00.000-03:00", products: [item(1, 11, "Nome antigo")] }),
+    ];
+    expect(produtosParaCadastrar(pedidos, [], [], [])[0]!.nome).toBe("Nome novo");
+  });
+
+  it("sem influencer, marca os impostos do regime padrão que dependem do produto", () => {
+    // Com a lista vazia o produto contaria como "com cadastro fiscal" e o ICMS
+    // por produto continuaria fora da conta, sem aviso nenhum.
+    const pis = imposto({ id: "pis", sigla: "PIS", regimes: ["lucro_presumido"] });
+    const [novo] = produtosParaCadastrar([pedido()], [], [icms, das, pis], []);
+    expect(REGIME_SEM_INFLUENCER).toBe("lucro_presumido");
+    expect(novo!.influencerId).toBeNull();
+    expect(novo!.impostosIds).toEqual(["icms"]);
+  });
+
+  it("com influencer ativo na marca, vira dono e traz os impostos do regime dele", () => {
+    const inativo = influencer({ id: "velho", marca: "Marca", regime: "lucro_presumido", ativo: false });
+    const dono = influencer({ id: "dono", marca: "Marca", regime: "simples_nacional" });
+    const [novo] = produtosParaCadastrar([pedido()], [], [icms, das], [inativo, dono]);
+    expect(novo!.influencerId).toBe("dono");
+    expect(novo!.impostosIds).toEqual(["st"]);
+  });
+
+  it("depois de cadastrado, a apuração cobre a receita e cobra o imposto por produto", () => {
+    const pedidos = [pedido()];
+    const cadastro = produtosParaCadastrar(pedidos, [], [icms], []).map((e, i) => ({
+      ...e,
+      id: `novo-${i}`,
+      atualizadoEm: "2026-09-16T00:00:00.000Z",
+    }));
+    const antes = apurarImpostos(pedidos, pedidos, [], [icms], []);
+    const depois = apurarImpostos(pedidos, pedidos, cadastro, [icms], []);
+    expect(antes.cobertura).toBe(0);
+    expect(depois.cobertura).toBe(1);
+    expect(depois.totalSobreVenda).toBeCloseTo(antes.totalSobreVenda + 100, 6);
   });
 });

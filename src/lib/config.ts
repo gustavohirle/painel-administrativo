@@ -46,12 +46,15 @@ export function userAgentNuvemshop(): string {
 /**
  * Endereco base da API, com a versao.
  *
- * O padrao e a versao atual documentada. `https://api.tiendanube.com/v1` ainda
- * responde, e trocar para ela e so mudar esta variavel -- o cliente manda os
- * cabecalhos de autenticacao das duas versoes.
+ * O padrao e a `v1`, e nao a versao mais nova (`2025-03`): na loja real, a
+ * listagem de pedidos da 2025-03 veio SEM `shipping_cost_customer` e sem
+ * `shipping_cost_owner` (o frete foi para `fulfillments`, sem valor). O frete
+ * entraria zerado, e a comissao e os impostos sairiam sobre uma base maior.
+ * Na v1, `total = subtotal - desconto + frete` fechou em 50 de 50 pedidos
+ * (16/09/2026). O cliente manda os cabecalhos de autenticacao das duas versoes.
  */
 export function baseUrlNuvemshop(): string {
-  return (process.env.NUVEMSHOP_API_URL || "https://api.nuvemshop.com.br/2025-03").replace(
+  return (process.env.NUVEMSHOP_API_URL || "https://api.nuvemshop.com.br/v1").replace(
     /\/+$/,
     "",
   );
@@ -156,6 +159,14 @@ export const PERCENTUAL_COMISSAO_PADRAO = 30;
  * pedido cancelado nao paga socio.
  */
 export const PERCENTUAL_PARTICIPACAO_SOCIOS = 6;
+
+/**
+ * Quem fica com a diferenca entre o frete cobrado do cliente e o que a
+ * transportadora recebe. Na loja real sao R$ 0,73 por pedido, da Intelipost
+ * (informado pelo dono em 16/09/2026). E custo: tem fatia propria na pizza e
+ * linha propria no raio-x, separada do frete da transportadora.
+ */
+export const INTERMEDIARIO_FRETE = "Intelipost";
 
 // ---------------------------------------------------------------------------
 // Exposicao pela rede
