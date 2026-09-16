@@ -181,7 +181,14 @@ export function GestaoDespesasInfluencer({
                   <tr className="border-b border-borda">
                     <td className="py-3 pr-4">
                       <span className="font-medium text-tinta">{despesa.descricao}</span>
-                      {rateio && (
+                      {/*
+                        A linha da divisao so aparece quando ha divisao. Com um
+                        influencer ativo so, a parte e sempre 100% do total, e a
+                        frase virava "100,0% de R$ 18,51" embaixo de um valor de
+                        R$ 18,51 -- repetia o numero e nao explicava nada. O selo
+                        "Compartilhada" continua dizendo o que ela e.
+                      */}
+                      {rateio && rateio.fracao < 0.9995 && (
                         <span className="mt-0.5 block text-xs text-tinta-fraca">
                           {percentual(rateio.fracao)} de {moeda(rateio.total)}, pelo
                           faturamento sem frete
