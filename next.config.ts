@@ -26,7 +26,14 @@ const nextConfig: NextConfig = {
     return [{ source: "/comissoes", destination: "/influencers", permanent: false }];
   },
 
-  distDir: process.env.NODE_ENV === "development" ? ".next-dev" : ".next",
+  /*
+   * PAINEL_DIST_DIR permite montar um build novo em outra pasta enquanto o
+   * servidor de producao continua no ar lendo `.next` (mesmo problema acima,
+   * entre dois builds de producao).
+   */
+  distDir:
+    process.env.PAINEL_DIST_DIR ||
+    (process.env.NODE_ENV === "development" ? ".next-dev" : ".next"),
 };
 
 export default nextConfig;

@@ -24,8 +24,11 @@ funcionando 100% offline. Isso existe por dois motivos:
 2. Mesmo depois de aprovado, poder demonstrar sem expor números reais continua
    valendo.
 
-Trocar `FONTE_DADOS=demo` para `live` no `.env` liga a API real e o Postgres.
-Nenhuma regra de negócio muda nessa troca — ver seção 3.
+O modo real (`FONTE_DADOS=live`) liga a API real e o Postgres. Ele roda **ao
+lado** da demonstração, com o próprio `.env.live` e na porta 3001, e está
+pronto esperando a chave da Nuvemshop (aplicativo "painel-de-relatrios") — ver
+seção 12 e `DADOS_REAIS.md`. Nenhuma regra de negócio muda nessa troca — ver
+seção 3.
 
 ### O problema do cliente
 
@@ -204,7 +207,8 @@ src/
   data/
     source.ts             # interface FonteDePedidos
     mockSource.ts         # implementa FonteDePedidos com dados fictícios
-    apiSource.ts          # implementa FonteDePedidos com a API real
+    apiSource.ts          # implementa FonteDePedidos com a API real (HTTP)
+    cachePedidos.ts       # copia em disco dos pedidos reais (secao 12)
     geradorPedidos.ts     # gerador determinístico (seed fixo)
     catalogo.ts           # marcas e produtos fictícios
     costRepository.ts     # interface RepositorioCadastros + dados iniciais
@@ -213,6 +217,7 @@ src/
     index.ts              # ÚNICO lugar que decide demo vs. live
   lib/
     metrics.ts            # funções PURAS: Pedido[] -> métricas
+    nuvemshop.ts          # funções PURAS: pedido cru da API -> Pedido
     costing.ts            # funções PURAS: Pedido[] + cadastros -> lucro
     format.ts             # formatação pt-BR
     config.ts             # leitura de env
@@ -263,9 +268,17 @@ origem nesse campo. Em modo live ele vem do `store_id` de cada credencial.
 **Atenção:** valores monetários vêm como **string** (`"5190.00"`). Converta uma
 vez, na borda, com `paraNumero()`. Não faça aritmética em string.
 
-Endpoints: `GET /v1/{store_id}/orders` e `GET /v1/{store_id}/checkouts`, com
-filtros `created_at_min`, `created_at_max`, `page`, `per_page` (máx. 200).
-Autenticação por header `Authentication: bearer {token}` + `User-Agent`.
+Endpoints: `GET /2025-03/{store_id}/orders` e `GET /2025-03/{store_id}/checkouts`
+em `https://api.nuvemshop.com.br`, com filtros `created_at_min`,
+`created_at_max`, `updated_at_min`, `status=any`, `page`, `per_page` (máx. 200).
+Autenticação por `Authorization: Bearer {token}` na versão atual; a antiga
+(`/v1`) usava `Authentication: bearer`, e o cliente manda os dois. `User-Agent`
+com nome do aplicativo e contato é obrigatório (sem ele, 400).
+
+O exemplo da própria documentação mistura tipos: `total` vem como texto,
+`shipping_cost_customer` como número, `quantity` como texto e as datas em UTC
+no formato `2022-11-15T19:36:59+0000`. A conversão na borda
+(`converterPedido`, seção 12) aceita todos e entrega o formato acima.
 
 ---
 
@@ -1367,7 +1380,7 @@ de cobertura e cadastrar um ao vivo na reunião.
 
 - Next.js 15 (App Router) + React 19 + TypeScript
 - Tailwind CSS 4
-- Prisma + PostgreSQL (Neon) — só no modo live
+- Prisma + PostgreSQL local (no desktop de casa, o 18 na porta 5432) — só no modo live
 - Zod para validar entrada de formulário
 - Vitest
 - Gráficos: SVG escrito à mão. Nenhuma biblioteca de gráfico.
@@ -1588,7 +1601,141 @@ em 1366×768. Isso é `npm test` e olho na tela.
 
 | Pergunta | Onde |
 |---|---|
-| A conta está certa? | `npm test` — 363 testes sobre as funções puras |
+| A conta está certa? | `npm test` — 380 testes sobre as funções puras |
+| A chave da Nuvemshop vale? Os pedidos chegam como esperado? | `npm run nuvemshop:testar` |
 | A página monta? O perfil bloqueia? | `npm run fumaca` |
 | Funciona no celular? | `npm run celular` |
 | A tela comunica? | abrir no navegador, em tela grande e no telefone |
+
+---
+
+## 12. Modo real (Nuvemshop)
+
+Roteiro de uso em `DADOS_REAIS.md`. Aqui ficam as decisões.
+
+**Estado:** tudo pronto e testado ponta a ponta contra uma API falsa que
+imita a documentada (paginação com `Link`, 404 "Last page is N", balde de 40
+chamadas a 2/s com 429, chave recusada, tipos misturados). **Nunca rodou
+contra a loja real.** O primeiro contato é `npm run nuvemshop:testar`, que
+existe para mostrar como o pedido real chega antes de qualquer número ir para a
+tela.
+
+### Roda ao lado da demonstração, não no lugar dela
+
+O `.env` continua em `demo`. O modo real lê o `.env.live` (fora do git; modelo
+em `.env.live.example`) pelos comandos `:live` (`node --env-file=.env.live`),
+na porta 3001 e só em `127.0.0.1`. O Next não sobrescreve variável que já está
+no ambiente, então o `.env` de demonstração não vaza para o modo real —
+inclusive `PERMITIR_HTTP_SEM_TLS`, que o modo real ignora de qualquer forma.
+
+Consequência: **login no modo real só em localhost ou HTTPS.** O Chrome aceita
+cookie `Secure` em `http://127.0.0.1` (conferido); pelo IP fixo em HTTP não
+entra. Acesso de fora é por túnel para `http://127.0.0.1:3001`.
+
+### As páginas nunca esperam a API
+
+Toda página lê a base inteira (o RBT12 precisa de 12 meses). Uma loja deste
+porte tem ~100 mil pedidos por ano: a 200 por chamada e 2 chamadas por
+segundo, são minutos. Por isso `cachePedidos.ts`:
+
+1. a primeira busca traz `NUVEMSHOP_MESES` (13) meses, **mês a mês**, de
+   preferência por `npm run nuvemshop:sincronizar` antes de subir. Medido na
+   API falsa: 45.024 pedidos, 383 chamadas, 170 s, nenhuma recusada;
+2. depois a página responde com o disco e, se a cópia passou de
+   `NUVEMSHOP_ATUALIZAR_MINUTOS` (10), pede em segundo plano só o que mudou
+   (`updated_at_min` com 10 minutos de sobreposição). Boleto pago e pedido
+   cancelado mudam o `updated_at`;
+3. carrinhos abandonados são a lista mais cara (~100 chamadas para 30 dias):
+   lista inteira de hora em hora, só os novos no meio;
+4. o rodapé de toda tela diz de quando é a cópia e, se a última atualização
+   falhou, o motivo. Número de 10 minutos atrás, declarado, é melhor que tela
+   travada.
+
+Estado em `globalThis` e arquivo como fonte da verdade, pela armadilha 2. Uma
+busca por vez por processo. Gravação em arquivo temporário + `rename`.
+
+### A conversão na borda (`lib/nuvemshop.ts`)
+
+- **Horário de Brasília.** A API manda UTC, e `chaveMes` corta o texto da data:
+  um pedido das 22h do dia 30 cairia no mês seguinte. `converterPedido`
+  reescreve as datas com `-03:00` (sem horário de verão desde 2019). O
+  instante não muda.
+- **Sem dado pessoal.** Nenhuma conta usa nome, e-mail, telefone, documento ou
+  endereço; o cache guarda só o id do cliente e o estado de destino.
+- **Cliente ausente ganha id negativo próprio**, senão todos os anônimos
+  viravam um cliente recorrente.
+- **Campo ausente entra zerado e é contado** (`CampoVigiado`). Frete zero é
+  certo para frete grátis e errado para campo renomeado; só a contagem
+  distingue. `nuvemshop:testar` mostra.
+- **Status desconhecido passa como veio** e é listado
+  (`situacoesDesconhecidas`): `classificarPedido` trata todo pagamento fora
+  da lista como recebido, o que estaria errado para um `partially_refunded`.
+- **`x-rate-limit-reset` é em milissegundos.** A primeira versão do cliente lia
+  segundos: um 429 esperaria horas. Com `x-rate-limit-remaining` ≤ 2 o cliente
+  espera 500 ms antes de continuar, e é isso que zera as recusas.
+
+### O banco real começa quase vazio
+
+`prisma/seed.ts` semeia só o que vale para qualquer empresa: tributos,
+alíquotas dos estados, taxas de pagamento e os dois usuários. **Nenhum
+influencer, produto, custo, contagem, ordem ou despesa da demonstração** — as
+marcas inventadas não casariam com pedido nenhum (armadilha 9) e o painel
+mostraria custo de produto fictício ao lado de venda real. Até o cadastro ser
+feito, o lucro da tela sai alto demais, e os avisos vermelhos existentes (produto
+sem custo, marca sem influencer) dizem isso.
+
+As senhas vêm de `SENHA_DONO` e `SENHA_ESTOQUE`; a semente recusa menos de
+12 caracteres e as senhas publicadas aqui. `db:criar:live` cria usuário e banco
+no Postgres local pedindo a senha do `postgres` na hora, sem gravar.
+
+### Build em outra pasta
+
+`PAINEL_DIST_DIR` troca a pasta do build. Serve para montar um build novo
+(`PAINEL_DIST_DIR=.next-novo npm run build`) e testá-lo sem derrubar o
+servidor que está lendo `.next` — mesma incompatibilidade da armadilha 4.
+
+### Armadilha do teste com dados de demonstração
+
+A base de demonstração gera o mês corrente inteiro, então tem pedidos com data
+**no futuro**. Servida por uma API falsa, toda busca incremental os traz de
+novo (o `updated_at` deles é "depois de agora"): 60 chamadas por rodada em vez
+de meia dúzia. É artefato do teste, não do cliente real.
+
+---
+
+## 13. Onde o trabalho parou (16/09/2026)
+
+Para quem continuar em outro computador. O código está todo no git; o que
+está listado abaixo **não está**, de propósito.
+
+### Situação
+
+- **Demonstração para o cliente na segunda-feira**, com dados fictícios. Ela
+  roda no desktop de casa (`npm start`, porta 3000), acessada pelo IP fixo
+  `177.223.44.178:3000` ou por túnel rápido da Cloudflare (endereço muda a cada
+  vez; ver `DEMONSTRACAO.md`).
+- **Modo real pronto, esperando a chave** da Nuvemshop (aplicativo
+  "painel-de-relatrios"). Nada rodou contra a loja real ainda. Próximos
+  passos em `DADOS_REAIS.md`, a partir do passo 1.
+- Ainda não se sabe quantas lojas são nem os nomes exatos das marcas; os
+  contratos precisam usar o mesmo texto de `marca` do `NUVEMSHOP_LOJAS`.
+
+### O que não vem pelo git
+
+| Arquivo | O que é | Em outro computador |
+|---|---|---|
+| `.env` | segredo de sessão da demonstração e `PERMITIR_HTTP_SEM_TLS=1` | sem ele o painel sobe em demo com o segredo embutido — serve para desenvolver; para expor na internet, gere um `SESSAO_SECRET` (comando em `.env.example`) |
+| `.env.live` | chave da Nuvemshop, `DATABASE_URL`, segredo e senhas do modo real | copie de `.env.live.example` e gere segredo e senhas novas; **não** mande o do desktop por mensagem nem pelo git |
+| `.demo-data/` | cadastros da demonstração (o que foi editado nas telas) | recriado sozinho com a semente na primeira leitura |
+| `.live-data/` | cópia local dos pedidos reais | recriada por `npm run nuvemshop:sincronizar` |
+| Postgres | banco `painel` do modo real | precisa de um Postgres instalado; `npm run live:preparar` cria usuário, banco e tabelas |
+
+Depois de clonar: `npm install` e, como o npm desta configuração não roda o
+pós-instalação (armadilha 6), `npx prisma generate` antes do
+`npm run typecheck`.
+
+### Conferido no fim da sessão
+
+380 testes, tipos sem erro, `npm run fumaca` na demonstração, e o modo real
+de ponta a ponta contra a API falsa (seção 12): sincronização completa e
+incremental, semente, login, todas as telas com cadastro vazio, 390px.

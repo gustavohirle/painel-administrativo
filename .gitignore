@@ -1,6 +1,7 @@
 node_modules/
 .next/
 .next-dev/
+.next-*/
 out/
 build/
 dist/
@@ -8,6 +9,8 @@ dist/
 .env
 .env.local
 .env*.local
+# Configuracao do modo com dados reais: chave da Nuvemshop, banco e senhas.
+.env.live
 
 *.log
 npm-debug.log*
@@ -23,3 +26,6 @@ next-env.d.ts
 
 # Estado do modo demonstracao (gravado em runtime)
 /.demo-data/
+
+# Copia local dos pedidos reais da Nuvemshop (dado do cliente)
+/.live-data/

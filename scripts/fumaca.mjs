@@ -9,6 +9,7 @@
  * forjar o cookie -- o mesmo que o navegador receberia.
  *
  *   node scripts/fumaca.mjs [--porta 3000]
+ *   npm run fumaca:live        (dados reais: le o .env.live, porta 3001)
  *
  * Roda com `--env-file-if-exists=.env` (ver package.json) porque a assinatura
  * do cookie tem que ser a MESMA que o servidor usa. Sem isso, depois que
@@ -180,9 +181,12 @@ for (const perfil of Object.keys(PERMISSOES)) {
 
 const TOKEN_DEMO = "demonstracao-aguardando-assinatura-do-gerente";
 
-console.log("pagina publica de assinatura");
+// Com dados reais nao existe ordem semeada: so da para conferir a recusa.
+const modoReal = process.env.FONTE_DADOS === "live";
 
-{
+console.log(`pagina publica de assinatura${modoReal ? " (dados reais: so a recusa)" : ""}`);
+
+if (!modoReal) {
   const semSessao = await fetch(`${base}/assinar/${TOKEN_DEMO}`, { redirect: "manual" });
   const corpo = semSessao.status === 200 ? await semSessao.text() : "";
 
@@ -195,6 +199,9 @@ console.log("pagina publica de assinatura");
   } else {
     console.log("  ok /assinar/<token>  200 sem login (correto)");
   }
+}
+
+{
 
   // Token errado nao pode abrir ordem nenhuma.
   const errado = await fetch(`${base}/assinar/${"z".repeat(45)}`, { redirect: "manual" });
@@ -206,7 +213,9 @@ console.log("pagina publica de assinatura");
     console.log(`  x  /assinar/<errado> ${errado.status} -- token invalido abriu alguma coisa`);
     falhas.push("/assinar: token invalido nao foi recusado");
   }
+}
 
+if (!modoReal) {
   // O PDF por token so existe depois da assinatura; nesta ordem, ainda nao.
   const pdf = await fetch(`${base}/assinar/${TOKEN_DEMO}/pdf`, { redirect: "manual" });
   if (pdf.status === 404) {

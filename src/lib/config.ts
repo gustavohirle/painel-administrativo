@@ -31,10 +31,45 @@ export interface LojaNuvemshop {
   accessToken: string;
 }
 
+/**
+ * A API exige nome do aplicativo e um contato (e-mail ou endereco) no
+ * User-Agent; sem isso responde 400. O aplicativo foi criado na Nuvemshop com
+ * o nome "painel-de-relatrios".
+ */
 export function userAgentNuvemshop(): string {
   return (
-    process.env.NUVEMSHOP_USER_AGENT ?? "Painel Administrativo (sem contato)"
+    process.env.NUVEMSHOP_USER_AGENT ||
+    "painel-de-relatrios (https://github.com/gustavohirle/painel-administrativo)"
   );
+}
+
+/**
+ * Endereco base da API, com a versao.
+ *
+ * O padrao e a versao atual documentada. `https://api.tiendanube.com/v1` ainda
+ * responde, e trocar para ela e so mudar esta variavel -- o cliente manda os
+ * cabecalhos de autenticacao das duas versoes.
+ */
+export function baseUrlNuvemshop(): string {
+  return (process.env.NUVEMSHOP_API_URL || "https://api.nuvemshop.com.br/2025-03").replace(
+    /\/+$/,
+    "",
+  );
+}
+
+/**
+ * Quantos meses de pedidos o painel guarda. 13 = os 12 do RBT12 (secao 5.10)
+ * mais o mes corrente.
+ */
+export function mesesNuvemshop(): number {
+  const n = Number(process.env.NUVEMSHOP_MESES);
+  return Number.isInteger(n) && n >= 1 && n <= 36 ? n : 13;
+}
+
+/** Idade maxima da copia local antes de pedir a API o que mudou, em ms. */
+export function intervaloAtualizacaoNuvemshop(): number {
+  const minutos = Number(process.env.NUVEMSHOP_ATUALIZAR_MINUTOS);
+  return (Number.isFinite(minutos) && minutos >= 1 ? minutos : 10) * 60 * 1000;
 }
 
 /**
@@ -59,17 +94,27 @@ export function lojasNuvemshop(): LojaNuvemshop[] {
       if (Array.isArray(bruto)) {
         return bruto
           .filter(
-            (l): l is LojaNuvemshop =>
+            (l): l is { storeId: string | number; accessToken: string; marca?: string } =>
               typeof l === "object" &&
               l !== null &&
-              typeof (l as LojaNuvemshop).storeId === "string" &&
-              typeof (l as LojaNuvemshop).accessToken === "string",
+              (typeof l.storeId === "string" || typeof l.storeId === "number") &&
+              String(l.storeId).trim() !== "" &&
+              typeof l.accessToken === "string" &&
+              l.accessToken.trim() !== "" &&
+              // O modelo do .env.live vem com este texto no lugar da chave.
+              !l.accessToken.includes("COLE_A_CHAVE"),
           )
-          .map((l) => ({ ...l, marca: l.marca || `Loja ${l.storeId}` }));
+          .map((l) => ({
+            // O id da loja e numero na Nuvemshop; aceita com ou sem aspas.
+            storeId: String(l.storeId).trim(),
+            accessToken: l.accessToken.trim(),
+            // A marca e CHAVE: e ela que casa pedido com contrato (armadilha 9).
+            marca: (l.marca || `Loja ${l.storeId}`).trim(),
+          }));
       }
     } catch {
       throw new Error(
-        "NUVEMSHOP_LOJAS nao e um JSON valido. Confira o .env.",
+        "NUVEMSHOP_LOJAS nao e um JSON valido. Confira o .env.live.",
       );
     }
   }

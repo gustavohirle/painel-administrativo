@@ -97,13 +97,17 @@ Credenciais da demonstração: `dono` / `dono123` e `estoque` / `estoque123`.
 
 ## Modo demonstração x modo real
 
-Controlado por `FONTE_DADOS` no `.env`.
+Controlado por `FONTE_DADOS`. O `.env` fica em `demo`; o modo real usa um
+arquivo próprio, o `.env.live`, e roda ao lado da demonstração, em outra porta.
 
 | | `demo` (padrão) | `live` |
 |---|---|---|
-| Pedidos | gerador determinístico com seed fixo | API da Nuvemshop |
+| Configuração | `.env` | `.env.live` (modelo em `.env.live.example`) |
+| Porta | 3000 (`npm start`) | 3001, só local (`npm run start:live`) |
+| Pedidos | gerador determinístico com seed fixo | API da Nuvemshop, com cópia em `.live-data/` |
 | Custos e comissões | arquivo local `.demo-data/` | PostgreSQL via Prisma |
-| Internet | dispensável | obrigatória |
+| Internet | dispensável | obrigatória para atualizar os pedidos |
+| Login por HTTP puro | permitido com `PERMITIR_HTTP_SEM_TLS=1` | nunca: só localhost ou HTTPS |
 | Selo "Dados de demonstração" | visível | oculto |
 
 O `if` que decide entre os dois vive num lugar só: [`src/data/index.ts`](src/data/index.ts).
@@ -111,24 +115,16 @@ As funções de cálculo não sabem qual modo está ativo.
 
 ### Ligando o modo real
 
-1. Copie `.env.example` para `.env`.
-2. Preencha as credenciais da Nuvemshop. Uma loja por marca:
+O roteiro completo está em [`DADOS_REAIS.md`](DADOS_REAIS.md). Em resumo:
 
-   ```env
-   NUVEMSHOP_LOJAS='[{"marca":"Aurora Beleza","storeId":"123","accessToken":"abc"}]'
-   ```
-
-   Ou, para uma loja só, `NUVEMSHOP_STORE_ID` + `NUVEMSHOP_ACCESS_TOKEN`.
-3. Crie um banco no [Neon](https://neon.tech) e cole a connection string em
-   `DATABASE_URL`.
-4. Prepare o banco:
-
-   ```bash
-   npm run db:push
-   npm run db:seed
-   ```
-
-5. Troque `FONTE_DADOS=live` e reinicie.
+```bash
+# 1. colar a chave em NUVEMSHOP_LOJAS no .env.live
+npm run live:preparar          # cria banco, tabelas, tributos e usuários
+npm run nuvemshop:testar       # prova a chave e mostra como os pedidos chegam
+npm run nuvemshop:sincronizar  # traz os últimos 13 meses
+npm run start:live             # http://127.0.0.1:3001
+npm run fumaca:live            # confere as rotas com dados reais
+```
 
 Depois de ligar, confira os totais de um mês já fechado contra o painel da
 própria Nuvemshop antes de mostrar para alguém.

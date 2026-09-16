@@ -1,116 +1,116 @@
 /**
- * Popula o Postgres com os cadastros iniciais.
+ * Prepara o Postgres do modo `live` para o primeiro uso.
  *
- * So faz sentido no modo `live`. Serve para o primeiro boot com banco real ter
- * conteudo em vez de tela vazia. Rodar com: npm run db:seed
+ * Rodar com: npm run db:seed:live   (le o .env.live)
  *
- * E idempotente: rodar duas vezes nao duplica nada, porque passa pelo mesmo
- * repositorio que a aplicacao usa -- e ele resolve por chave, nao por insercao
- * cega. A excecao proposital sao as contagens de estoque, que sao historico:
- * so entram quando a tabela esta vazia.
+ * O que entra, e o que NAO entra:
+ *
+ * - ENTRAM os pontos de partida que valem para qualquer empresa: o catalogo de
+ *   tributos (secao 5.10), as aliquotas internas dos 27 estados (5.10.1) e as
+ *   taxas de meio de pagamento (5.13.1). Todos nascem "nao confirmados", como
+ *   na demonstracao, e sao editaveis nas telas.
+ * - ENTRAM os dois usuarios, com a senha tirada de SENHA_DONO e SENHA_ESTOQUE.
+ *   As senhas da demonstracao estao publicadas no CLAUDE.md e no GitHub; com
+ *   dado real, usa-las entregaria o financeiro a quem as leu.
+ * - NAO ENTRAM influencers, produtos, fichas de custo, contagens de estoque,
+ *   ordens nem despesas. Os da demonstracao sao inventados, com marcas que
+ *   nao existem: contratos apontando para "Aurora Cosmeticos" nao casariam com
+ *   pedido nenhum (armadilha 9) e o painel mostraria custo e estoque de
+ *   produtos ficticios ao lado de vendas reais. Esses cadastros sao feitos
+ *   nas telas, com os nomes das lojas de verdade.
+ *
+ * E idempotente: rodar de novo nao duplica nada e nao troca a senha de quem
+ * ja existe (o dono pode ter trocado a dele).
  */
 
 import { RepositorioPostgres } from "@/data/prismaCostRepository";
 import {
+  CREDENCIAIS_DEMO,
   aliquotasEstaduaisIniciais,
-  contagensIniciais,
-  custosIniciais,
   impostosIniciais,
-  influencersIniciais,
-  produtosIniciais,
-  usuariosIniciais,
+  taxasPlataformaIniciais,
 } from "@/data/seeds";
+import { criarHashSenha } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import type { PerfilUsuario } from "@/types/usuario";
+
+const SENHAS_PUBLICADAS = new Set(CREDENCIAIS_DEMO.map((c) => c.senha));
+
+function senhaDoAmbiente(variavel: string): string {
+  const senha = process.env[variavel] ?? "";
+  if (senha.length < 12) {
+    throw new Error(`${variavel} precisa ter pelo menos 12 caracteres (está no .env.live).`);
+  }
+  if (SENHAS_PUBLICADAS.has(senha)) {
+    throw new Error(`${variavel} é uma senha da demonstração, que é pública. Escolha outra.`);
+  }
+  return senha;
+}
 
 async function main() {
   const repositorio = new RepositorioPostgres();
 
-  // --- Impostos primeiro: os produtos referenciam os ids deles ------------
-  const impostosDesejados = impostosIniciais();
-  const impostosExistentes = await repositorio.listarImpostos();
-  const impostosSalvos = [];
-
-  for (const imposto of impostosDesejados) {
-    const existente = impostosExistentes.find((i) => i.sigla === imposto.sigla);
-    const { id: _ignorado, atualizadoEm: _tambem, ...entrada } = imposto;
-    impostosSalvos.push(await repositorio.salvarImposto(entrada, existente?.id));
+  // --- Tributos ------------------------------------------------------------
+  const existentes = await repositorio.listarImpostos();
+  let novosImpostos = 0;
+  for (const imposto of impostosIniciais()) {
+    // Tributo que ja existe fica como esta: o contador pode ter ajustado.
+    if (existentes.some((i) => i.sigla === imposto.sigla)) continue;
+    const { id: _id, atualizadoEm: _em, ...entrada } = imposto;
+    await repositorio.salvarImposto(entrada);
+    novosImpostos += 1;
   }
-  console.log(`impostos: ${impostosSalvos.length}`);
+  console.log(`tributos: ${novosImpostos} novos, ${existentes.length} já existiam`);
 
   // --- Aliquotas estaduais (DIFAL) -----------------------------------------
-  const aliquotas = aliquotasEstaduaisIniciais();
-  const jaExistem = await repositorio.listarAliquotasEstaduais();
-  for (const aliquota of aliquotas) {
-    // Nao sobrescreve estado ja confirmado: o contador pode ter ajustado.
-    if (jaExistem.some((a) => a.uf === aliquota.uf && a.confirmadoPeloContador)) {
-      continue;
-    }
+  const aliquotasExistentes = await repositorio.listarAliquotasEstaduais();
+  let novasAliquotas = 0;
+  for (const aliquota of aliquotasEstaduaisIniciais()) {
+    if (aliquotasExistentes.some((a) => a.uf === aliquota.uf)) continue;
     const { atualizadoEm: _em, ...entrada } = aliquota;
     await repositorio.salvarAliquotaEstadual(entrada);
+    novasAliquotas += 1;
   }
-  console.log(`aliquotas estaduais: ${aliquotas.length}`);
+  console.log(`alíquotas estaduais: ${novasAliquotas} novas`);
 
-  // --- Influencers ---------------------------------------------------------
-  // Antes dos produtos: o produto herda os impostos do regime do influencer.
-  const influencers = influencersIniciais();
-  const jaCadastrados = await repositorio.listarInfluencers();
-  const influencersSalvos = [];
-  for (const influencer of influencers) {
-    const existente = jaCadastrados.find(
-      (i) => i.nome === influencer.nome && i.marca === influencer.marca,
-    );
-    const { id: _id, atualizadoEm: _em, ...entrada } = influencer;
-    influencersSalvos.push(
-      await repositorio.salvarInfluencer(entrada, existente?.id),
-    );
+  // --- Taxas de meio de pagamento ------------------------------------------
+  const taxasExistentes = await repositorio.listarTaxasPlataforma();
+  let novasTaxas = 0;
+  for (const taxa of taxasPlataformaIniciais()) {
+    if (taxasExistentes.some((t) => t.metodo === taxa.metodo)) continue;
+    const { atualizadoEm: _em, ...entrada } = taxa;
+    await repositorio.salvarTaxaPlataforma(entrada);
+    novasTaxas += 1;
   }
-  console.log(`contratos de comissao: ${influencersSalvos.length}`);
-
-  // --- Produtos ------------------------------------------------------------
-  const produtos = produtosIniciais(impostosSalvos, influencersSalvos);
-  for (const produto of produtos) {
-    const { id: _id, atualizadoEm: _em, ...entrada } = produto;
-    await repositorio.salvarProduto(entrada);
-  }
-  console.log(`produtos: ${produtos.length}`);
-
-  // --- Custos --------------------------------------------------------------
-  const custos = custosIniciais();
-  for (const custo of custos) {
-    const { id: _id, atualizadoEm: _em, ...entrada } = custo;
-    await repositorio.salvarCusto(entrada);
-  }
-  console.log(`fichas de custo: ${custos.length}`);
+  console.log(`taxas de pagamento: ${novasTaxas} novas`);
 
   // --- Usuarios ------------------------------------------------------------
-  for (const usuario of await usuariosIniciais()) {
-    const existente = await repositorio.buscarUsuarioPorLogin(usuario.usuario);
-    // Nao sobrescreve a senha de um usuario que ja existe: o dono pode ja ter
-    // trocado a dele, e resemear jogaria a senha de volta para a de teste.
-    if (existente) continue;
-    await repositorio.salvarUsuario(usuario);
-  }
-  console.log("usuarios: ok");
-
-  // --- Estoque -------------------------------------------------------------
-  const contagensExistentes = await repositorio.listarContagens();
-  if (contagensExistentes.length === 0) {
-    const contagens = contagensIniciais(await repositorio.listarProdutos());
-    for (const contagem of contagens) {
-      const { id: _id, registradoEm: _em, ...entrada } = contagem;
-      await repositorio.salvarContagem(entrada);
+  const agora = new Date().toISOString();
+  const usuarios: Array<{ id: string; nome: string; usuario: string; perfil: PerfilUsuario; variavel: string }> = [
+    { id: "usuario-dono", nome: "Dono", usuario: "dono", perfil: "dono", variavel: "SENHA_DONO" },
+    { id: "usuario-estoque", nome: "Estoque", usuario: "estoque", perfil: "estoque", variavel: "SENHA_ESTOQUE" },
+  ];
+  for (const { variavel, ...dados } of usuarios) {
+    if (await repositorio.buscarUsuarioPorLogin(dados.usuario)) {
+      console.log(`usuário ${dados.usuario}: já existe, senha mantida`);
+      continue;
     }
-    console.log(`contagens de estoque: ${contagens.length}`);
-  } else {
-    console.log("contagens de estoque: ja havia historico, nada semeado");
+    await repositorio.salvarUsuario({
+      ...dados,
+      ...(await criarHashSenha(senhaDoAmbiente(variavel))),
+      ativo: true,
+      criadoEm: agora,
+      atualizadoEm: agora,
+    });
+    console.log(`usuário ${dados.usuario}: criado`);
   }
 
-  console.log("\nPronto.");
+  console.log("\nPronto. Contratos, produtos e custos são cadastrados nas telas.");
 }
 
 main()
   .catch((erro) => {
-    console.error(erro);
-    process.exit(1);
+    console.error(erro instanceof Error ? erro.message : erro);
+    process.exitCode = 1;
   })
   .finally(() => prisma.$disconnect());

@@ -1,15 +1,31 @@
+import { dataHora } from "@/lib/format";
+
 /**
  * Rodape com a origem dos numeros.
  *
  * Junto com o selo do cabecalho, garante que ninguem saia da reuniao achando
  * que viu os numeros reais da propria empresa.
  */
-export function RodapeDemonstracao({ demonstracao }: { demonstracao: boolean }) {
+export async function RodapeDemonstracao({ demonstracao }: { demonstracao: boolean }) {
   if (!demonstracao) {
+    // Import dinamico: o modo demonstracao nunca carrega o cliente da API.
+    const { estadoDaSincronizacao } = await import("@/data/cachePedidos");
+    const estado = await estadoDaSincronizacao();
+
     return (
-      <footer className="pt-2 pb-6 text-xs text-tinta-fraca">
-        Dados lidos da API da Nuvemshop. Custos de fabricação e comissões vêm
-        dos cadastros deste painel.
+      <footer className="space-y-2 pt-2 pb-6 text-xs text-tinta-fraca">
+        <p>
+          Dados lidos da API da Nuvemshop
+          {estado.atualizadoEm ? `, atualizados em ${dataHora(estado.atualizadoEm)}` : ""}
+          {estado.sincronizando ? " (buscando novidades agora)" : ""}. Custos de
+          fabricação e comissões vêm dos cadastros deste painel.
+        </p>
+        {estado.ultimoErro && (
+          <p className="rounded-lg border border-alerta-borda bg-alerta-fundo px-4 py-3 text-sm text-naopago">
+            A última atualização com a Nuvemshop falhou, e os números acima são
+            da cópia anterior. Motivo: {estado.ultimoErro}
+          </p>
+        )}
       </footer>
     );
   }

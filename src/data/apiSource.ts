@@ -1,26 +1,38 @@
 /**
  * Implementacao de `FonteDePedidos` contra a API REAL da Nuvemshop.
  *
- * ESTADO: escrita e pronta, porem NAO EXERCITADA -- ainda nao temos credencial
- * do cliente. Nada aqui roda enquanto `FONTE_DADOS=demo`.
+ * ESTADO: pronta e testada contra um servidor falso com o formato documentado,
+ * mas NUNCA contra a loja real. O roteiro de ligar esta em `DADOS_REAIS.md`,
+ * e o primeiro passo e `npm run nuvemshop:testar`.
  *
- * Ao receber o token, o roteiro e:
- *   1. preencher NUVEMSHOP_LOJAS (ou STORE_ID + ACCESS_TOKEN) no .env
- *   2. trocar FONTE_DADOS para "live"
- *   3. conferir os totais de um mes fechado contra o painel da Nuvemshop
+ * Duas camadas:
  *
- * Referencia: https://tiendanube.github.io/api-documentation
+ * - este arquivo fala HTTP: pagina, respeita o limite de chamadas e converte
+ *   cada pedido na borda (`lib/nuvemshop.ts`);
+ * - `cachePedidos.ts` guarda o resultado em disco e so pede a API o que mudou.
+ *
+ * As paginas NUNCA esperam a API: sem o cache, cada troca de aba buscaria um
+ * ano de pedidos -- centenas de chamadas, minutos de espera, e o limite de 2
+ * chamadas por segundo estourado na primeira tela.
+ *
+ * Referencia: https://tiendanube.github.io/api-documentation/intro
  */
 
 import type { CarrinhoAbandonado, Pedido } from "@/types/nuvemshop";
 import {
-  lojasNuvemshop,
+  baseUrlNuvemshop,
   userAgentNuvemshop,
   type LojaNuvemshop,
 } from "@/lib/config";
+import {
+  converterCarrinho,
+  converterPedido,
+  esperaPeloLimite,
+  proximaPaginaDoLink,
+  type PedidoConvertido,
+} from "@/lib/nuvemshop";
 import { type FonteDePedidos, type Periodo } from "@/data/source";
-
-const BASE_URL = "https://api.tiendanube.com/v1";
+import { obterBaseNuvemshop } from "@/data/cachePedidos";
 
 /** Maximo aceito pela API. Menos que isso so aumenta o numero de chamadas. */
 const POR_PAGINA = 200;
@@ -28,126 +40,205 @@ const POR_PAGINA = 200;
 /** Trava de seguranca: evita loop infinito se a paginacao vier estranha. */
 const MAX_PAGINAS = 500;
 
-interface OpcoesBusca {
-  loja: LojaNuvemshop;
-  recurso: "orders" | "checkouts";
-  periodo?: Periodo;
+/** Tentativas por chamada antes de desistir (erro de rede ou 5xx). */
+const TENTATIVAS = 4;
+
+const dormir = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+export class ErroNuvemshop extends Error {
+  constructor(
+    mensagem: string,
+    readonly status: number,
+  ) {
+    super(mensagem);
+    this.name = "ErroNuvemshop";
+  }
+}
+
+/** Traduz o status HTTP para o que a pessoa precisa fazer. */
+function explicarStatus(status: number, loja: LojaNuvemshop): string {
+  if (status === 401 || status === 403) {
+    return `a chave da loja ${loja.marca} (${loja.storeId}) foi recusada. Confira o accessToken e se o aplicativo tem permissão de leitura de pedidos.`;
+  }
+  if (status === 404) {
+    return `a loja ${loja.storeId} (${loja.marca}) não foi encontrada. Confira o storeId.`;
+  }
+  if (status === 400) {
+    return "a Nuvemshop recusou a requisição. Confira o NUVEMSHOP_USER_AGENT: ela exige nome do aplicativo e um contato.";
+  }
+  return `a Nuvemshop respondeu ${status}.`;
+}
+
+interface Resposta {
+  status: number;
+  dados: unknown;
+  link: string | null;
 }
 
 /**
- * Uma pagina da API.
+ * Uma chamada, com as esperas do limite e novas tentativas.
  *
- * A Nuvemshop responde 200 com array vazio quando a pagina passa do fim, e
- * 404 em alguns recursos na mesma situacao -- os dois casos sao tratados como
- * "acabou".
+ * Os dois cabecalhos de autenticacao vao juntos: a versao atual da API usa
+ * `Authorization: Bearer`, a antiga (`/v1`) usa `Authentication: bearer`, e
+ * quem escolhe a versao e `NUVEMSHOP_API_URL`. Cada versao ignora o outro.
  */
-async function buscarPagina<T>(
-  { loja, recurso, periodo }: OpcoesBusca,
-  pagina: number,
-): Promise<T[]> {
-  const params = new URLSearchParams({
-    page: String(pagina),
-    per_page: String(POR_PAGINA),
-  });
-  if (periodo) {
-    params.set("created_at_min", periodo.inicio);
-    params.set("created_at_max", periodo.fim);
-  }
+async function chamar(loja: LojaNuvemshop, url: string): Promise<Resposta> {
+  let ultimoErro: unknown = null;
 
-  const url = `${BASE_URL}/${loja.storeId}/${recurso}?${params.toString()}`;
+  for (let tentativa = 1; tentativa <= TENTATIVAS; tentativa += 1) {
+    let resposta: Response;
+    try {
+      resposta = await fetch(url, {
+        headers: {
+          Authorization: `Bearer ${loja.accessToken}`,
+          Authentication: `bearer ${loja.accessToken}`,
+          "User-Agent": userAgentNuvemshop(),
+          "Content-Type": "application/json",
+        },
+        // Sem cache do Next: quem guarda e `cachePedidos.ts`, com regra propria.
+        cache: "no-store",
+      });
+    } catch (erro) {
+      ultimoErro = erro;
+      await dormir(1_000 * tentativa);
+      continue;
+    }
 
-  const resposta = await fetch(url, {
-    headers: {
-      Authentication: `bearer ${loja.accessToken}`,
-      "User-Agent": userAgentNuvemshop(),
-      "Content-Type": "application/json",
-    },
-    // Sem cache do Next: numero financeiro velho e pior que numero lento.
-    cache: "no-store",
-  });
-
-  if (resposta.status === 404) return [];
-
-  // Rate limit (leaky bucket). Espera o reset indicado e tenta de novo.
-  if (resposta.status === 429) {
-    const esperaSegundos = Number(resposta.headers.get("X-Rate-Limit-Reset") ?? "2");
-    await new Promise((r) => setTimeout(r, Math.max(1, esperaSegundos) * 1000));
-    return buscarPagina<T>({ loja, recurso, periodo }, pagina);
-  }
-
-  if (!resposta.ok) {
-    const corpo = await resposta.text().catch(() => "");
-    throw new Error(
-      `Nuvemshop respondeu ${resposta.status} em ${recurso} da loja ${loja.storeId}. ${corpo.slice(0, 200)}`,
+    const espera = esperaPeloLimite(
+      resposta.status,
+      resposta.headers.get("x-rate-limit-remaining"),
+      resposta.headers.get("x-rate-limit-reset"),
     );
+
+    if (resposta.status === 429 || resposta.status >= 500) {
+      ultimoErro = new ErroNuvemshop(explicarStatus(resposta.status, loja), resposta.status);
+      await dormir(resposta.status === 429 ? espera : 1_000 * tentativa);
+      continue;
+    }
+
+    if (espera > 0) await dormir(espera);
+
+    // Pagina alem do fim: a API responde 404 com "Last page is N".
+    if (resposta.status === 404 && url.includes("page=")) {
+      const corpo = await resposta.text().catch(() => "");
+      if (/last page/i.test(corpo)) return { status: 200, dados: [], link: null };
+      throw new ErroNuvemshop(explicarStatus(404, loja), 404);
+    }
+
+    if (!resposta.ok) {
+      throw new ErroNuvemshop(explicarStatus(resposta.status, loja), resposta.status);
+    }
+
+    return {
+      status: resposta.status,
+      dados: await resposta.json(),
+      link: resposta.headers.get("link"),
+    };
   }
 
-  const dados: unknown = await resposta.json();
-  return Array.isArray(dados) ? (dados as T[]) : [];
+  throw ultimoErro instanceof Error
+    ? ultimoErro
+    : new ErroNuvemshop("não foi possível falar com a Nuvemshop.", 0);
 }
 
-/** Percorre todas as paginas de um recurso de uma loja. */
-async function buscarTudo<T>(opcoes: OpcoesBusca): Promise<T[]> {
-  const acumulado: T[] = [];
+/** Percorre todas as paginas de uma listagem. */
+async function listarTudo(
+  loja: LojaNuvemshop,
+  recurso: "orders" | "checkouts",
+  filtros: Record<string, string>,
+): Promise<unknown[]> {
+  const params = new URLSearchParams({ ...filtros, per_page: String(POR_PAGINA), page: "1" });
+  let url: string | null = `${baseUrlNuvemshop()}/${loja.storeId}/${recurso}?${params}`;
+  let pagina = 1;
+  const acumulado: unknown[] = [];
 
-  for (let pagina = 1; pagina <= MAX_PAGINAS; pagina += 1) {
-    const lote = await buscarPagina<T>(opcoes, pagina);
+  while (url && pagina <= MAX_PAGINAS) {
+    const { dados, link } = await chamar(loja, url);
+    const lote = Array.isArray(dados) ? dados : [];
     acumulado.push(...lote);
     if (lote.length < POR_PAGINA) break;
+
+    pagina += 1;
+    // Segue o `Link` quando existe, como a documentacao pede.
+    url = proximaPaginaDoLink(link);
+    if (!url) {
+      params.set("page", String(pagina));
+      url = `${baseUrlNuvemshop()}/${loja.storeId}/${recurso}?${params}`;
+    }
   }
 
   return acumulado;
 }
 
+export interface FiltroPedidos {
+  criadosDesde?: string;
+  criadosAte?: string;
+  alteradosDesde?: string;
+}
+
+/** Pedidos de uma loja, ja convertidos. Todos os status: o painel precisa dos nao pagos. */
+export async function buscarPedidosDaLoja(
+  loja: LojaNuvemshop,
+  filtro: FiltroPedidos,
+): Promise<PedidoConvertido[]> {
+  const filtros: Record<string, string> = { status: "any", payment_status: "any" };
+  if (filtro.criadosDesde) filtros.created_at_min = filtro.criadosDesde;
+  if (filtro.criadosAte) filtros.created_at_max = filtro.criadosAte;
+  if (filtro.alteradosDesde) filtros.updated_at_min = filtro.alteradosDesde;
+
+  const brutos = await listarTudo(loja, "orders", filtros);
+  return brutos
+    .map((bruto) => converterPedido(bruto, loja.marca))
+    .filter((p): p is PedidoConvertido => p !== null);
+}
+
+/** Carrinhos abandonados de uma loja. A Nuvemshop so guarda os dos ultimos 30 dias. */
+export async function buscarCarrinhosDaLoja(
+  loja: LojaNuvemshop,
+  criadosDesde: string,
+): Promise<CarrinhoAbandonado[]> {
+  const brutos = await listarTudo(loja, "checkouts", { created_at_min: criadosDesde });
+  return brutos
+    .map((bruto) => converterCarrinho(bruto, loja.marca))
+    .filter((c): c is CarrinhoAbandonado => c !== null);
+}
+
+/** Dados cadastrais da loja. So o teste de conexao usa: prova que a chave vale. */
+export async function buscarDadosDaLoja(
+  loja: LojaNuvemshop,
+): Promise<{ nome: string; moeda: string | null; pais: string | null }> {
+  const { dados } = await chamar(loja, `${baseUrlNuvemshop()}/${loja.storeId}/store`);
+  const d = (dados ?? {}) as Record<string, unknown>;
+  const nome = d.name;
+  const nomeTexto =
+    typeof nome === "string"
+      ? nome
+      : nome && typeof nome === "object"
+        ? String((nome as Record<string, unknown>).pt ?? Object.values(nome)[0] ?? "")
+        : "";
+  return {
+    nome: nomeTexto,
+    moeda: typeof d.main_currency === "string" ? d.main_currency : null,
+    pais: typeof d.country === "string" ? d.country : null,
+  };
+}
+
+const dentro = (iso: string, periodo?: Periodo): boolean => {
+  if (!periodo) return true;
+  const t = new Date(iso).getTime();
+  return t >= new Date(periodo.inicio).getTime() && t <= new Date(periodo.fim).getTime();
+};
+
 export class FonteNuvemshop implements FonteDePedidos {
   readonly tipo = "nuvemshop" as const;
 
-  private readonly lojas: LojaNuvemshop[];
-
-  constructor(lojas = lojasNuvemshop()) {
-    if (lojas.length === 0) {
-      throw new Error(
-        "Nenhuma loja Nuvemshop configurada. Preencha NUVEMSHOP_LOJAS " +
-          "(ou NUVEMSHOP_STORE_ID + NUVEMSHOP_ACCESS_TOKEN) no .env, " +
-          'ou volte FONTE_DADOS para "demo".',
-      );
-    }
-    this.lojas = lojas;
-  }
-
   async listarPedidos(periodo?: Periodo): Promise<Pedido[]> {
-    // Uma loja por marca: as buscas sao independentes, entao vao em paralelo.
-    const porLoja = await Promise.all(
-      this.lojas.map(async (loja) => {
-        const brutos = await buscarTudo<Omit<Pedido, "marca">>({
-          loja,
-          recurso: "orders",
-          periodo,
-        });
-        // Unico enriquecimento: carimbar de que loja veio o pedido.
-        return brutos.map((pedido): Pedido => ({ ...pedido, marca: loja.marca }));
-      }),
-    );
-
-    return porLoja.flat();
+    const { pedidos } = await obterBaseNuvemshop();
+    return periodo ? pedidos.filter((p) => dentro(p.created_at, periodo)) : pedidos;
   }
 
-  async listarCarrinhosAbandonados(
-    periodo?: Periodo,
-  ): Promise<CarrinhoAbandonado[]> {
-    const porLoja = await Promise.all(
-      this.lojas.map(async (loja) => {
-        const brutos = await buscarTudo<Omit<CarrinhoAbandonado, "marca">>({
-          loja,
-          recurso: "checkouts",
-          periodo,
-        });
-        return brutos.map(
-          (carrinho): CarrinhoAbandonado => ({ ...carrinho, marca: loja.marca }),
-        );
-      }),
-    );
-
-    return porLoja.flat();
+  async listarCarrinhosAbandonados(periodo?: Periodo): Promise<CarrinhoAbandonado[]> {
+    const { carrinhos } = await obterBaseNuvemshop();
+    return periodo ? carrinhos.filter((c) => dentro(c.created_at, periodo)) : carrinhos;
   }
 }
