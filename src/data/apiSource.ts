@@ -97,10 +97,10 @@ export class ErroNuvemshop extends Error {
 /** Traduz o status HTTP para o que a pessoa precisa fazer. */
 function explicarStatus(status: number, loja: LojaNuvemshop): string {
   if (status === 401 || status === 403) {
-    return `a chave da loja ${loja.marca} (${loja.storeId}) foi recusada. Confira o accessToken e se o aplicativo tem permissão de leitura de pedidos.`;
+    return `a chave da loja ${loja.marca} (${loja.storeId}) foi recusada. Confira o TOKEN e o STORE_ID dessa loja no .env.live, e se o aplicativo tem permissão de leitura de pedidos.`;
   }
   if (status === 404) {
-    return `a loja ${loja.storeId} (${loja.marca}) não foi encontrada. Confira o storeId.`;
+    return `a loja ${loja.storeId} (${loja.marca}) não foi encontrada. Confira o STORE_ID dessa loja no .env.live.`;
   }
   if (status === 400) {
     return "a Nuvemshop recusou a requisição. Confira o NUVEMSHOP_USER_AGENT: ela exige nome do aplicativo e um contato.";

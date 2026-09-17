@@ -83,8 +83,10 @@ export interface BaseNuvemshop {
 }
 
 export interface EstadoDaSincronizacao {
-  /** A copia mais velha entre as lojas. `null` enquanto nao houve busca. */
+  /** A copia mais velha entre as lojas ja buscadas. `null` enquanto nao houve busca. */
   atualizadoEm: string | null;
+  /** Lojas configuradas que ainda nao tem copia (a primeira busca leva minutos). */
+  lojasPendentes: string[];
   sincronizando: boolean;
   ultimoErro: string | null;
 }
@@ -97,11 +99,20 @@ const global = globalThis as unknown as {
   __cacheNuvemshop?: {
     base: BaseNuvemshop | null;
     lidoComMtime: number;
-    emAndamento: Promise<BaseNuvemshop> | null;
+    emAndamento: Promise<ResultadoSincronizacao> | null;
     ultimoErro: string | null;
+    /** Quando a ultima busca falhou (em alguma loja); 0 se deu certo. */
+    falhouEm: number;
   };
 };
-global.__cacheNuvemshop ??= { base: null, lidoComMtime: 0, emAndamento: null, ultimoErro: null };
+global.__cacheNuvemshop ??= {
+  base: null,
+  lidoComMtime: 0,
+  emAndamento: null,
+  ultimoErro: null,
+  falhouEm: 0,
+};
+global.__cacheNuvemshop.falhouEm ??= 0;
 const memoria = global.__cacheNuvemshop;
 
 const vazia = (): BaseNuvemshop => ({
@@ -150,22 +161,43 @@ export interface ProgressoSincronizacao {
   pedidos: number;
 }
 
+/** Uma loja cuja busca falhou; as outras seguem. */
+export interface FalhaDeLoja {
+  marca: string;
+  storeId: string;
+  motivo: string;
+}
+
+export interface ResultadoSincronizacao {
+  base: BaseNuvemshop;
+  falhas: FalhaDeLoja[];
+}
+
+const descreverFalhas = (falhas: FalhaDeLoja[]) =>
+  falhas.map((f) => `${f.marca} (loja ${f.storeId}): ${f.motivo}`).join(" | ");
+
 /**
  * Busca na API o que falta e grava. So uma de cada vez por processo.
  *
  * `completa` ignora a copia e busca a janela inteira de novo -- para quando
  * se desconfia do cache (ou depois de mudar a conversao de pedidos).
+ *
+ * Cada loja e buscada por conta propria: chave recusada numa loja nao derruba
+ * as outras. A loja que falhou fica com a copia anterior, e o motivo vai para
+ * o rodape. So falha inteira quando nenhuma loja respondeu.
  */
 export function sincronizar(
   opcoes: { completa?: boolean; aoAvancar?: (p: ProgressoSincronizacao) => void } = {},
-): Promise<BaseNuvemshop> {
+): Promise<ResultadoSincronizacao> {
   memoria.emAndamento ??= executarSincronizacao(opcoes)
-    .then((base) => {
-      memoria.ultimoErro = null;
-      return base;
+    .then((resultado) => {
+      memoria.ultimoErro = resultado.falhas.length > 0 ? descreverFalhas(resultado.falhas) : null;
+      memoria.falhouEm = resultado.falhas.length > 0 ? Date.now() : 0;
+      return resultado;
     })
     .catch((erro: unknown) => {
       memoria.ultimoErro = erro instanceof Error ? erro.message : String(erro);
+      memoria.falhouEm = Date.now();
       throw erro;
     })
     .finally(() => {
@@ -180,15 +212,16 @@ async function executarSincronizacao({
 }: {
   completa?: boolean;
   aoAvancar?: (p: ProgressoSincronizacao) => void;
-}): Promise<BaseNuvemshop> {
+}): Promise<ResultadoSincronizacao> {
   const lojas = lojasNuvemshop();
   if (lojas.length === 0) {
     throw new Error(
-      "Nenhuma loja Nuvemshop configurada. Preencha NUVEMSHOP_LOJAS no .env.live (ver DADOS_REAIS.md).",
+      "Nenhuma loja Nuvemshop configurada. Preencha as lojas no .env.live (ver DADOS_REAIS.md).",
     );
   }
 
-  const anterior = completa ? vazia() : await lerDoDisco();
+  const noDisco = await lerDoDisco();
+  const anterior = completa ? vazia() : noDisco;
   const agora = new Date();
   const meses = mesesAte(agora, mesesNuvemshop());
   const primeiroMes = meses[0]!;
@@ -200,60 +233,48 @@ async function executarSincronizacao({
   const estadoLojas: Record<string, EstadoDaLoja> = {};
   const ausentes: BaseNuvemshop["ausentes"] = {};
   let carrinhos = anterior.carrinhos.filter((c) => marcasAtivas.has(c.marca));
+  const falhas: FalhaDeLoja[] = [];
 
   for (const loja of lojas) {
-    const inicio = new Date().toISOString();
-    const conhecida = anterior.lojas[loja.storeId];
-    const incremental =
-      conhecida && conhecida.marca === loja.marca && conhecida.desdeMes <= primeiroMes;
+    try {
+      const resultado = await sincronizarLoja(loja, anterior, {
+        pedidos,
+        carrinhos,
+        agora,
+        meses,
+        primeiroMes,
+        desde,
+        aoAvancar,
+      });
+      pedidos = resultado.pedidos;
+      carrinhos = resultado.carrinhos;
+      estadoLojas[loja.storeId] = resultado.estado;
+      ausentes[loja.storeId] = resultado.ausentes;
+    } catch (erro) {
+      const motivo = erro instanceof Error ? erro.message : String(erro);
+      falhas.push({ marca: loja.marca, storeId: loja.storeId, motivo });
+      aoAvancar?.({ loja: loja.marca, etapa: `FALHOU: ${motivo}`, pedidos: 0 });
 
-    const novos = incremental
-      ? await buscarIncremental(loja, conhecida, aoAvancar)
-      : await buscarJanela(loja, meses, aoAvancar);
-
-    if (!incremental) {
-      // Busca completa substitui tudo da loja, inclusive pedido que sumiu da API.
-      pedidos = pedidos.filter((p) => p.marca !== loja.marca);
+      // Fica o que havia no disco, se a copia era desta mesma marca.
+      const conhecida = noDisco.lojas[loja.storeId];
+      if (conhecida && conhecida.marca === loja.marca) {
+        estadoLojas[loja.storeId] = conhecida;
+        ausentes[loja.storeId] = noDisco.ausentes[loja.storeId] ?? {};
+        if (completa) {
+          pedidos = [...pedidos, ...noDisco.pedidos.filter((p) => p.marca === loja.marca)];
+          carrinhos = [...carrinhos, ...noDisco.carrinhos.filter((c) => c.marca === loja.marca)];
+        }
+      } else {
+        // Sem copia valida, a loja nao pode aparecer com pedidos de outra busca.
+        pedidos = pedidos.filter((p) => p.marca !== loja.marca);
+        carrinhos = carrinhos.filter((c) => c.marca !== loja.marca);
+      }
     }
-    pedidos = mesclarPedidos(pedidos, novos.map((n) => n.pedido), desde);
+  }
 
-    const contagem: Partial<Record<CampoVigiado, number>> = {};
-    for (const n of novos) {
-      for (const campo of n.ausentes) contagem[campo] = (contagem[campo] ?? 0) + 1;
-    }
-    ausentes[loja.storeId] = incremental
-      ? somar(anterior.ausentes[loja.storeId] ?? {}, contagem)
-      : contagem;
-
-    const trintaDiasAtras = new Date(agora.getTime() - TRINTA_DIAS_MS).toISOString();
-    const listaInteira =
-      !incremental ||
-      !conhecida.carrinhosCompletosEm ||
-      agora.getTime() - new Date(conhecida.carrinhosCompletosEm).getTime() >
-        CARRINHOS_COMPLETOS_A_CADA_MS;
-    aoAvancar?.({
-      loja: loja.marca,
-      etapa: listaInteira ? "carrinhos abandonados" : "carrinhos novos",
-      pedidos: novos.length,
-    });
-    const carrinhosNovos = await buscarCarrinhosDaLoja(
-      loja,
-      listaInteira
-        ? trintaDiasAtras
-        : new Date(new Date(conhecida.sincronizadoEm).getTime() - SOBREPOSICAO_MS).toISOString(),
-    );
-    carrinhos = mesclarCarrinhos(
-      listaInteira ? carrinhos.filter((c) => c.marca !== loja.marca) : carrinhos,
-      carrinhosNovos,
-      trintaDiasAtras,
-    );
-
-    estadoLojas[loja.storeId] = {
-      marca: loja.marca,
-      sincronizadoEm: inicio,
-      desdeMes: incremental ? conhecida.desdeMes : primeiroMes,
-      carrinhosCompletosEm: listaInteira ? inicio : conhecida?.carrinhosCompletosEm,
-    };
+  if (falhas.length === lojas.length) {
+    // Nenhuma loja respondeu: nao regrava o disco com nada de novo.
+    throw new Error(descreverFalhas(falhas));
   }
 
   const base: BaseNuvemshop = {
@@ -264,7 +285,83 @@ async function executarSincronizacao({
     ausentes,
   };
   await gravarNoDisco(base);
-  return base;
+  return { base, falhas };
+}
+
+async function sincronizarLoja(
+  loja: LojaNuvemshop,
+  anterior: BaseNuvemshop,
+  contexto: {
+    pedidos: Pedido[];
+    carrinhos: CarrinhoAbandonado[];
+    agora: Date;
+    meses: string[];
+    primeiroMes: string;
+    desde: string;
+    aoAvancar?: (p: ProgressoSincronizacao) => void;
+  },
+) {
+  const { agora, meses, primeiroMes, desde, aoAvancar } = contexto;
+  let { pedidos, carrinhos } = contexto;
+
+  const inicio = new Date().toISOString();
+  const conhecida = anterior.lojas[loja.storeId];
+  const incremental =
+    conhecida && conhecida.marca === loja.marca && conhecida.desdeMes <= primeiroMes;
+
+  const novos = incremental
+    ? await buscarIncremental(loja, conhecida, aoAvancar)
+    : await buscarJanela(loja, meses, aoAvancar);
+
+  const trintaDiasAtras = new Date(agora.getTime() - TRINTA_DIAS_MS).toISOString();
+  const listaInteira =
+    !incremental ||
+    !conhecida.carrinhosCompletosEm ||
+    agora.getTime() - new Date(conhecida.carrinhosCompletosEm).getTime() >
+      CARRINHOS_COMPLETOS_A_CADA_MS;
+  aoAvancar?.({
+    loja: loja.marca,
+    etapa: listaInteira ? "carrinhos abandonados" : "carrinhos novos",
+    pedidos: novos.length,
+  });
+  // Os carrinhos vem antes de mexer nos pedidos: se falharem, a loja inteira
+  // fica com a copia anterior, e nao com pedido novo e carrinho velho.
+  const carrinhosNovos = await buscarCarrinhosDaLoja(
+    loja,
+    listaInteira
+      ? trintaDiasAtras
+      : new Date(new Date(conhecida.sincronizadoEm).getTime() - SOBREPOSICAO_MS).toISOString(),
+  );
+
+  if (!incremental) {
+    // Busca completa substitui tudo da loja, inclusive pedido que sumiu da API.
+    pedidos = pedidos.filter((p) => p.marca !== loja.marca);
+  }
+  pedidos = mesclarPedidos(pedidos, novos.map((n) => n.pedido), desde);
+
+  const contagem: Partial<Record<CampoVigiado, number>> = {};
+  for (const n of novos) {
+    for (const campo of n.ausentes) contagem[campo] = (contagem[campo] ?? 0) + 1;
+  }
+
+  carrinhos = mesclarCarrinhos(
+    listaInteira ? carrinhos.filter((c) => c.marca !== loja.marca) : carrinhos,
+    carrinhosNovos,
+    trintaDiasAtras,
+  );
+
+  const estado: EstadoDaLoja = {
+    marca: loja.marca,
+    sincronizadoEm: inicio,
+    desdeMes: incremental ? conhecida.desdeMes : primeiroMes,
+    carrinhosCompletosEm: listaInteira ? inicio : conhecida?.carrinhosCompletosEm,
+  };
+  return {
+    pedidos,
+    carrinhos,
+    estado,
+    ausentes: incremental ? somar(anterior.ausentes[loja.storeId] ?? {}, contagem) : contagem,
+  };
 }
 
 async function buscarJanela(
@@ -316,32 +413,56 @@ function somar<K extends string>(
   return total;
 }
 
-/** A copia mais velha entre as lojas configuradas; `null` se alguma nunca foi buscada. */
-function copiaMaisVelha(base: BaseNuvemshop): string | null {
-  const lojas = lojasNuvemshop();
-  let maisVelha: string | null = null;
-  for (const loja of lojas) {
+/**
+ * Situacao da copia frente as lojas configuradas.
+ *
+ * `atualizadoEm` e a copia mais velha entre as lojas JA buscadas; `pendentes`
+ * sao as configuradas que ainda nao tem copia (loja nova, chave recem-colada,
+ * ou marca trocada no .env.live).
+ */
+function situacaoDaCopia(base: BaseNuvemshop): {
+  atualizadoEm: string | null;
+  pendentes: string[];
+} {
+  let atualizadoEm: string | null = null;
+  const pendentes: string[] = [];
+  for (const loja of lojasNuvemshop()) {
     const estado = base.lojas[loja.storeId];
-    if (!estado || estado.marca !== loja.marca) return null;
-    if (!maisVelha || estado.sincronizadoEm < maisVelha) maisVelha = estado.sincronizadoEm;
+    if (!estado || estado.marca !== loja.marca) {
+      pendentes.push(loja.marca);
+      continue;
+    }
+    if (!atualizadoEm || estado.sincronizadoEm < atualizadoEm) atualizadoEm = estado.sincronizadoEm;
   }
-  return maisVelha;
+  return { atualizadoEm, pendentes };
 }
 
 /**
  * O que as paginas usam. Nunca espera a API se ja houver copia.
  *
- * Sem copia nenhuma (ou com loja nova na configuracao), espera a busca: nao
- * ha o que mostrar, e uma tela vazia diria que a loja nao vendeu nada.
+ * Sem copia de loja nenhuma, espera a busca: nao ha o que mostrar, e uma tela
+ * vazia diria que a loja nao vendeu nada. Com loja nova na configuracao e as
+ * outras ja copiadas, NAO espera: a primeira busca de uma loja deste porte
+ * leva minutos. A tela abre com as lojas que ja tem copia, e o rodape diz qual
+ * esta sendo buscada.
+ *
+ * Depois de uma falha, so tenta de novo passado o intervalo de atualizacao --
+ * senao uma chave recusada faria cada pagina aberta chamar a API de novo.
  */
 export async function obterBaseNuvemshop(): Promise<BaseNuvemshop> {
   const base = await lerDoDisco();
-  const atualizadoEm = copiaMaisVelha(base);
+  const { atualizadoEm, pendentes } = situacaoDaCopia(base);
 
-  if (atualizadoEm === null) return sincronizar();
+  if (atualizadoEm === null && !memoria.falhouEm) return (await sincronizar()).base;
 
-  const idade = Date.now() - new Date(atualizadoEm).getTime();
-  if (idade > intervaloAtualizacaoNuvemshop() && !memoria.emAndamento) {
+  const intervalo = intervaloAtualizacaoNuvemshop();
+  const velha =
+    pendentes.length > 0 ||
+    atualizadoEm === null ||
+    Date.now() - new Date(atualizadoEm).getTime() > intervalo;
+  const esperarFalha = memoria.falhouEm > 0 && Date.now() - memoria.falhouEm < intervalo;
+
+  if (velha && !esperarFalha && !memoria.emAndamento) {
     // Em segundo plano. O erro fica registrado para o rodape.
     sincronizar().catch((erro: unknown) => {
       console.error("[nuvemshop] atualizacao falhou:", erro);
@@ -352,8 +473,10 @@ export async function obterBaseNuvemshop(): Promise<BaseNuvemshop> {
 
 export async function estadoDaSincronizacao(): Promise<EstadoDaSincronizacao> {
   const base = await lerDoDisco();
+  const { atualizadoEm, pendentes } = situacaoDaCopia(base);
   return {
-    atualizadoEm: copiaMaisVelha(base),
+    atualizadoEm,
+    lojasPendentes: pendentes,
     sincronizando: memoria.emAndamento !== null,
     ultimoErro: memoria.ultimoErro,
   };
@@ -363,4 +486,3 @@ export async function estadoDaSincronizacao(): Promise<EstadoDaSincronizacao> {
 export async function lerCache(): Promise<BaseNuvemshop> {
   return lerDoDisco();
 }
-

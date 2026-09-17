@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
 import { obterRepositorioCadastros } from "@/data";
+import { aplicarDonosPelaLoja } from "@/data/donosPelaLoja";
 import { exigirArea } from "@/lib/sessao";
 import type { EstadoFormulario } from "@/types/formulario";
 
@@ -84,6 +85,9 @@ export async function salvarInfluencer(
       { ...entrada, observacao: entrada.observacao ?? null },
       id,
     );
+    // A loja decide o dono do produto: influencer novo (ou que mudou de
+    // marca, ou foi desativado) leva junto os produtos da loja dele.
+    await aplicarDonosPelaLoja(repositorio);
   } catch (erro) {
     return {
       ok: false,
@@ -115,6 +119,7 @@ export async function removerInfluencer(
   try {
     const repositorio = await obterRepositorioCadastros();
     await repositorio.removerInfluencer(id);
+    await aplicarDonosPelaLoja(repositorio);
   } catch (erro) {
     return {
       ok: false,
@@ -125,6 +130,7 @@ export async function removerInfluencer(
   }
 
   revalidatePath("/influencers");
+  revalidatePath("/produtos");
   revalidatePath("/");
   return { ok: true, mensagem: "Contrato removido." };
 }

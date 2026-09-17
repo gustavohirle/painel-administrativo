@@ -4,7 +4,9 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
 import { obterFonteDePedidos, obterRepositorioCadastros } from "@/data";
+import { aplicarDonosPelaLoja } from "@/data/donosPelaLoja";
 import { produtosParaCadastrar } from "@/lib/costing";
+import { donoPelaLoja, lojasParaCompletar, lojasPorChave } from "@/lib/donoProduto";
 import { exigirArea } from "@/lib/sessao";
 import { chaveProduto } from "@/types/produto";
 import type { EstadoFormulario } from "@/types/formulario";
@@ -123,14 +125,25 @@ export async function salvarProduto(
     const repositorio = await obterRepositorioCadastros();
 
     /*
-     * Cada loja Nuvemshop e de UM influencer. Havendo um influencer ativo so,
-     * o produto e dele -- inclusive o criado a mao, que nao veio de loja
-     * nenhuma. Resolvido no servidor: a tela manda o campo escondido, e
-     * Server Action e endpoint publico (5.13).
+     * Cada loja Nuvemshop e de UM influencer. Produto que veio de uma loja e
+     * do influencer dela, seja qual for o campo que chegou: a loja e lida do
+     * cadastro gravado, nunca do formulario, porque Server Action e endpoint
+     * publico (5.13). Produto criado a mao nao tem loja: vale a escolha, e com
+     * um influencer ativo so, ele.
      */
+    const influencers = await repositorio.listarInfluencers();
+    const gravado = dados.id
+      ? (await repositorio.listarProdutos()).find((p) => p.id === dados.id)
+      : undefined;
+    const marca = gravado?.marca ?? null;
+
     let influencerId = dados.influencerId;
-    if (!influencerId) {
-      const ativos = (await repositorio.listarInfluencers()).filter((i) => i.ativo);
+    if (marca !== null) {
+      influencerId = donoPelaLoja({ marca, influencerId }, influencers);
+    } else if (influencerId && !influencers.some((i) => i.id === influencerId && i.ativo)) {
+      return { ok: false, mensagem: "Influencer não encontrado ou inativo." };
+    } else if (!influencerId) {
+      const ativos = influencers.filter((i) => i.ativo);
       if (ativos.length === 1) influencerId = ativos[0]!.id;
     }
 
@@ -143,6 +156,7 @@ export async function salvarProduto(
         sku: dados.sku ?? null,
         ncm: dados.ncm ?? null,
         origem: dados.origem,
+        marca,
         influencerId,
         impostosIds: dados.impostosIds,
         ehKit: dados.ehKit,
@@ -208,13 +222,23 @@ export async function trazerProdutosDaNuvemshop(
     }
 
     const novos = produtosParaCadastrar(pedidos, produtos, impostos, influencers, catalogo);
-    if (novos.length === 0) {
+    // Produto cadastrado antes de o cadastro guardar a loja: completa agora.
+    const semLoja = lojasParaCompletar(produtos, lojasPorChave(pedidos, catalogo));
+
+    for (const entrada of novos) await repositorio.salvarProduto(entrada);
+    for (const { produto, marca } of semLoja) {
+      const { id, atualizadoEm: _atualizadoEm, ...entrada } = produto;
+      await repositorio.salvarProduto({ ...entrada, marca }, id);
+    }
+    // A loja decide o dono: vale para os novos e para os que ganharam loja.
+    const comDonoNovo = await aplicarDonosPelaLoja(repositorio);
+
+    if (novos.length === 0 && semLoja.length === 0 && comDonoNovo === 0) {
       return {
         ok: avisoCatalogo === "",
         mensagem: `Todos os produtos da Nuvemshop já estão no cadastro.${avisoCatalogo}`,
       };
     }
-    for (const entrada of novos) await repositorio.salvarProduto(entrada);
 
     revalidatePath("/produtos");
     revalidatePath("/estoque");
@@ -222,9 +246,14 @@ export async function trazerProdutosDaNuvemshop(
     revalidatePath("/impostos");
     revalidatePath("/");
 
+    const partes = [
+      novos.length > 0 ? `${novos.length} produto(s) trazido(s) da Nuvemshop` : null,
+      semLoja.length > 0 ? `${semLoja.length} produto(s) já cadastrado(s) ganharam a loja de origem` : null,
+      comDonoNovo > 0 ? `${comDonoNovo} produto(s) passaram para o influencer da sua loja` : null,
+    ].filter(Boolean);
     return {
       ok: true,
-      mensagem: `${novos.length} produto(s) trazido(s) da Nuvemshop. Confira o influencer, o NCM e monte os kits.${avisoCatalogo}`,
+      mensagem: `${partes.join("; ")}. Confira o NCM e monte os kits.${avisoCatalogo}`,
     };
   } catch (erro) {
     return {

@@ -24,24 +24,45 @@ sempre. Os dados reais rodam **separados**, na porta **3001**, com o
 
 ### 1. Colar a chave
 
-Abra o `.env.live` e troque a linha `NUVEMSHOP_LOJAS`. Uma entrada por loja,
-tudo numa linha só:
+Cada influencer tem a **sua** loja na Nuvemshop, e cada loja tem a sua chave.
+No `.env.live` há um bloco por loja, numerado a partir de 1 (até 20):
 
 ```env
-NUVEMSHOP_LOJAS='[{"marca":"Nome da Marca","storeId":"1234567","accessToken":"a1b2c3..."}]'
+NUVEMSHOP_LOJA_2_MARCA="Nome da Marca"
+NUVEMSHOP_LOJA_2_STORE_ID=1234567
+NUVEMSHOP_LOJA_2_TOKEN=a1b2c3...
 ```
 
-- **storeId**: o número da loja (a Nuvemshop também chama de `user_id`).
-- **accessToken**: a chave. Não expira.
-- **marca**: o nome da marca **exatamente** como os contratos vão usar. É por
-  esse texto que o painel liga venda a contrato. "Luma Cosméticos" e "Luma
+- **STORE_ID**: o número da loja (a Nuvemshop também chama de `user_id`; vem
+  junto da chave).
+- **TOKEN**: a chave. Não expira. Sem aspas e sem espaço.
+- **MARCA**: o nome da loja no painel. O contrato do influencer, na aba
+  Influencers, precisa usar **exatamente** este texto — é por ele que o painel
+  liga venda a contrato e produto a influencer. "Luma Cosméticos" e "Luma
   Cosmeticos" são duas marcas diferentes para ele.
 
-Mais de uma loja:
+Bloco com o TOKEN em branco é ignorado: dá para deixar o bloco pronto e colar
+a chave depois. Bloco com chave e sem MARCA, ou com STORE_ID que não é
+número, impede o painel de subir com uma mensagem dizendo qual bloco
+corrigir. A mesma loja ou a mesma marca em dois blocos também.
 
-```env
-NUVEMSHOP_LOJAS='[{"marca":"Marca A","storeId":"111","accessToken":"..."},{"marca":"Marca B","storeId":"222","accessToken":"..."}]'
-```
+A linha antiga `NUVEMSHOP_LOJAS='[{"marca":...,"storeId":...,"accessToken":...}]'`
+continua aceita, e soma com os blocos.
+
+**Depois de colar uma chave nova**, nesta ordem:
+
+1. `npm run nuvemshop:testar` — confere se a chave vale, loja por loja;
+2. `npm run nuvemshop:sincronizar` — a primeira busca da loja nova leva
+   minutos (a Tha levou 5 para 3 meses). Com o painel no ar, ele busca
+   sozinho em segundo plano, e o rodapé diz qual loja ainda não entrou nos
+   números;
+3. na aba **Influencers**, cadastre o contrato com a marca da loja (ela já
+   aparece na lista);
+4. na aba **Produtos**, "Trazer da Nuvemshop": os produtos da loja entram já
+   com o influencer dela.
+
+Chave recusada numa loja não derruba as outras: ela fica com a cópia anterior
+e o motivo aparece no rodapé.
 
 **Não cole a chave em conversa, e-mail ou print.** Ela dá acesso a todos os
 pedidos da loja. O `.env.live` não vai para o git.
@@ -54,7 +75,7 @@ instalar o aplicativo) em vez da chave, preencha `NUVEMSHOP_CLIENT_ID` e
 npm run nuvemshop:token -- O_CODIGO
 ```
 
-Ele mostra a entrada pronta para colar. O código vale uma vez só e por pouco
+Ele mostra o bloco pronto para colar. O código vale uma vez só e por pouco
 tempo.
 
 ### 2. Preparar o banco (uma vez só)
@@ -149,7 +170,9 @@ endereço fixo, é preciso um túnel nomeado com domínio próprio.
 | "a chave da loja ... foi recusada" | conferir o `accessToken` e se o aplicativo tem permissão de ler pedidos |
 | "a loja ... não foi encontrada" | conferir o `storeId` |
 | "a Nuvemshop recusou a requisição" | conferir `NUVEMSHOP_USER_AGENT` |
-| "NUVEMSHOP_LOJAS não é um JSON válido" | aspas simples por fora, aspas duplas por dentro, tudo numa linha |
+| "NUVEMSHOP_LOJAS não é um JSON válido" | aspas simples por fora, aspas duplas por dentro, tudo numa linha (ou troque pelos blocos numerados) |
+| "A loja N do .env.live tem chave, mas falta ..." | preencha a MARCA ou o STORE_ID daquele bloco |
+| "A marca X está em duas lojas" | cada bloco precisa de uma marca própria |
 | senha do `postgres` recusada | é a senha da instalação do PostgreSQL; sem ela, redefina pelo pgAdmin |
 | rodapé do painel diz "a última atualização falhou" | os números são da cópia anterior; o motivo está escrito ali |
 | números estranhos depois de mudar algo | `npm run nuvemshop:sincronizar -- --completa` busca tudo de novo |

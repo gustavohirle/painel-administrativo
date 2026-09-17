@@ -3,6 +3,7 @@
 import { Fragment, useActionState, useMemo, useState } from "react";
 
 import { removerProduto, salvarProduto } from "@/app/produtos/actions";
+import { REGIME_SEM_INFLUENCER } from "@/lib/config";
 import { idsMarcadosPorPadrao } from "@/lib/impostos";
 import { inteiro } from "@/lib/format";
 import { ESTADO_INICIAL } from "@/types/formulario";
@@ -48,6 +49,15 @@ export function GestaoProdutos({
   const [busca, setBusca] = useState("");
   const [filtro, setFiltro] = useState<"todos" | "kits" | "semDono">("todos");
   const [editando, setEditando] = useState<Produto | null | "novo">(null);
+  // Cada loja e de um influencer: com mais de uma, filtrar por loja e filtrar por dono.
+  const [loja, setLoja] = useState("");
+  const lojas = useMemo(
+    () =>
+      [...new Set(produtos.map((p) => p.marca).filter((m): m is string => m !== null))].sort(
+        (a, b) => a.localeCompare(b, "pt-BR"),
+      ),
+    [produtos],
+  );
 
   // Kit tambem pode ser componente ("Combo: Kit Golden Hour + Colônia"); o
   // proprio item sai da lista dentro do formulario.
@@ -64,6 +74,7 @@ export function GestaoProdutos({
     return produtos.filter((produto) => {
       if (filtro === "kits" && !produto.ehKit) return false;
       if (filtro === "semDono" && produto.influencerId) return false;
+      if (loja && produto.marca !== loja) return false;
       if (!termo) return true;
       return (
         produto.nome.toLowerCase().includes(termo) ||
@@ -71,7 +82,7 @@ export function GestaoProdutos({
         (produto.ncm ?? "").includes(termo)
       );
     });
-  }, [produtos, busca, filtro]);
+  }, [produtos, busca, filtro, loja]);
 
   const kits = produtos.filter((p) => p.ehKit);
   const semDono = produtos.filter((p) => !p.influencerId);
@@ -103,6 +114,22 @@ export function GestaoProdutos({
             </button>
           ))}
         </div>
+
+        {lojas.length > 1 && (
+          <select
+            value={loja}
+            onChange={(e) => setLoja(e.target.value)}
+            aria-label="Filtrar por loja"
+            className="rounded-lg border border-borda-forte bg-superficie px-3 py-2 text-sm text-tinta"
+          >
+            <option value="">Todas as lojas</option>
+            {lojas.map((m) => (
+              <option key={m} value={m}>
+                {m}
+              </option>
+            ))}
+          </select>
+        )}
 
         <input
           type="search"
@@ -178,15 +205,23 @@ export function GestaoProdutos({
                         : undefined;
                       if (!dono) {
                         return (
-                          <span className="text-xs font-semibold uppercase text-naopago">
-                            sem influencer
-                          </span>
+                          <>
+                            <span className="text-xs font-semibold uppercase text-naopago">
+                              sem influencer
+                            </span>
+                            {produto.marca && (
+                              <p className="text-xs text-tinta-fraca">
+                                loja {produto.marca}, sem contrato
+                              </p>
+                            )}
+                          </>
                         );
                       }
                       return (
                         <>
                           <p className="font-medium text-tinta">{dono.nome}</p>
                           <p className="text-xs text-tinta-fraca">
+                            {produto.marca ? `loja ${produto.marca}` : "cadastrado à mão"} ·{" "}
                             {ROTULO_REGIME[dono.regime]}
                           </p>
                         </>
@@ -321,10 +356,19 @@ function FormularioProduto({
   // Um kit nao pode conter a si mesmo (a action tambem barra).
   const opcoesDoKit = opcoes.filter((o) => o.chave !== produto?.chave);
 
-  // Um influencer ativo so: o dono e ele, e a tela nao pergunta.
+  /*
+   * Quem decide o dono, nesta ordem:
+   * - produto que veio de uma loja: o influencer daquela loja (a lista ja vem
+   *   so com os ativos, na ordem do cadastro, e o primeiro da marca manda);
+   * - um influencer ativo so: ele;
+   * - senao, escolha de quem cadastra.
+   */
+  const loja = produto?.marca ?? null;
+  const daLoja = loja !== null ? (influencers.find((i) => i.marca === loja) ?? null) : null;
   const unico = influencers.length === 1 ? influencers[0]! : null;
+  const fixo = loja !== null ? daLoja : unico;
   const [influencerId, setInfluencerId] = useState(
-    produto?.influencerId ?? unico?.id ?? "",
+    loja !== null ? (daLoja?.id ?? "") : (produto?.influencerId ?? unico?.id ?? ""),
   );
   const dono = influencers.find((i) => i.id === influencerId) ?? null;
 
@@ -336,12 +380,13 @@ function FormularioProduto({
    * o influencer troca a lista inteira, porque um produto do Simples e um do
    * Presumido nao pagam os mesmos tributos.
    */
-  const doRegime = dono
-    ? impostos.filter((i) => i.regimes.includes(dono.regime))
-    : [];
+  // Produto de loja sem influencer segue o regime padrao, como na apuracao;
+  // uma lista vazia aqui apagaria as marcacoes ao salvar.
+  const regime = dono?.regime ?? (loja !== null ? REGIME_SEM_INFLUENCER : null);
+  const doRegime = regime ? impostos.filter((i) => i.regimes.includes(regime)) : [];
 
   const [marcados, setMarcados] = useState<string[]>(
-    produto?.impostosIds ?? idsMarcadosPorPadrao(impostos, dono?.regime ?? "lucro_presumido"),
+    produto?.impostosIds ?? idsMarcadosPorPadrao(impostos, regime ?? REGIME_SEM_INFLUENCER),
   );
 
   function trocarInfluencer(novoId: string) {
@@ -425,24 +470,37 @@ function FormularioProduto({
 
         {/*
           Cada loja Nuvemshop e de UM influencer, e a chave da API e por loja:
-          havendo um influencer ativo so, o dono nao e escolha -- vem preenchido
-          e a tela so informa. Com dois ou mais a escolha volta, porque produto
-          criado a mao nao tem loja de origem.
+          produto que veio de uma loja tem o dono decidido por ela, e a tela so
+          informa (a action confere de novo). Produto criado a mao nao tem
+          loja: com um influencer ativo so, e dele; com mais, e escolha.
         */}
         <div className="block">
           <span className="text-sm font-medium text-tinta">
             Influencer dono deste produto
           </span>
-          {unico ? (
+          {loja !== null && !daLoja ? (
             <>
-              <input type="hidden" name="influencerId" value={unico.id} />
-              <p className="mt-1 rounded-lg border border-borda bg-fundo px-3 py-2 text-tinta">
-                {unico.nome} — {unico.marca} ({ROTULO_REGIME[unico.regime]})
+              <input type="hidden" name="influencerId" value="" />
+              <p className="mt-1 rounded-lg border border-alerta-borda bg-alerta-fundo px-3 py-2 text-naopago">
+                A loja {loja} ainda não tem influencer cadastrado.
               </p>
               <span className="mt-1 block text-xs leading-relaxed text-tinta-media">
-                É o único influencer cadastrado, e cada loja da Nuvemshop é de um
-                influencer: todo produto é dele. É o regime dele que define quais
-                impostos incidem sobre este item.
+                Cadastre o contrato dele na aba Influencers com a marca “{loja}”:
+                os produtos desta loja passam para ele sozinhos. Até lá, os
+                impostos seguem o {ROTULO_REGIME[REGIME_SEM_INFLUENCER]}.
+              </span>
+            </>
+          ) : fixo ? (
+            <>
+              <input type="hidden" name="influencerId" value={fixo.id} />
+              <p className="mt-1 rounded-lg border border-borda bg-fundo px-3 py-2 text-tinta">
+                {fixo.nome} — {fixo.marca} ({ROTULO_REGIME[fixo.regime]})
+              </p>
+              <span className="mt-1 block text-xs leading-relaxed text-tinta-media">
+                {loja !== null
+                  ? `Veio da loja ${loja} na Nuvemshop, e cada loja é de um influencer: o produto é dele.`
+                  : "É o único influencer cadastrado: o produto é dele."}{" "}
+                É o regime dele que define quais impostos incidem sobre este item.
               </span>
             </>
           ) : (
@@ -507,7 +565,7 @@ function FormularioProduto({
             Impostos deste produto
           </legend>
 
-          {!dono ? (
+          {!regime ? (
             <p className="text-sm text-tinta-media">
               Escolha o influencer dono acima. Os impostos aparecem sozinhos, a
               partir do regime tributário dele.
@@ -515,14 +573,14 @@ function FormularioProduto({
           ) : doRegime.length === 0 ? (
             <p className="text-sm text-tinta-media">
               Nenhum imposto cadastrado para o regime{" "}
-              {ROTULO_REGIME[dono.regime]}. Cadastre em Impostos.
+              {ROTULO_REGIME[regime]}. Cadastre em Impostos.
             </p>
           ) : (
             <>
               <p className="mb-3 text-xs leading-relaxed text-tinta-media">
                 Do regime{" "}
-                <strong className="text-tinta">{ROTULO_REGIME[dono.regime]}</strong>,
-                de {dono.nome}. O imposto só é cobrado nos produtos marcados:
+                <strong className="text-tinta">{ROTULO_REGIME[regime]}</strong>
+                {dono ? `, de ${dono.nome}` : ", o padrão enquanto a loja não tem influencer"}. O imposto só é cobrado nos produtos marcados:
                 desmarcar tira o imposto deste item.
               </p>
 
@@ -582,7 +640,7 @@ function FormularioProduto({
                 })}
               </div>
 
-              {dono.regime === "simples_nacional" && (
+              {regime === "simples_nacional" && (
                 <p className="mt-4 border-t border-borda pt-3 text-xs leading-relaxed text-tinta-media">
                   No Simples Nacional, IRPJ, CSLL, PIS, COFINS, CPP, IPI e ICMS
                   já estão dentro da guia única e por isso não aparecem aqui --

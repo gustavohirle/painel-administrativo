@@ -423,7 +423,10 @@ export class RepositorioDemonstracao implements RepositorioCadastros {
   // --- Produtos e kits ----------------------------------------------------
 
   async listarProdutos(): Promise<Produto[]> {
-    return (await carregar()).produtos.sort(porNome);
+    // Cadastro gravado antes de o produto guardar a loja vem sem o campo.
+    return (await carregar()).produtos
+      .map((p) => ({ ...p, marca: p.marca ?? null }))
+      .sort(porNome);
   }
 
   async salvarProduto(entrada: EntradaProduto, id?: string): Promise<Produto> {

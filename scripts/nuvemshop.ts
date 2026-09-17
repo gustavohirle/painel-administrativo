@@ -35,7 +35,7 @@ function contar<T>(itens: T[], chave: (item: T) => string): string {
 async function testar() {
   const lojas = lojasNuvemshop();
   if (lojas.length === 0) {
-    console.error("Nenhuma loja configurada. Preencha NUVEMSHOP_LOJAS no .env.live.");
+    console.error("Nenhuma loja configurada. Preencha os blocos NUVEMSHOP_LOJA_<n>_* no .env.live.");
     process.exitCode = 1;
     return;
   }
@@ -113,7 +113,7 @@ async function sincronizarAgora(completa: boolean) {
   );
   const inicio = Date.now();
   let ultimaLinha = "";
-  const base = await sincronizar({
+  const { base, falhas } = await sincronizar({
     completa,
     aoAvancar: ({ loja, etapa, pedidos }) => {
       const linha = `  ${loja}: ${etapa} (${pedidos} pedidos até aqui)`;
@@ -129,6 +129,11 @@ async function sincronizarAgora(completa: boolean) {
   const estranhas = situacoesDesconhecidas(base.pedidos);
   if (Object.keys(estranhas).length > 0) {
     console.log(`ATENÇÃO, status desconhecidos: ${JSON.stringify(estranhas)}`);
+  }
+  if (falhas.length > 0) {
+    console.log("\nLojas que falharam (ficaram com a cópia anterior, se havia):");
+    for (const f of falhas) console.log(`  ${f.marca} (loja ${f.storeId}): ${f.motivo}`);
+    process.exitCode = 1;
   }
 }
 
@@ -163,11 +168,11 @@ async function trocarCodigo(codigo: string | undefined) {
     return;
   }
 
-  console.log("Chave gerada. Ela não expira. Cole esta entrada em NUVEMSHOP_LOJAS no .env.live,");
-  console.log("trocando NOME DA MARCA pelo nome exato que os contratos vão usar:\n");
-  console.log(
-    JSON.stringify({ marca: "NOME DA MARCA", storeId: String(corpo.user_id), accessToken: corpo.access_token }),
-  );
+  console.log("Chave gerada. Ela não expira. Preencha um bloco livre no .env.live (troque N pelo");
+  console.log("número do bloco e NOME DA MARCA pelo nome exato que o contrato do influencer vai usar):\n");
+  console.log('NUVEMSHOP_LOJA_N_MARCA="NOME DA MARCA"');
+  console.log(`NUVEMSHOP_LOJA_N_STORE_ID=${String(corpo.user_id)}`);
+  console.log(`NUVEMSHOP_LOJA_N_TOKEN=${String(corpo.access_token)}`);
   console.log(`\nPermissões concedidas: ${String(corpo.scope ?? "")}`);
 }
 

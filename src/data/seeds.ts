@@ -607,6 +607,7 @@ export function produtosIniciais(
           sku: skuDaVariante(produto.sku, variante.rotulo),
           ncm: NCM_POR_PRODUTO[produto.id] ?? null,
           origem: "nuvemshop",
+          marca: marca.nome,
           influencerId: dono?.id ?? null,
           impostosIds: impostosDoDono,
           ehKit: componentes.length > 0,

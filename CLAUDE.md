@@ -740,12 +740,34 @@ A Nuvemshop sabe o que vendeu e por quanto. Ela **não** sabe de quem é o
 produto, o NCM, nem que um "Kit Barba" consome um tônico e um shampoo — ela
 entrega o kit como **um** produto, com `product_id` próprio.
 
-Cada produto aponta para **um** influencer (`influencerId`). **Com um
-influencer ativo só, o produto é dele e a tela não pergunta**: a chave da API
-da Nuvemshop é por loja, e cada loja é de um influencer, então o dono não é
-escolha. O campo vira leitura e o servidor atribui (a action confere, porque é
-endpoint público, 5.13); com dois ou mais influencers a escolha volta, para o
-produto criado à mão, que não veio de loja nenhuma.
+Cada produto aponta para **um** influencer (`influencerId`). **A loja
+decide o dono**: cada influencer tem a sua loja Nuvemshop, com chave de API
+própria (o cliente confirmou em 17/09/2026: são quatro), e um produto existe
+numa loja só. Por isso o produto guarda a **loja de origem** (`Produto.marca`,
+o mesmo texto de `Pedido.marca`), e o dono é o primeiro influencer ativo
+daquela marca (`donoPelaLoja`, em `lib/donoProduto.ts`).
+
+- **O dono continua gravado**, porque apuração, estoque e ordens leem
+  `influencerId`. `aplicarDonosPelaLoja` (`data/donosPelaLoja.ts`) regrava o
+  que saiu da regra, e roda ao trazer produtos e ao cadastrar, editar ou
+  remover um influencer. É isso que faz o produto trazido **antes** do
+  contrato da loja existir passar para o influencer quando ele é cadastrado.
+- **Trocar de dono pode trocar de regime**: aí os impostos do produto voltam
+  aos que nascem marcados no regime novo; mesmo regime, a marcação feita à mão
+  fica (`ajustesDeDono`).
+- **No formulário o dono é leitura** para produto com loja. Loja sem
+  influencer mostra o aviso e segue o `REGIME_SEM_INFLUENCER` — lista de
+  impostos vazia ali apagaria as marcações ao salvar. A action lê a loja do
+  **cadastro gravado**, nunca do formulário (endpoint público, 5.13).
+- **Produto criado à mão não tem loja**: com um influencer ativo só, é dele;
+  com mais, é escolha.
+- **Cadastro anterior à loja** ganha a loja no próximo "Trazer da Nuvemshop"
+  (`lojasParaCompletar`), pelo catálogo e, fora dele, pelas vendas. Item que
+  aparece em duas lojas fica sem loja: dar a qualquer uma delas erraria o dono
+  metade das vezes.
+
+Com mais de uma loja, a lista de produtos ganha o filtro por loja, e cada
+linha diz de que loja o produto veio.
 
 **Todo tributo sobre receita é marcável, e só é cobrado onde estiver marcado**
 (5.10). O de lucro (IRPJ, CSLL) aparece na lista sem caixa: a base dele é a
@@ -1792,7 +1814,7 @@ em 1366×768. Isso é `npm test` e olho na tela.
 
 | Pergunta | Onde |
 |---|---|
-| A conta está certa? | `npm test` — 439 testes sobre as funções puras |
+| A conta está certa? | `npm test` — 456 testes sobre as funções puras |
 | A chave da Nuvemshop vale? Os pedidos chegam como esperado? | `npm run nuvemshop:testar` |
 | A página monta? O perfil bloqueia? | `npm run fumaca` |
 | Funciona no celular? | `npm run celular` |
@@ -1835,7 +1857,9 @@ menos registros que o `x-total-count`, a janela é buscada uma segunda vez.
 ### Roda ao lado da demonstração, não no lugar dela
 
 O `.env` continua em `demo`. O modo real lê o `.env.live` (fora do git; modelo
-em `.env.live.example`) pelos comandos `:live` (`node --env-file=.env.live`),
+em `.env.live.example`, com um bloco `NUVEMSHOP_LOJA_<n>_MARCA/_STORE_ID/_TOKEN`
+por loja — ver `DADOS_REAIS.md`; a linha JSON antiga `NUVEMSHOP_LOJAS` soma com
+eles, e loja ou marca repetida é erro) pelos comandos `:live` (`node --env-file=.env.live`),
 na porta 3001 e só em `127.0.0.1`. O Next não sobrescreve variável que já está
 no ambiente, então o `.env` de demonstração não vaza para o modo real —
 inclusive `PERMITIR_HTTP_SEM_TLS`, que o modo real ignora de qualquer forma.
@@ -1868,6 +1892,21 @@ segundo, são minutos. Por isso `cachePedidos.ts`:
 
 Estado em `globalThis` e arquivo como fonte da verdade, pela armadilha 2. Uma
 busca por vez por processo. Gravação em arquivo temporário + `rename`.
+
+**Uma loja por influencer, e cada loja por conta própria** (17/09/2026). A
+busca passa loja por loja, e a falha de uma — chave recusada, loja fora do
+ar — não derruba as outras: a que falhou fica com a cópia anterior (ou fora
+dos números, se nunca foi buscada), o rodapé diz o motivo, e a próxima
+tentativa só vem depois do intervalo de atualização, senão cada página aberta
+chamaria a API de novo. Só é erro inteiro quando nenhuma loja respondeu.
+Conferido contra a loja real, com uma segunda loja de chave inválida.
+
+**Loja nova não trava as telas.** Sem cópia de loja nenhuma, a página espera a
+primeira busca (não há o que mostrar). Com loja nova ao lado das já copiadas,
+a página abre com as que têm cópia e a busca da nova corre em segundo plano;
+o rodapé lista as lojas que ainda não entraram (`lojasPendentes`). A primeira
+busca de uma loja deste porte leva minutos — melhor rodar
+`npm run nuvemshop:sincronizar` antes de subir.
 
 ### A conversão na borda (`lib/nuvemshop.ts`)
 
@@ -1954,7 +1993,16 @@ está listado abaixo **não está**, de propósito.
   consomem estoque e custam para fabricar, e a **cobertura de custo não os
   denuncia**: ela é medida por receita, e a receita deles é zero. Quando os
   custos reais chegarem, são os primeiros a olhar.
-- Ainda não se sabe se há outras lojas.
+- **São quatro influencers, uma loja Nuvemshop cada** (informado em
+  17/09/2026). Só a da Tha tem chave; o `.env.live` já tem os blocos 2, 3 e 4
+  vazios, esperando as outras três. Para cada chave nova: bloco preenchido,
+  `nuvemshop:testar`, `nuvemshop:sincronizar`, contrato na aba Influencers
+  com a mesma marca, e "Trazer da Nuvemshop" (roteiro em `DADOS_REAIS.md`).
+  Os 82 produtos da Tha já guardam a loja de origem (`Tha Beauty`).
+- Com quatro lojas o `pedidos.json` cresce na mesma proporção: com
+  `NUVEMSHOP_MESES=13` passaria do teto de uma string no Node (seção 12,
+  item 1). Antes de voltar para 13, o cache precisa virar um arquivo por loja
+  ou por mês.
 
 ### O que não vem pelo git
 
@@ -1972,6 +2020,6 @@ pós-instalação (armadilha 6), `npx prisma generate` antes do
 
 ### Conferido no fim da sessão
 
-439 testes, tipos sem erro, `npm run fumaca:live` contra a loja real (todas as
+456 testes, tipos sem erro, `npm run fumaca:live` contra a loja real (todas as
 telas, os dois perfis), sincronização de 3 meses. Ainda **não** conferido: um
 mês fechado contra o relatório da própria Nuvemshop.

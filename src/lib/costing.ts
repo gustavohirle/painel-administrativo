@@ -946,6 +946,7 @@ export function produtosParaCadastrar(
         sku: visto.sku,
         ncm: null,
         origem: "nuvemshop" as const,
+        marca: visto.marca,
         influencerId: dono?.id ?? null,
         // So os que nascem marcados; o resto e escolha de quem cadastra.
         impostosIds: idsMarcadosPorPadrao(impostos, dono?.regime ?? REGIME_SEM_INFLUENCER),

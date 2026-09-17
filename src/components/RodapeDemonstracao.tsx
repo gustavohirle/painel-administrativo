@@ -20,10 +20,20 @@ export async function RodapeDemonstracao({ demonstracao }: { demonstracao: boole
           {estado.sincronizando ? " (buscando novidades agora)" : ""}. Custos de
           fabricação e comissões vêm dos cadastros deste painel.
         </p>
+        {estado.lojasPendentes.length > 0 && (
+          <p className="rounded-lg border border-alerta-borda bg-alerta-fundo px-4 py-3 text-sm text-naopago">
+            {estado.lojasPendentes.length === 1
+              ? `A loja ${estado.lojasPendentes[0]} ainda não entrou nos números acima`
+              : `As lojas ${estado.lojasPendentes.join(", ")} ainda não entraram nos números acima`}
+            {estado.sincronizando
+              ? ": os pedidos estão sendo buscados agora. A primeira busca leva alguns minutos."
+              : "."}
+          </p>
+        )}
         {estado.ultimoErro && (
           <p className="rounded-lg border border-alerta-borda bg-alerta-fundo px-4 py-3 text-sm text-naopago">
-            A última atualização com a Nuvemshop falhou, e os números acima são
-            da cópia anterior. Motivo: {estado.ultimoErro}
+            A última atualização com a Nuvemshop falhou, e a loja com problema
+            ficou com a cópia anterior. Motivo: {estado.ultimoErro}
           </p>
         )}
       </footer>

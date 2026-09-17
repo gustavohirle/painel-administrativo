@@ -6,7 +6,7 @@ import { RodapeDemonstracao } from "@/components/RodapeDemonstracao";
 import { SeletorInfluencer, type CartaoDeInfluencer } from "@/components/SeletorInfluencer";
 
 import { obterFonteDePedidos, obterRepositorioCadastros } from "@/data";
-import { modoDemonstracao } from "@/lib/config";
+import { lojasNuvemshop, modoDemonstracao } from "@/lib/config";
 import {
   calcularComissoesPorInfluencer,
   despesasQueCabem,
@@ -113,9 +113,17 @@ export default async function PaginaInfluencers({
     ? (influencers.find((i) => i.id === influencerPedido) ?? null)
     : null;
 
-  const marcas = [...new Set(todosOsPedidos.map((p) => p.marca))].sort((a, b) =>
-    a.localeCompare(b, "pt-BR"),
-  );
+  // A lista de marcas do contrato: as lojas configuradas (uma por influencer,
+  // mesmo a que ainda nao vendeu ou nao terminou a primeira busca), as que
+  // aparecem nos pedidos e as que ja estao em contrato, para editar um
+  // contrato nao trocar a marca dele em silencio.
+  const marcas = [
+    ...new Set([
+      ...(modoDemonstracao() ? [] : lojasNuvemshop().map((l) => l.marca)),
+      ...todosOsPedidos.map((p) => p.marca),
+      ...influencers.map((i) => i.marca),
+    ]),
+  ].sort((a, b) => a.localeCompare(b, "pt-BR"));
 
   return (
     <div className="min-h-screen">

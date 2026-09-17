@@ -16,6 +16,7 @@ function produto(produtoId: number, nome: string, extra: Partial<Produto> = {}):
     sku: `SKU${produtoId}`,
     ncm: null,
     origem: "nuvemshop",
+    marca: null,
     influencerId: null,
     impostosIds: [],
     ehKit: false,

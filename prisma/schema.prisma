@@ -184,6 +184,10 @@ model Produto {
   /// "nuvemshop" | "manual"
   origem String @default("nuvemshop")
 
+  /// Loja Nuvemshop de origem, pelo nome de marca da configuracao. Nulo no
+  /// produto criado a mao. Com ela conhecida, o dono e o influencer da marca.
+  marca String?
+
   /// Influencer dono. Um produto pertence a UM influencer -- e dele que vem
   /// o regime tributario aplicado ao item.
   influencerId String?

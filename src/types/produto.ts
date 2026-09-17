@@ -89,6 +89,16 @@ export interface Produto {
   origem: OrigemProduto;
 
   /**
+   * Loja Nuvemshop de onde o produto veio, pelo nome de marca da configuracao
+   * (o mesmo `Pedido.marca`). `null` no produto criado a mao.
+   *
+   * Cada influencer tem a sua loja, e um produto existe numa loja so: quando a
+   * marca e conhecida, o dono NAO e escolha -- e o influencer ativo daquela
+   * marca (`donoPelaLoja`, em `lib/donoProduto.ts`).
+   */
+  marca: string | null;
+
+  /**
    * Influencer dono do produto. `null` enquanto ninguem vinculou.
    *
    * Um produto pertence a UM influencer -- nao existe produto vendido por
