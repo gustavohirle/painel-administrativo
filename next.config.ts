@@ -3,6 +3,9 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   reactStrictMode: true,
 
+  // Nao anunciar a versao do framework na resposta.
+  poweredByHeader: false,
+
   // O painel precisa rodar em apresentacao sem internet: nada de assets remotos.
   images: { unoptimized: true },
 

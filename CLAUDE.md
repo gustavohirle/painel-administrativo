@@ -995,6 +995,33 @@ abrir a página. Esconder link no menu é só conveniência.
 Senha com scrypt e sal por usuário; sessão em cookie httpOnly **assinado** —
 sem assinatura, qualquer um trocaria o próprio perfil para `dono` no cookie.
 
+### 5.13.2 Limite de tentativas de login
+
+Sem limite, a unica defesa da senha e o tamanho dela. A regra (`lib/tentativasLogin.ts`):
+as quatro primeiras falhas passam; da quinta em diante a espera cresce
+(1, 2, 5, 10 e 30 minutos) e acertar zera. Uma hora sem errar recomeca a
+contagem.
+
+Quatro decisoes:
+
+1. **A contagem e por login E por endereco, separadas**, e vale a maior espera:
+   quem ataca uma conta bate na primeira; quem varre logins, na segunda. Assim
+   um atacante nao tranca a conta do dono so errando de proposito de outro IP —
+   ele trava o proprio endereco antes.
+2. **A verificacao vem ANTES de consultar o cadastro.** Se viesse depois, cada
+   tentativa rodaria scrypt, e insistir derrubaria o servidor sem acertar senha
+   nenhuma (o scrypt e caro de proposito).
+3. **A tela diz quanto falta esperar.** Esconder so faria a pessoa certa achar
+   que o painel quebrou; quem ataca descobre na primeira tentativa.
+4. **A contagem vive na memoria do processo** (`globalThis`, armadilha 2).
+   Reiniciar zera, e com mais de um processo cada um teria a sua conta.
+   Gravar no banco custaria uma escrita por tentativa — inclusive das
+   automatizadas, que e o que nao se quer. Com mais de um processo, isso muda
+   de lugar, nao de regra.
+
+O IP vem de `origemDaRequisicao` (`x-forwarded-for`), que so vale porque ha um
+nginx confiavel na frente (secao 14). Sem IP, sobra a conta por login.
+
 ### 5.13.1 Taxa da plataforma e do meio de pagamento
 
 O que a Nuvemshop e o gateway retêm de cada venda. **Não é tributo**, e a
@@ -2232,6 +2259,27 @@ Quatro decisões do script:
 `git config --global --add safe.directory /opt/painel/app` está feito no
 servidor: o script roda como `root` numa pasta do usuário `painel`, e sem isso
 o git recusa ("dubious ownership").
+
+### Endurecimento do servidor (17/09/2026)
+
+Feito depois de o painel entrar no ar, com o motivo de cada item:
+
+| Medida | Por quê |
+|---|---|
+| SSH **só com chave** (`PasswordAuthentication no`, `PermitRootLogin prohibit-password`) | 8 tentativas de senha nas primeiras 24 h; e rotina na internet |
+| `fail2ban` no sshd (5 erros em 10 min = 1 h de banimento) | corta o custo de quem insiste |
+| Cabeçalhos no nginx: HSTS, `X-Frame-Options: DENY`, `frame-ancestors 'none'`, `nosniff`, `Referrer-Policy`, `Permissions-Policy` | o painel nunca é exibido dentro de iframe, e depois da primeira visita o navegador recusa `http://` sozinho |
+| `server_tokens off` e `poweredByHeader: false` | não anunciar versão de nginx e de Next |
+| Backup do banco diário (`painel-backup.timer`, 03h20, 14 dias em `/var/backups/painel`) | o banco é o único lugar onde contrato, custo e kit existem; pedido se refaz pela API |
+| Senha do banco trocada | ela apareceu numa saída de erro durante a instalação |
+| `.live-data/pedidos.json` em 600 | dado da empresa, ainda que sem dado pessoal |
+
+O arquivo do cloud-init (`/etc/ssh/sshd_config.d/50-cloud-init.conf`) trazia
+`PasswordAuthentication yes`, e no sshd **a primeira ocorrência vence** — por
+isso a configuração do painel é `00-painel.conf`, e não `99-`.
+
+**Ainda não feito, e vale um dia:** segundo fator no login, backup copiado para
+fora do servidor, e alerta quando a sincronização com a Nuvemshop falhar.
 
 ### O que NÃO vem no deploy
 

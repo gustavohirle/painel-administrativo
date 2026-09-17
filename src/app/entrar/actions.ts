@@ -12,6 +12,16 @@ import {
   NOME_COOKIE_SESSAO,
   verificarSenha,
 } from "@/lib/auth";
+import { origemDaRequisicao } from "@/lib/requisicao";
+import {
+  chavesDaTentativa,
+  esperaEmTexto,
+  limparFalhas,
+  limparVelhas,
+  maiorEspera,
+  registrarFalha,
+  registro,
+} from "@/lib/tentativasLogin";
 import { ROTA_INICIAL } from "@/types/usuario";
 import type { EstadoFormulario } from "@/types/formulario";
 
@@ -45,6 +55,29 @@ export async function entrar(
     };
   }
 
+  /*
+   * Limite de tentativas ANTES de olhar o cadastro (secao 5.13.2).
+   *
+   * A espera vale por login e por endereco, contados separadamente: quem
+   * ataca uma conta especifica bate no primeiro; quem varre logins, no
+   * segundo. A conta so e consultada quando ha tentativa disponivel -- senao
+   * um programa insistindo faria o painel rodar scrypt sem parar, que e um
+   * jeito de derrubar o servidor sem acertar senha nenhuma.
+   */
+  const tentativas = registro();
+  const agora = Date.now();
+  limparVelhas(tentativas, agora);
+  const { ip } = await origemDaRequisicao();
+  const chaves = chavesDaTentativa(analise.data.usuario, ip);
+
+  const espera = maiorEspera(tentativas, chaves, agora);
+  if (espera > 0) {
+    return {
+      ok: false,
+      mensagem: `Muitas tentativas. Tente de novo em ${esperaEmTexto(espera)}.`,
+    };
+  }
+
   const repositorio = await obterRepositorioCadastros();
   const usuario = await repositorio.buscarUsuarioPorLogin(analise.data.usuario);
 
@@ -57,8 +90,12 @@ export async function entrar(
   });
 
   if (!usuario || !usuario.ativo || !senhaConfere) {
+    registrarFalha(tentativas, chaves, Date.now());
     return { ok: false, mensagem: RECUSA };
   }
+
+  // Acertou: a contagem do login e a do endereco zeram.
+  limparFalhas(tentativas, chaves);
 
   const jar = await cookies();
   jar.set(NOME_COOKIE_SESSAO, criarTokenSessao(usuario.id, usuario.perfil), {
