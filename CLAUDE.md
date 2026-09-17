@@ -742,7 +742,7 @@ entrega o kit como **um** produto, com `product_id` próprio.
 
 Cada produto aponta para **um** influencer (`influencerId`). **A loja
 decide o dono**: cada influencer tem a sua loja Nuvemshop, com chave de API
-própria (o cliente confirmou em 17/09/2026: são quatro), e um produto existe
+própria (o cliente confirmou em 17/09/2026: são cinco), e um produto existe
 numa loja só. Por isso o produto guarda a **loja de origem** (`Produto.marca`,
 o mesmo texto de `Pedido.marca`), e o dono é o primeiro influencer ativo
 daquela marca (`donoPelaLoja`, em `lib/donoProduto.ts`).
@@ -1993,13 +1993,18 @@ está listado abaixo **não está**, de propósito.
   consomem estoque e custam para fabricar, e a **cobertura de custo não os
   denuncia**: ela é medida por receita, e a receita deles é zero. Quando os
   custos reais chegarem, são os primeiros a olhar.
-- **São quatro influencers, uma loja Nuvemshop cada** (informado em
-  17/09/2026). Só a da Tha tem chave; o `.env.live` já tem os blocos 2, 3 e 4
-  vazios, esperando as outras três. Para cada chave nova: bloco preenchido,
+- **São cinco influencers, uma loja Nuvemshop cada** (quatro em 17/09/2026,
+  cinco no mesmo dia). No `.env.live`: Tha Beauty (5018407), Ka Beauty
+  (5921304) e Duale Beauty (7704600) com chave e id, ainda **sem pedidos
+  buscados** nas duas novas; Loali Beauty com chave e **sem id** (o site dela
+  não foi achado — falta o `user_id` da página da chave); bloco 5 vazio. Bloco
+  com chave e sem id impede o painel de subir, de propósito. O id das lojas
+  novas saiu do código da vitrine (`LS.store`, a mesma página pública da
+  loja) e foi conferido chamando `/store` com a chave. Para cada chave nova: bloco preenchido,
   `nuvemshop:testar`, `nuvemshop:sincronizar`, contrato na aba Influencers
   com a mesma marca, e "Trazer da Nuvemshop" (roteiro em `DADOS_REAIS.md`).
   Os 82 produtos da Tha já guardam a loja de origem (`Tha Beauty`).
-- Com quatro lojas o `pedidos.json` cresce na mesma proporção: com
+- Com cinco lojas o `pedidos.json` cresce na mesma proporção: com
   `NUVEMSHOP_MESES=13` passaria do teto de uma string no Node (seção 12,
   item 1). Antes de voltar para 13, o cache precisa virar um arquivo por loja
   ou por mês.
