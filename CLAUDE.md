@@ -522,6 +522,25 @@ com as fatias da pizza, e cada passo é base × alíquota.
 As tabelas são `tabela-ancorada` e não cartões: aqui a leitura é comparar
 estado com estado.
 
+### 5.1.5 Resultado oculto
+
+Pedido do cliente (17/09/2026): o lucro ou prejuízo do mês **abre escondido** —
+sem valor e sem cor — e só aparece quando ele clica em "Mostrar resultado". A
+cor também some porque o verde ou o vermelho já contam a história.
+
+Um estado só para a tela inicial (`ProvedorResultado`, em
+`components/ResultadoOculto.tsx`): o número do topo, o item da legenda, a
+fatia da pizza (cinza, sem percentual, sem valor no balão), o aviso de prejuízo,
+as frases que dependem do sinal e a última linha do raio-x abrem e fecham
+juntos — escondido num lugar e à mostra no outro não esconderia nada. Enquanto
+oculto, o rótulo é "Resultado operacional", nem "lucro" nem "prejuízo". O
+botão aparece no topo, na legenda e no raio-x. Toda carga da página começa
+oculta; nada é gravado.
+
+É ocultação **visual**, para a tela aberta numa reunião: o valor continua no
+HTML de quem está logado, e as outras telas (relatórios, simuladores, aba
+Influencers) seguem mostrando o lucro.
+
 ### 5.2 Comissão de influencer (simulador)
 
 **Esta tela não existe mais.** Morou na tela inicial, depois embaixo da

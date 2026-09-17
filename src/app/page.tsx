@@ -7,6 +7,12 @@ import { EvolucaoMensal } from "@/components/EvolucaoMensal";
 import { MeiosPagamento } from "@/components/MeiosPagamento";
 import { SinaisAdicionais } from "@/components/SinaisAdicionais";
 import { RodapeDemonstracao } from "@/components/RodapeDemonstracao";
+import {
+  BotaoResultado,
+  Oculto,
+  ProvedorResultado,
+  VALOR_OCULTO,
+} from "@/components/ResultadoOculto";
 
 import { obterFonteDePedidos, obterRepositorioCadastros } from "@/data";
 import { periodoDoMes } from "@/data/source";
@@ -116,6 +122,8 @@ export default async function PaginaPainel({
         mesSelecionado={mesSelecionado}
       />
 
+      {/* Resultado operacional oculto ate alguem pedir (5.1.5). */}
+      <ProvedorResultado>
       <main className="mx-auto max-w-[1400px] space-y-6 px-6 py-7">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-tinta xl:text-3xl">
@@ -153,14 +161,30 @@ export default async function PaginaPainel({
           />
           {/* Com prejuizo o rotulo muda e o numero fica vermelho e sem sinal:
               "Lucro operacional" verde com valor negativo se contradiz. */}
-          <NumeroDestaque
-            rotulo={fechado.lucroOperacional < 0 ? "Prejuízo operacional" : "Lucro operacional"}
-            valor={moedaRedonda(Math.abs(fechado.lucroOperacional))}
-            apoio={`${percentual(Math.abs(fechado.margemOperacionalPercentual))} da receita real${
-              fechado.temInformado ? ", com o fechamento do mês" : ""
-            }`}
-            cor={fechado.lucroOperacional < 0 ? "var(--color-naopago)" : "var(--color-real)"}
-          />
+          {/* Oculto ate alguem pedir: sem valor, sem cor e sem dizer se e
+              lucro ou prejuizo (5.1.5). */}
+          <div>
+            <Oculto
+              mascara={
+                <NumeroDestaque
+                  rotulo="Resultado operacional"
+                  valor={VALOR_OCULTO}
+                  apoio="Oculto"
+                  cor="var(--color-tinta-media)"
+                />
+              }
+            >
+              <NumeroDestaque
+                rotulo={fechado.lucroOperacional < 0 ? "Prejuízo operacional" : "Lucro operacional"}
+                valor={moedaRedonda(Math.abs(fechado.lucroOperacional))}
+                apoio={`${percentual(Math.abs(fechado.margemOperacionalPercentual))} da receita real${
+                  fechado.temInformado ? ", com o fechamento do mês" : ""
+                }`}
+                cor={fechado.lucroOperacional < 0 ? "var(--color-naopago)" : "var(--color-real)"}
+              />
+            </Oculto>
+            <BotaoResultado className="mt-2" />
+          </div>
         </div>
 
         <Cartao
@@ -216,6 +240,7 @@ export default async function PaginaPainel({
 
         <RodapeDemonstracao demonstracao={demo} />
       </main>
+      </ProvedorResultado>
     </div>
   );
 }

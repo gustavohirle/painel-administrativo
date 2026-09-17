@@ -6,7 +6,11 @@ import { INTERMEDIARIO_FRETE } from "@/lib/config";
 import { fecharMes, type MesFechado } from "@/lib/fechamento";
 import type { CampoFechamento } from "@/types/fechamento";
 
+import { BotaoResultado, Oculto, VALOR_OCULTO } from "./ResultadoOculto";
 import { ValorDoFechamento } from "./ValorDoFechamento";
+
+/** Cor da fatia e do quadro do resultado enquanto ele esta oculto (5.1.5). */
+const COR_OCULTA = "var(--color-borda-forte)";
 
 /*
  * Para onde foi cada real faturado.
@@ -209,7 +213,18 @@ export function ComposicaoFaturamento({
       */}
       <p className="text-sm text-tinta-media">
         {prejuizo ? (
-          <>
+          // "As deducoes passaram do faturamento" ja diz que ha prejuizo.
+          <Oculto
+            mascara={
+              <>
+                Composição dos{" "}
+                <strong className="numerico font-semibold text-tinta">
+                  {moedaRedonda(r.bruto)}
+                </strong>{" "}
+                faturados no mês:
+              </>
+            }
+          >
             As deduções do mês somam{" "}
             <strong className="numerico font-semibold text-tinta">
               {moedaRedonda(total)}
@@ -219,7 +234,7 @@ export function ComposicaoFaturamento({
               {moedaRedonda(r.bruto)}
             </strong>{" "}
             faturados. A pizza mostra a proporção entre elas:
-          </>
+          </Oculto>
         ) : (
           <>
             De cada real dos{" "}
@@ -237,7 +252,9 @@ export function ComposicaoFaturamento({
           viewBox={`0 0 ${TAMANHO} ${TAMANHO}`}
           className="h-auto w-full max-w-[400px] shrink-0"
           role="img"
+          // Sem o resultado: ele fica oculto ate alguem pedir (5.1.5).
           aria-label={`Composicao do faturamento de ${moedaRedonda(r.bruto)}: ${desenhadas
+            .filter((f) => !f.resultado)
             .map((f) => `${f.rotulo} ${percentual(f.fracao)}`)
             .join(", ")}`}
         >
@@ -259,6 +276,21 @@ export function ComposicaoFaturamento({
                 </title>
               </path>
             );
+            // O resultado oculto fica cinza e sem valor no balao.
+            if (fatia.resultado) {
+              return (
+                <Oculto
+                  key={fatia.rotulo}
+                  mascara={
+                    <path d={fatia.caminho} fill={COR_OCULTA} stroke="var(--color-superficie)" strokeWidth={2}>
+                      <title>Resultado operacional (oculto)</title>
+                    </path>
+                  }
+                >
+                  {caminho}
+                </Oculto>
+              );
+            }
             // <a> do SVG: o Link do Next nao funciona dentro de <svg>.
             return href ? (
               <a key={fatia.rotulo} href={href}>
@@ -271,23 +303,31 @@ export function ComposicaoFaturamento({
 
           {desenhadas
             .filter((f) => f.fracao * 100 >= FATIA_MINIMA_PARA_TEXTO)
-            .map((fatia) => (
-              <text
-                key={`rotulo-${fatia.rotulo}`}
-                x={fatia.rotuloX}
-                y={fatia.rotuloY}
-                textAnchor="middle"
-                dominantBaseline="middle"
-                className="numerico"
-                fontSize={15}
-                fontWeight={700}
-                fill="#ffffff"
-                // O clique atravessa o numero e chega na fatia.
-                pointerEvents="none"
-              >
-                {percentual(fatia.fracao)}
-              </text>
-            ))}
+            .map((fatia) => {
+              const texto = (
+                <text
+                  key={`rotulo-${fatia.rotulo}`}
+                  x={fatia.rotuloX}
+                  y={fatia.rotuloY}
+                  textAnchor="middle"
+                  dominantBaseline="middle"
+                  className="numerico"
+                  fontSize={15}
+                  fontWeight={700}
+                  fill="#ffffff"
+                  // O clique atravessa o numero e chega na fatia.
+                  pointerEvents="none"
+                >
+                  {percentual(fatia.fracao)}
+                </text>
+              );
+              // O percentual da fatia do resultado some junto com o valor.
+              return fatia.resultado ? (
+                <Oculto key={`rotulo-${fatia.rotulo}`}>{texto}</Oculto>
+              ) : (
+                texto
+              );
+            })}
         </svg>
 
         {/* --- Legenda ---------------------------------------------------- */}
@@ -299,7 +339,7 @@ export function ComposicaoFaturamento({
               const negativo = fatia.resultado === true && fatia.valor < 0;
               const corResultado = negativo ? "text-naopago" : "text-real";
 
-              return (
+              const item = (
                 <div
                   key={fatia.rotulo}
                   className={`flex items-baseline gap-2.5 ${
@@ -357,7 +397,35 @@ export function ComposicaoFaturamento({
                   >
                     {percentual(razaoSegura(Math.abs(fatia.valor), total))}
                   </span>
+                  {fatia.resultado && <BotaoResultado className="self-center" />}
                 </div>
+              );
+              if (!fatia.resultado) return item;
+
+              // Oculto: sem valor, sem cor e sem "lucro" ou "prejuizo" no rotulo.
+              return (
+                <Oculto
+                  key={fatia.rotulo}
+                  mascara={
+                    <div className="flex items-baseline gap-2.5 rounded-md border border-borda bg-fundo px-2.5 py-1.5">
+                      <span
+                        className="mt-1 h-3 w-3 shrink-0 rounded-sm"
+                        style={{ backgroundColor: COR_OCULTA }}
+                      />
+                      <span className="min-w-0 flex-1">
+                        <span className="block text-sm font-semibold text-tinta">
+                          Resultado operacional
+                        </span>
+                        <span className="numerico block text-base font-semibold text-tinta-media">
+                          {VALOR_OCULTO}
+                        </span>
+                      </span>
+                      <BotaoResultado className="self-center" />
+                    </div>
+                  }
+                >
+                  {item}
+                </Oculto>
               );
             })}
           </div>
@@ -384,17 +452,21 @@ export function ComposicaoFaturamento({
       </div>
 
       {prejuizo && (
-        <p className="mt-4 rounded-lg border border-alerta-borda bg-alerta-fundo px-4 py-3 text-sm font-semibold text-naopago">
-          As deduções passaram do faturamento: prejuízo operacional de{" "}
-          <span className="numerico">{moeda(Math.abs(fechado.lucroOperacional))}</span>{" "}
-          no mês. Por isso não há fatia de lucro na pizza.
-        </p>
+        <Oculto>
+          <p className="mt-4 rounded-lg border border-alerta-borda bg-alerta-fundo px-4 py-3 text-sm font-semibold text-naopago">
+            As deduções passaram do faturamento: prejuízo operacional de{" "}
+            <span className="numerico">{moeda(Math.abs(fechado.lucroOperacional))}</span>{" "}
+            no mês. Por isso não há fatia de lucro na pizza.
+          </p>
+        </Oculto>
       )}
 
       <p className="mt-5 text-xs leading-relaxed text-tinta-fraca">
-        {prejuizo
-          ? "As fatias somam as deduções do mês, que passaram do faturamento bruto -- a diferença é o prejuízo acima. "
-          : "As fatias somam exatamente o faturamento bruto. "}
+        <Oculto mascara="As fatias mostram para onde foi o faturamento do mês; o resultado está oculto. ">
+          {prejuizo
+            ? "As fatias somam as deduções do mês, que passaram do faturamento bruto -- a diferença é o prejuízo acima. "
+            : "As fatias somam exatamente o faturamento bruto. "}
+        </Oculto>
         O DIFAL aparece separado
         dos demais impostos por ser devido ao estado de DESTINO, e não ao de
         origem. A tabela do raio-x, logo abaixo, traz a mesma conta em sequência.

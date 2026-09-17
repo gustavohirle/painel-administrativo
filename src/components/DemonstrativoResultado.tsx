@@ -6,6 +6,8 @@ import { INTERMEDIARIO_FRETE } from "@/lib/config";
 import { fecharMes, type MesFechado } from "@/lib/fechamento";
 import { idDeOrigem } from "@/types/dominio";
 
+import { BotaoResultado, Oculto, VALOR_OCULTO } from "./ResultadoOculto";
+
 /*
  * O raio-x: de quanto foi pedido ate quanto realmente sobrou.
  *
@@ -184,7 +186,7 @@ export function DemonstrativoResultado({
               const subtotal = linha.tipo === "subtotal";
               const corResultado = linha.prejuizo ? "text-naopago" : "text-real";
 
-              return (
+              const tr = (
                 <tr
                   key={linha.rotulo}
                   className={`border-b border-borda last:border-b-0 ${
@@ -225,6 +227,27 @@ export function DemonstrativoResultado({
                     {moedaRedonda(linha.valor)}
                   </td>
                 </tr>
+              );
+              if (!resultado) return tr;
+
+              // Resultado oculto (5.1.5): sem valor, sem cor, sem "lucro"/"prejuizo".
+              return (
+                <Oculto
+                  key={linha.rotulo}
+                  mascara={
+                    <tr className="bg-fundo">
+                      <td className="px-5 py-5">
+                        <p className="text-lg font-semibold text-tinta">Resultado operacional</p>
+                        <BotaoResultado className="mt-1" />
+                      </td>
+                      <td className="numerico px-5 text-right text-3xl font-semibold text-tinta-media xl:text-4xl">
+                        {VALOR_OCULTO}
+                      </td>
+                    </tr>
+                  }
+                >
+                  {tr}
+                </Oculto>
               );
             })}
           </tbody>
