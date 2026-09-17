@@ -2102,8 +2102,13 @@ está listado abaixo **não está**, de propósito.
   adicional de IRPJ (R$ 20 mil/mês) é **por CNPJ**: aplicada por contrato, ela
   entra três vezes numa empresa e duas na outra, e o IRPJ sai menor que o
   devido. Não corrigido — pede o regime por empresa, e não por contrato.
-- **Os 159 produtos novos estão sem custo** (a cobertura de custo das quatro
-  lojas é 0%), então o lucro delas sai alto demais até as fichas existirem.
+- **Custos provisórios de 35% também nas lojas novas** (17/09/2026, a pedido
+  do dono): 133 fichas, 35% do preço médio pago de cada variante nos pedidos
+  de jul–set — a mesma regra das fichas da Tha. Cobertura de custo de 100% em
+  setembro nas cinco lojas. Na **Revenda** o preço é de atacado, então os 35%
+  saem abaixo do custo real do mesmo produto nas outras lojas. **32 produtos
+  seguem sem custo**: sem venda paga com preço (brindes a R$ 0, combos e kits
+  que só saíram de graça, ou que não venderam).
 - Para uma chave nova: bloco preenchido, `nuvemshop:testar`,
   `nuvemshop:sincronizar` com o painel **parado** (o servidor no ar não conhece
   a loja nova e, na atualização seguinte, tiraria os pedidos dela da cópia),
