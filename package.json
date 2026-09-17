@@ -12,6 +12,7 @@
     "test:watch": "vitest",
     "fumaca": "node --env-file-if-exists=.env scripts/fumaca.mjs",
     "celular": "node --env-file-if-exists=.env scripts/celular.mjs",
+    "deploy": "node scripts/deploy.mjs",
     "start:live": "node --env-file=.env.live node_modules/next/dist/bin/next start -p 3001 -H 127.0.0.1",
     "fumaca:live": "node --env-file=.env.live scripts/fumaca.mjs --porta 3001",
     "nuvemshop:testar": "node --env-file=.env.live node_modules/tsx/dist/cli.mjs scripts/nuvemshop.ts testar",

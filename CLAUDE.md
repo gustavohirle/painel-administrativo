@@ -2168,3 +2168,73 @@ pós-instalação (armadilha 6), `npx prisma generate` antes do
 478 testes, tipos sem erro, `npm run fumaca:live` contra a loja real (todas as
 telas, os dois perfis), sincronização de 3 meses. Ainda **não** conferido: um
 mês fechado contra o relatório da própria Nuvemshop.
+
+---
+
+## 14. Servidor de produção (BattleHost, Ubuntu)
+
+Desde 17/09/2026 o modo real roda num servidor, e não mais só no notebook.
+Ubuntu 24.04, 3 núcleos, 6 GB, IP fixo. Endereço e chave ficam no
+`.env.servidor` (fora do git; modelo em `.env.servidor.example`), porque
+**este repositório é público**.
+
+### Como está montado
+
+| Peça | Onde |
+|---|---|
+| Aplicação | `/opt/painel/app`, dona pelo usuário `painel` (sem shell) |
+| Serviço | `painel.service` — `next start -p 3001 -H 127.0.0.1`, `Restart=always`, sobe no boot |
+| Configuração | `/opt/painel/app/.env.live`, modo 600, com as chaves das 5 lojas |
+| Banco | PostgreSQL 16 local, banco `painel`, só em `127.0.0.1` |
+| Cópia dos pedidos | `/opt/painel/app/.live-data` (único caminho gravável do serviço) |
+| Internet | nginx na 80, repassando para a 3001 |
+| HTTPS | `painel-tunel.service` (Cloudflare) até haver domínio |
+| Firewall | `ufw`: 22, 80 e 443 |
+
+O painel **escuta só em 127.0.0.1**: quem fala com a internet é o nginx. E o
+serviço roda com `ProtectSystem=strict`, com `.live-data` como única pasta
+gravável — se algum dia ele tentar escrever em outro lugar, falha em vez de
+conseguir.
+
+**Enquanto não houver domínio, o endereço muda a cada reinício** do túnel (é o
+túnel rápido da 5.15). Com domínio apontando para o IP: certificado Let's
+Encrypt no nginx, `painel-tunel` desligado, endereço fixo.
+
+### Atualizar depois de um commit
+
+```bash
+npm run deploy             # traz do GitHub, compila e reinicia
+npm run deploy -- --banco  # idem, e ajusta o banco ao schema novo
+npm run deploy -- --voltar # volta para o build anterior
+```
+
+O comando daqui só abre o SSH; o trabalho é de `/opt/painel/atualizar.sh`. O
+servidor puxa de `origin/main` — **commit sem push não sobe**.
+
+Quatro decisões do script:
+
+1. **O build novo é montado em `.next-novo` e só troca no fim**
+   (`PAINEL_DIST_DIR`, seção 12). Compilar por cima de `.next` derruba o painel
+   que está no ar, porque o servidor lê aqueles arquivos enquanto são
+   reescritos — é a armadilha 4 entre dois builds de produção. Assim a queda é
+   de segundos, no `restart`.
+2. **Ele confere se o painel voltou** (`/entrar` em 200, até 60 s). Se não
+   voltar, restaura o build anterior e o commit anterior sozinho. O build
+   anterior fica guardado em `/opt/painel/.next-anterior`, que é o que
+   `--voltar` usa.
+3. **Não mexe no banco por conta própria.** Se `prisma/schema.prisma` mudou,
+   ele para e avisa, sem compilar: alterar tabela com dado dentro é decisão de
+   quem está olhando. Com `--banco` roda `prisma db push` **sem**
+   `--accept-data-loss`, então mudança que apagaria coluna com dado é recusada.
+4. **`npm ci` só quando `package-lock.json` ou `package.json` mudam**, e
+   `prisma generate` só quando o schema muda.
+
+`git config --global --add safe.directory /opt/painel/app` está feito no
+servidor: o script roda como `root` numa pasta do usuário `painel`, e sem isso
+o git recusa ("dubious ownership").
+
+### O que NÃO vem no deploy
+
+Pedido e cadastro não estão no git. Cópia dos pedidos se atualiza sozinha
+(seção 12); o banco veio do backup do notebook, convertido de PostgreSQL 18
+para 16 com `pg_restore -f` (o formato custom da 18 não é lido pela 16).

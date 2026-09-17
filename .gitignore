@@ -11,6 +11,8 @@ dist/
 .env*.local
 # Configuracao do modo com dados reais: chave da Nuvemshop, banco e senhas.
 .env.live
+# Endereco do servidor de producao
+.env.servidor
 
 *.log
 npm-debug.log*
