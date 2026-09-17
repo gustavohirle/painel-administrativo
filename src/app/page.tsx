@@ -12,6 +12,7 @@ import { obterFonteDePedidos, obterRepositorioCadastros } from "@/data";
 import { periodoDoMes } from "@/data/source";
 import { modoDemonstracao, PERCENTUAL_COMISSAO_PADRAO } from "@/lib/config";
 import { montarDemonstrativo, ratearDespesas } from "@/lib/costing";
+import { fecharMes } from "@/lib/fechamento";
 import { apurarImpostos } from "@/lib/impostos";
 import { apurarTaxasPlataforma } from "@/lib/plataforma";
 import {
@@ -56,6 +57,7 @@ export default async function PaginaPainel({
     aliquotasEstaduais,
     taxasCadastradas,
     despesasInfluencer,
+    fechamentos,
   ] = await Promise.all([
     fonte.listarPedidos(),
     repositorio.listarCustos(),
@@ -65,6 +67,7 @@ export default async function PaginaPainel({
     repositorio.listarAliquotasEstaduais(),
     repositorio.listarTaxasPlataforma(),
     repositorio.listarDespesasInfluencer(),
+    repositorio.listarFechamentos(),
   ]);
 
   const meses = mesesDisponiveis(todosOsPedidos);
@@ -98,6 +101,9 @@ export default async function PaginaPainel({
     // Dividida com TODOS os pedidos: a proporcao e a do mes inteiro.
     despesasInfluencers: ratearDespesas(despesasInfluencer, todosOsPedidos, influencers),
   });
+
+  // Valores do fechamento do mes (5.1.3): so a leitura desta tela muda.
+  const fechado = fecharMes(dre, fechamentos.find((f) => f.mes === mesSelecionado) ?? null);
 
   const demo = modoDemonstracao();
 
@@ -137,17 +143,23 @@ export default async function PaginaPainel({
           />
           <NumeroDestaque
             rotulo="Impostos sobre a venda"
-            valor={moedaRedonda(dre.totalImpostos)}
-            apoio={`${percentual(impostos.cargaSobreReceita)} da receita sem frete`}
+            valor={moedaRedonda(fechado.totalImpostos)}
+            apoio={
+              fechado.informado.impostos !== null || fechado.informado.difal !== null
+                ? `Informado no fechamento · calculado ${moedaRedonda(dre.totalImpostos)}`
+                : `${percentual(impostos.cargaSobreReceita)} da receita sem frete`
+            }
             cor="var(--color-naopago)"
           />
           {/* Com prejuizo o rotulo muda e o numero fica vermelho e sem sinal:
               "Lucro operacional" verde com valor negativo se contradiz. */}
           <NumeroDestaque
-            rotulo={dre.lucroOperacional < 0 ? "Prejuízo operacional" : "Lucro operacional"}
-            valor={moedaRedonda(Math.abs(dre.lucroOperacional))}
-            apoio={`${percentual(Math.abs(dre.margemOperacionalPercentual))} da receita real`}
-            cor={dre.lucroOperacional < 0 ? "var(--color-naopago)" : "var(--color-real)"}
+            rotulo={fechado.lucroOperacional < 0 ? "Prejuízo operacional" : "Lucro operacional"}
+            valor={moedaRedonda(Math.abs(fechado.lucroOperacional))}
+            apoio={`${percentual(Math.abs(fechado.margemOperacionalPercentual))} da receita real${
+              fechado.temInformado ? ", com o fechamento do mês" : ""
+            }`}
+            cor={fechado.lucroOperacional < 0 ? "var(--color-naopago)" : "var(--color-real)"}
           />
         </div>
 
@@ -155,7 +167,7 @@ export default async function PaginaPainel({
           titulo="Para onde vai cada real faturado"
           descricao="O que nunca entrou, o frete, os impostos, o DIFAL, a taxa da Nuvemshop, o custo de fabricação, as comissões -- e o que sobra."
         >
-          <ComposicaoFaturamento dre={dre} />
+          <ComposicaoFaturamento dre={dre} fechado={fechado} mes={mesSelecionado} />
         </Cartao>
 
         {/* O simulador de base de comissao mudou para /simulador, aba
@@ -165,7 +177,7 @@ export default async function PaginaPainel({
           titulo="Raio-x do resultado"
           descricao="Do faturamento bruto até o lucro operacional, com impostos, custos de fabricação e contratos de comissão cadastrados."
         >
-          <DemonstrativoResultado dre={dre} />
+          <DemonstrativoResultado dre={dre} fechado={fechado} />
         </Cartao>
 
         <Cartao

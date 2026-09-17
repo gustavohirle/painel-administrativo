@@ -452,6 +452,47 @@ Os dois simuladores seguem a regra. No de preço, a comissão de uma venda é
 fechando — no de preço, com contrato `liquido`, a comissão bate **inteira**,
 porque essa base só tem pedido pago.
 
+### 5.1.3 Fechamento do mês: valores informados
+
+Pedido do cliente (17/09/2026): no fim do mês ele tem os números de verdade —
+a guia de imposto paga, o DIFAL recolhido, a fatura das transportadoras — e
+quer digitá-los **ao lado** do calculado. O informado vale na pizza e no
+resultado; o calculado continua existindo e aparece junto.
+
+Na legenda da pizza, **Frete (transportadora)**, **Impostos** (sem o DIFAL) e
+**DIFAL** têm "informar valor do fechamento". Com valor informado, o item mostra
+o informado e, abaixo, "calculado R$ X". Campo vazio + Salvar volta ao
+calculado. Um registro por mês, para a operação inteira (`FechamentoMes`,
+chave `mes`); a action lê os outros dois campos do mês e grava só o que mudou.
+
+`fecharMes` (`lib/fechamento.ts`) faz a conta:
+
+```
+usado    = informado, se houver; senão o calculado  (por campo)
+ajuste   = Σ (usado − calculado)
+lucro    = lucro calculado − ajuste
+```
+
+Três decisões:
+
+1. **Só a leitura da tela inicial muda**: pizza, os números do topo
+   (impostos e lucro) e o fim do raio-x. Comissão, receita real, base de
+   imposto, simuladores, relatórios e aba Influencers seguem o calculado — o
+   cliente pediu que "o cálculo mantenha o número calculado". A frase de
+   rodapé da pizza diz isso quando há valor informado.
+2. **A pizza continua fechando no bruto**: o que sobe numa fatia desce no
+   lucro (teste em `fechamento.test.ts`).
+3. **O raio-x não reescreve as linhas calculadas.** Elas ficam como estão (a
+   receita real é a base da comissão), e a diferença entra numa linha só,
+   "Ajuste do fechamento", antes do lucro — que então bate com o da pizza.
+
+O frete informado substitui só o da **transportadora**; a Intelipost continua
+calculada (R$ 0,73 por pedido). Zero informado é informado, não vazio.
+
+`lerReais` aceita "12.345,67", "12345,67", "R$ 12.345" e "12345.67"; com
+vírgula, os pontos são milhar; sem vírgula, só um ponto seguido de uma ou duas
+casas é decimal.
+
 ### 5.2 Comissão de influencer (simulador)
 
 **Esta tela não existe mais.** Morou na tela inicial, depois embaixo da
@@ -1819,7 +1860,7 @@ em 1366×768. Isso é `npm test` e olho na tela.
 
 | Pergunta | Onde |
 |---|---|
-| A conta está certa? | `npm test` — 456 testes sobre as funções puras |
+| A conta está certa? | `npm test` — 470 testes sobre as funções puras |
 | A chave da Nuvemshop vale? Os pedidos chegam como esperado? | `npm run nuvemshop:testar` |
 | A página monta? O perfil bloqueia? | `npm run fumaca` |
 | Funciona no celular? | `npm run celular` |
@@ -2052,6 +2093,6 @@ pós-instalação (armadilha 6), `npx prisma generate` antes do
 
 ### Conferido no fim da sessão
 
-456 testes, tipos sem erro, `npm run fumaca:live` contra a loja real (todas as
+470 testes, tipos sem erro, `npm run fumaca:live` contra a loja real (todas as
 telas, os dois perfis), sincronização de 3 meses. Ainda **não** conferido: um
 mês fechado contra o relatório da própria Nuvemshop.

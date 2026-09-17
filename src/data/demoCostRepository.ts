@@ -50,6 +50,7 @@ import type {
   EntradaProduto,
   Produto,
 } from "@/types/produto";
+import type { EntradaFechamentoMes, FechamentoMes } from "@/types/fechamento";
 import type { Usuario } from "@/types/usuario";
 import { novoId, type RepositorioCadastros } from "@/data/repositorio";
 import { novoToken, proximoNumero, tokenConfere } from "@/lib/ordens";
@@ -80,6 +81,7 @@ interface Estado {
   contagens: ContagemEstoque[];
   ordens: OrdemFabricacao[];
   usuarios: Usuario[];
+  fechamentos: FechamentoMes[];
 }
 
 /**
@@ -113,6 +115,7 @@ async function estadoInicial(): Promise<Estado> {
     ordens: ordensIniciais(produtos),
     despesasInfluencer: despesasInfluencerIniciais(),
     usuarios: await usuariosIniciais(),
+    fechamentos: [],
   };
 }
 
@@ -169,6 +172,8 @@ async function completar(lido: Partial<Estado>): Promise<Estado> {
       ? lido.despesasInfluencer
       : (await inicial()).despesasInfluencer,
     usuarios: temItens(lido.usuarios) ? lido.usuarios : (await inicial()).usuarios,
+    // Nasce vazio: o fechamento e sempre digitado.
+    fechamentos: temLista(lido.fechamentos) ? lido.fechamentos : [],
   };
 }
 
@@ -356,6 +361,23 @@ export class RepositorioDemonstracao implements RepositorioCadastros {
       impostosIds: p.impostosIds.filter((i) => i !== id),
     }));
     await gravar(estado);
+  }
+
+  // --- Fechamento do mes -------------------------------------------------
+
+  async listarFechamentos(): Promise<FechamentoMes[]> {
+    const estado = await carregar();
+    return [...estado.fechamentos].sort((a, b) => a.mes.localeCompare(b.mes));
+  }
+
+  async salvarFechamento(entrada: EntradaFechamentoMes): Promise<FechamentoMes> {
+    const estado = await carregar();
+    const registro: FechamentoMes = { ...entrada, atualizadoEm: new Date().toISOString() };
+    const indice = estado.fechamentos.findIndex((f) => f.mes === entrada.mes);
+    if (indice >= 0) estado.fechamentos[indice] = registro;
+    else estado.fechamentos.push(registro);
+    await gravar(estado);
+    return registro;
   }
 
   // --- DIFAL --------------------------------------------------------------

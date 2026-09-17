@@ -51,6 +51,7 @@ import type {
   OrigemProduto,
   Produto,
 } from "@/types/produto";
+import type { EntradaFechamentoMes, FechamentoMes } from "@/types/fechamento";
 import type { PerfilUsuario, Usuario } from "@/types/usuario";
 import type { RepositorioCadastros } from "@/data/repositorio";
 import { novoToken, proximoNumero } from "@/lib/ordens";
@@ -365,6 +366,35 @@ export class RepositorioPostgres implements RepositorioCadastros {
       observacao: linha.observacao,
       atualizadoEm: linha.atualizadoEm.toISOString(),
     }));
+  }
+
+  // --- Fechamento do mes -------------------------------------------------
+
+  async listarFechamentos(): Promise<FechamentoMes[]> {
+    const linhas = await prisma.fechamentoMes.findMany({ orderBy: { mes: "asc" } });
+    return linhas.map((linha) => ({
+      mes: linha.mes,
+      impostos: linha.impostos === null ? null : decimalParaNumero(linha.impostos),
+      difal: linha.difal === null ? null : decimalParaNumero(linha.difal),
+      frete: linha.frete === null ? null : decimalParaNumero(linha.frete),
+      atualizadoEm: linha.atualizadoEm.toISOString(),
+    }));
+  }
+
+  async salvarFechamento(entrada: EntradaFechamentoMes): Promise<FechamentoMes> {
+    const dados = { impostos: entrada.impostos, difal: entrada.difal, frete: entrada.frete };
+    const linha = await prisma.fechamentoMes.upsert({
+      where: { mes: entrada.mes },
+      create: { mes: entrada.mes, ...dados },
+      update: dados,
+    });
+    return {
+      mes: linha.mes,
+      impostos: linha.impostos === null ? null : decimalParaNumero(linha.impostos),
+      difal: linha.difal === null ? null : decimalParaNumero(linha.difal),
+      frete: linha.frete === null ? null : decimalParaNumero(linha.frete),
+      atualizadoEm: linha.atualizadoEm.toISOString(),
+    };
   }
 
   // --- Taxas de plataforma ------------------------------------------------

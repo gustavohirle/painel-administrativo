@@ -3,6 +3,7 @@ import Link from "next/link";
 import { moeda, moedaRedonda, percentual, razaoSegura } from "@/lib/format";
 import type { DemonstrativoResultado as DRE } from "@/lib/costing";
 import { INTERMEDIARIO_FRETE } from "@/lib/config";
+import { fecharMes, type MesFechado } from "@/lib/fechamento";
 import { idDeOrigem } from "@/types/dominio";
 
 /*
@@ -22,7 +23,7 @@ interface Linha {
   prejuizo?: boolean;
 }
 
-function montarLinhas(dre: DRE): Linha[] {
+function montarLinhas(dre: DRE, fechado: MesFechado): Linha[] {
   const r = dre.reconciliacao;
   // Uma compartilhada chega aqui dividida em uma parte por influencer; conta
   // como uma despesa so, que e o que foi cadastrado.
@@ -127,25 +128,49 @@ function montarLinhas(dre: DRE): Linha[] {
       valor: -dre.participacaoSocios,
       tipo: "deducao",
     },
-    dre.lucroOperacional < 0
+    /*
+     * O fechamento do mes (5.1.3) nao reescreve as linhas de cima: elas sao o
+     * calculado, e a receita real e a base da comissao. A diferenca para o
+     * informado entra numa linha so, e o resultado bate com o da pizza.
+     */
+    ...(fechado.temInformado && Math.abs(fechado.ajuste) >= 0.005
+      ? [
+          {
+            rotulo: "Ajuste do fechamento",
+            explicacao: `Valores informados no fechamento (${(["impostos", "difal", "frete"] as const)
+              .filter((c) => fechado.informado[c] !== null)
+              .map((c) => ({ impostos: "impostos", difal: "DIFAL", frete: "frete" })[c])
+              .join(", ")}) menos os calculados acima`,
+            valor: -fechado.ajuste,
+            tipo: "deducao" as const,
+          },
+        ]
+      : []),
+    fechado.lucroOperacional < 0
       ? {
           rotulo: "Prejuízo operacional",
-          explicacao: `${percentual(Math.abs(dre.margemOperacionalPercentual))} da receita real`,
-          valor: Math.abs(dre.lucroOperacional),
+          explicacao: `${percentual(Math.abs(fechado.margemOperacionalPercentual))} da receita real`,
+          valor: Math.abs(fechado.lucroOperacional),
           tipo: "resultado",
           prejuizo: true,
         }
       : {
           rotulo: "Lucro operacional",
-          explicacao: `${percentual(dre.margemOperacionalPercentual)} da receita real`,
-          valor: dre.lucroOperacional,
+          explicacao: `${percentual(fechado.margemOperacionalPercentual)} da receita real`,
+          valor: fechado.lucroOperacional,
           tipo: "resultado",
         },
   ];
 }
 
-export function DemonstrativoResultado({ dre }: { dre: DRE }) {
-  const linhas = montarLinhas(dre);
+export function DemonstrativoResultado({
+  dre,
+  fechado = fecharMes(dre, null),
+}: {
+  dre: DRE;
+  fechado?: MesFechado;
+}) {
+  const linhas = montarLinhas(dre, fechado);
 
   return (
     <div className="space-y-5">

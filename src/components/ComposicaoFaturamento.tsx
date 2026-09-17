@@ -1,6 +1,10 @@
 import { moeda, moedaRedonda, percentual, razaoSegura } from "@/lib/format";
 import type { DemonstrativoResultado } from "@/lib/costing";
 import { INTERMEDIARIO_FRETE } from "@/lib/config";
+import { fecharMes, type MesFechado } from "@/lib/fechamento";
+import type { CampoFechamento } from "@/types/fechamento";
+
+import { ValorDoFechamento } from "./ValorDoFechamento";
 
 /*
  * Para onde foi cada real faturado.
@@ -17,6 +21,10 @@ import { INTERMEDIARIO_FRETE } from "@/lib/config";
  *
  * Se mexer nessa conta, a pizza deixa de fechar -- e e o primeiro lugar onde
  * o erro aparece.
+ *
+ * Frete da transportadora, impostos e DIFAL podem vir do FECHAMENTO do mes
+ * (5.1.3): o valor informado entra no lugar do calculado, e a diferenca sai do
+ * lucro -- por isso a soma continua sendo o bruto.
  */
 
 const TAMANHO = 360;
@@ -35,30 +43,36 @@ interface Fatia {
   resultado?: boolean;
   /** Some da legenda quando e zero: fatia que so existe em algumas lojas. */
   opcional?: boolean;
+  /** Valor que o fechamento do mes pode substituir. */
+  campo?: CampoFechamento;
 }
 
-function montarFatias(dre: DemonstrativoResultado): Fatia[] {
+function montarFatias(dre: DemonstrativoResultado, fechado: MesFechado): Fatia[] {
   const r = dre.reconciliacao;
-
-  // O DIFAL ja esta dentro de `totalImpostos`; aqui ele sai para virar fatia
-  // propria, e o que sobra e o resto da carga tributaria.
-  const difal = dre.impostos?.difal.total ?? 0;
-  const outrosImpostos = Math.max(0, dre.totalImpostos - difal);
+  // O DIFAL ja esta dentro de `totalImpostos`; `fecharMes` o separa, e cada
+  // um dos tres vem do fechamento quando foi informado.
+  const { usado } = fechado;
+  const lucro = fechado.lucroOperacional;
 
   return [
     { rotulo: "Não pagos", valor: r.naoPago, cor: "var(--color-naopago)" },
     { rotulo: "Cancelados", valor: r.cancelado, cor: "var(--color-cancelado)" },
     { rotulo: "Reembolsados", valor: r.reembolsado, cor: "var(--color-reembolsado)" },
     // O frete cobrado se divide entre quem o recebe; as duas somam r.frete.
-    { rotulo: "Frete (transportadora)", valor: r.freteTransportadora, cor: "var(--color-frete)" },
+    {
+      rotulo: "Frete (transportadora)",
+      valor: usado.frete,
+      cor: "var(--color-frete)",
+      campo: "frete",
+    },
     {
       rotulo: INTERMEDIARIO_FRETE,
       valor: r.freteIntermediario,
       cor: "var(--color-intermediario-frete)",
       opcional: true,
     },
-    { rotulo: "Impostos", valor: outrosImpostos, cor: "var(--color-imposto)" },
-    { rotulo: "DIFAL", valor: difal, cor: "var(--color-difal)" },
+    { rotulo: "Impostos", valor: usado.impostos, cor: "var(--color-imposto)", campo: "impostos" },
+    { rotulo: "DIFAL", valor: usado.difal, cor: "var(--color-difal)", campo: "difal" },
     // Fatia propria, nao somada aos impostos: taxa e preco de servico, a unica
     // das duas que da para renegociar.
     // Todas as taxas juntas: a da Nuvemshop e as do cartao e do pix.
@@ -77,9 +91,9 @@ function montarFatias(dre: DemonstrativoResultado): Fatia[] {
     // (so fatias positivas) --, mas a legenda tem que dizer "prejuizo", em
     // vermelho: "Lucro operacional" verde com numero negativo se contradiz.
     {
-      rotulo: dre.lucroOperacional < 0 ? "Prejuízo operacional" : "Lucro operacional",
-      valor: dre.lucroOperacional,
-      cor: dre.lucroOperacional < 0 ? "var(--color-naopago)" : "var(--color-real)",
+      rotulo: lucro < 0 ? "Prejuízo operacional" : "Lucro operacional",
+      valor: lucro,
+      cor: lucro < 0 ? "var(--color-naopago)" : "var(--color-real)",
       resultado: true,
     },
   ];
@@ -147,11 +161,20 @@ function desenhar(fatias: Fatia[], total: number): FatiaDesenhada[] {
   });
 }
 
-export function ComposicaoFaturamento({ dre }: { dre: DemonstrativoResultado }) {
+export function ComposicaoFaturamento({
+  dre,
+  fechado = fecharMes(dre, null),
+  mes,
+}: {
+  dre: DemonstrativoResultado;
+  fechado?: MesFechado;
+  /** Com o mes, frete, impostos e DIFAL ganham o campo do fechamento. */
+  mes?: string;
+}) {
   const r = dre.reconciliacao;
-  const fatias = montarFatias(dre).filter((f) => !(f.opcional && f.valor === 0));
+  const fatias = montarFatias(dre, fechado).filter((f) => !(f.opcional && f.valor === 0));
 
-  const prejuizo = dre.lucroOperacional < 0;
+  const prejuizo = fechado.lucroOperacional < 0;
 
   /*
    * Com prejuizo nao ha fatia de lucro: as deducoes sozinhas ja passam de 100%
@@ -279,6 +302,14 @@ export function ComposicaoFaturamento({ dre }: { dre: DemonstrativoResultado }) 
                     >
                       {moeda(Math.abs(fatia.valor))}
                     </span>
+                    {fatia.campo && mes && (
+                      <ValorDoFechamento
+                        mes={mes}
+                        campo={fatia.campo}
+                        calculado={fechado.calculado[fatia.campo]}
+                        informado={fechado.informado[fatia.campo]}
+                      />
+                    )}
                   </span>
                   <span
                     className={`numerico shrink-0 text-sm font-semibold ${
@@ -316,7 +347,7 @@ export function ComposicaoFaturamento({ dre }: { dre: DemonstrativoResultado }) 
       {prejuizo && (
         <p className="mt-4 rounded-lg border border-alerta-borda bg-alerta-fundo px-4 py-3 text-sm font-semibold text-naopago">
           As deduções passaram do faturamento: prejuízo operacional de{" "}
-          <span className="numerico">{moeda(Math.abs(dre.lucroOperacional))}</span>{" "}
+          <span className="numerico">{moeda(Math.abs(fechado.lucroOperacional))}</span>{" "}
           no mês. Por isso não há fatia de lucro na pizza.
         </p>
       )}
@@ -328,6 +359,8 @@ export function ComposicaoFaturamento({ dre }: { dre: DemonstrativoResultado }) 
         O DIFAL aparece separado
         dos demais impostos por ser devido ao estado de DESTINO, e não ao de
         origem. A tabela do raio-x, logo abaixo, traz a mesma conta em sequência.
+        {fechado.temInformado &&
+          " Frete, impostos ou DIFAL marcados como informados vêm do fechamento do mês; a diferença para o calculado sai do lucro. Comissões e receita real seguem o calculado."}
       </p>
     </div>
   );

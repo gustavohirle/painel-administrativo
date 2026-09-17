@@ -332,3 +332,16 @@ model DespesaInfluencer {
   @@index([influencerId])
   @@index([data])
 }
+
+/// Valores do fechamento do mes, informados a mao (impostos, DIFAL, frete).
+/// Substituem o calculado so na pizza e no lucro da tela inicial. Nulo = usar
+/// o calculado.
+model FechamentoMes {
+  /// "AAAA-MM"
+  mes      String   @id
+  impostos Decimal? @db.Decimal(14, 2)
+  difal    Decimal? @db.Decimal(14, 2)
+  frete    Decimal? @db.Decimal(14, 2)
+
+  atualizadoEm DateTime @updatedAt
+}

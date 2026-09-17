@@ -94,7 +94,9 @@ function registrosDeSetembro(quantos: number): Registro[] {
 
 const SETEMBRO = { criadosDesde: "2025-09-01T03:00:00.000Z", criadosAte: "2025-10-01T02:59:59.000Z" };
 
-describe("buscarPedidosDaLoja em loja grande", () => {
+// A API falsa responde com atraso de proposito; com a suite inteira rodando em
+// paralelo, o teste do mes grande passava dos 5 s padrao sem nada de errado.
+describe("buscarPedidosDaLoja em loja grande", { timeout: 20_000 }, () => {
   beforeEach(() => {
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(new Date("2026-09-16T12:00:00Z"));

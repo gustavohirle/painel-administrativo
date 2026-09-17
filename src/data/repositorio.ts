@@ -36,6 +36,7 @@ import type {
   EntradaProduto,
   Produto,
 } from "@/types/produto";
+import type { EntradaFechamentoMes, FechamentoMes } from "@/types/fechamento";
 import type { Usuario } from "@/types/usuario";
 
 export interface RepositorioCadastros {
@@ -105,6 +106,12 @@ export interface RepositorioCadastros {
    * cancelando). Quem chama monta o registro fechado e grava de uma vez.
    */
   gravarOrdem(ordem: OrdemFabricacao): Promise<OrdemFabricacao>;
+
+  // --- Fechamento do mes -------------------------------------------------
+  /** Valores informados a mao no fim do mes. Chave: o mes. */
+  listarFechamentos(): Promise<FechamentoMes[]>;
+  /** Salvar duas vezes o mesmo mes atualiza, nao duplica. */
+  salvarFechamento(entrada: EntradaFechamentoMes): Promise<FechamentoMes>;
 
   // --- Usuarios -----------------------------------------------------------
   listarUsuarios(): Promise<Usuario[]>;
