@@ -52,10 +52,12 @@ continua aceita, e soma com os blocos.
 **Depois de colar uma chave nova**, nesta ordem:
 
 1. `npm run nuvemshop:testar` — confere se a chave vale, loja por loja;
-2. `npm run nuvemshop:sincronizar` — a primeira busca da loja nova leva
-   minutos (a Tha levou 5 para 3 meses). Com o painel no ar, ele busca
-   sozinho em segundo plano, e o rodapé diz qual loja ainda não entrou nos
-   números;
+2. **pare o painel** e rode `npm run nuvemshop:sincronizar` — a primeira
+   busca da loja nova leva minutos (quatro lojas, 3 meses: 7,5 min). O painel
+   que já estava no ar não conhece a loja nova: na atualização seguinte ele
+   tiraria os pedidos dela da cópia. Painel iniciado **depois** de colar a
+   chave busca a loja sozinho, em segundo plano, e o rodapé diz qual loja
+   ainda não entrou nos números;
 3. na aba **Influencers**, cadastre o contrato com a marca da loja (ela já
    aparece na lista);
 4. na aba **Produtos**, "Trazer da Nuvemshop": os produtos da loja entram já

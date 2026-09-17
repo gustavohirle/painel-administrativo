@@ -1993,17 +1993,39 @@ está listado abaixo **não está**, de propósito.
   consomem estoque e custam para fabricar, e a **cobertura de custo não os
   denuncia**: ela é medida por receita, e a receita deles é zero. Quando os
   custos reais chegarem, são os primeiros a olhar.
-- **São cinco influencers, uma loja Nuvemshop cada** (quatro em 17/09/2026,
-  cinco no mesmo dia). No `.env.live`: Tha Beauty (5018407), Ka Beauty
-  (5921304) e Duale Beauty (7704600) com chave e id, ainda **sem pedidos
-  buscados** nas duas novas; Loali Beauty com chave e **sem id** (o site dela
-  não foi achado — falta o `user_id` da página da chave); bloco 5 vazio. Bloco
-  com chave e sem id impede o painel de subir, de propósito. O id das lojas
-  novas saiu do código da vitrine (`LS.store`, a mesma página pública da
-  loja) e foi conferido chamando `/store` com a chave. Para cada chave nova: bloco preenchido,
-  `nuvemshop:testar`, `nuvemshop:sincronizar`, contrato na aba Influencers
-  com a mesma marca, e "Trazer da Nuvemshop" (roteiro em `DADOS_REAIS.md`).
-  Os 82 produtos da Tha já guardam a loja de origem (`Tha Beauty`).
+- **São cinco lojas Nuvemshop, uma por contrato**, todas ligadas em
+  17/09/2026, com pedidos de julho a setembro/2026 (40.484 pedidos, 7,5 min
+  de busca, `pedidos.json` com 39 MB):
+
+  | Marca | Loja | Contrato | Empresa na Nuvemshop | Produtos (kits) | Set/2026 bruto |
+  |---|---|---|---|---|---|
+  | Tha Beauty | 5018407 | Tha | CRIAR MARKETING DIGITTAL | 82 (33) | R$ 802 mil |
+  | Ka Beauty | 5921304 | Ka | CRIAR MARKETING DIGITTAL | 56 (27) | R$ 137 mil |
+  | Duale Beauty | 7704600 | Duale | CLIP NEGOCIOS DIGITAIS | 15 (6) | R$ 87 mil |
+  | Laoli Beauty | 5900406 | Laoli | CRIAR MARKETING DIGITTAL | 29 (12) | R$ 23 mil |
+  | Revenda | 7886157 | Revenda Tha Beauty | CLIP NEGOCIOS DIGITAIS | 59 (17) | R$ 100 mil |
+
+  O id das lojas novas saiu do código da vitrine (`LS.store`, a página
+  pública da loja) e foi conferido chamando `/store` com a chave — a API não
+  diz o id a partir da chave. As quatro chaves novas trazem o cliente no
+  pedido (a da Tha não).
+- **Os quatro contratos novos são PREMISSA**: copiados da Tha (25% sobre o que
+  cai na conta, Lucro Presumido, GO), porque ninguém informou os termos. Está
+  escrito na observação de cada um. A Revenda é canal de revenda (ticket
+  médio ~R$ 1.500) e pode nem pagar comissão.
+- **Duas empresas, cinco contratos.** Tha, Ka e Laoli são do mesmo CNPJ
+  (46.549.339/0001-42); Duale e Revenda, de outro (63.934.671/0001-40). O
+  painel apura imposto por contrato, e no Lucro Presumido a dedução do
+  adicional de IRPJ (R$ 20 mil/mês) é **por CNPJ**: aplicada por contrato, ela
+  entra três vezes numa empresa e duas na outra, e o IRPJ sai menor que o
+  devido. Não corrigido — pede o regime por empresa, e não por contrato.
+- **Os 159 produtos novos estão sem custo** (a cobertura de custo das quatro
+  lojas é 0%), então o lucro delas sai alto demais até as fichas existirem.
+- Para uma chave nova: bloco preenchido, `nuvemshop:testar`,
+  `nuvemshop:sincronizar` com o painel **parado** (o servidor no ar não conhece
+  a loja nova e, na atualização seguinte, tiraria os pedidos dela da cópia),
+  contrato na aba Influencers com a mesma marca, e "Trazer da Nuvemshop"
+  (roteiro em `DADOS_REAIS.md`).
 - Com cinco lojas o `pedidos.json` cresce na mesma proporção: com
   `NUVEMSHOP_MESES=13` passaria do teto de uma string no Node (seção 12,
   item 1). Antes de voltar para 13, o cache precisa virar um arquivo por loja
