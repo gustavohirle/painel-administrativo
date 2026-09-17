@@ -3,8 +3,7 @@
 import { revalidatePath } from "next/cache";
 
 import { obterRepositorioCadastros } from "@/data";
-import { lerReais } from "@/lib/fechamento";
-import { moeda } from "@/lib/format";
+import { lerReais, moeda } from "@/lib/format";
 import { exigirArea } from "@/lib/sessao";
 import {
   CAMPOS_FECHAMENTO,
@@ -34,8 +33,11 @@ export async function salvarValorDoFechamento(
   if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(mes)) return { ok: false, mensagem: "Mês inválido." };
   if (!CAMPOS_FECHAMENTO.includes(campo)) return { ok: false, mensagem: "Campo inválido." };
 
-  const valor = lerReais(String(formData.get("valor") ?? ""));
-  if (valor !== null && (!Number.isFinite(valor) || valor < 0 || valor > MAXIMO)) {
+  // Vazio volta ao calculado; texto que nao se le e erro, nunca "vazio" --
+  // senao um valor digitado errado apagaria o informado sem aviso.
+  const texto = String(formData.get("valor") ?? "").trim();
+  const valor = texto === "" ? null : lerReais(texto);
+  if (texto !== "" && (valor === null || valor < 0 || valor > MAXIMO)) {
     return { ok: false, mensagem: "Valor inválido. Use o formato 12.345,67." };
   }
 

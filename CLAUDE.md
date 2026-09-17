@@ -489,9 +489,38 @@ Três decisões:
 O frete informado substitui só o da **transportadora**; a Intelipost continua
 calculada (R$ 0,73 por pedido). Zero informado é informado, não vazio.
 
-`lerReais` aceita "12.345,67", "12345,67", "R$ 12.345" e "12345.67"; com
-vírgula, os pontos são milhar; sem vírgula, só um ponto seguido de uma ou duas
-casas é decimal.
+O campo lê o valor com o mesmo `lerReais` dos simuladores (`lib/format.ts`).
+Ele devolve `null` tanto para vazio quanto para texto ilegível; a action
+separa os dois — vazio volta ao calculado, ilegível é erro —, senão um valor
+digitado errado apagaria o informado sem aviso.
+
+### 5.1.4 Memória de cálculo: impostos e DIFAL
+
+Pedido do cliente (17/09/2026): clicar em **Impostos** ou **DIFAL** na pizza
+abre uma tela com a conta. Rota `/calculo?item=impostos|difal&mes=`, área
+`fiscal`; o nome na legenda ("ver a conta →") e a própria fatia são links. Não
+é aba do menu: só se chega pela pizza (ou pelo endereço).
+
+**Nenhuma conta nova.** `memoriaDosImpostos` (`lib/memoriaCalculo.ts`)
+reorganiza o que `apurarImpostos` já fez e acrescenta só o que explica cada
+base: quantos produtos da marca marcaram o tributo, qual presunção e qual
+dedução entraram, e a faixa e o RBT12 do Simples. Teste: a soma da tela bate
+com as fatias da pizza, e cada passo é base × alíquota.
+
+- **Impostos**, por marca: bruto → recebido → − frete → receita real; depois
+  uma tabela Tributo | Como a base foi formada | Base | × Alíquota | = Valor.
+  Três origens de base: produtos marcados (5.10), lucro presumido (presunção ×
+  receita real − dedução) e DAS (alíquota efetiva pelo RBT12). O DIFAL fica
+  fora, porque tem fatia e aba próprias.
+- **DIFAL**, por marca: a fórmula e as regras (venda interna, 12%/7%, Simples,
+  base dupla) e, por estado, pedidos | base sem frete | interna | −
+  interestadual | = diferença | DIFAL. Marca no Simples aparece com a
+  distribuição e zero.
+- O topo mostra o calculado e o **valor da pizza**: com fechamento informado
+  (5.1.3), os dois diferem e a tela diz a diferença.
+
+As tabelas são `tabela-ancorada` e não cartões: aqui a leitura é comparar
+estado com estado.
 
 ### 5.2 Comissão de influencer (simulador)
 
@@ -1860,7 +1889,7 @@ em 1366×768. Isso é `npm test` e olho na tela.
 
 | Pergunta | Onde |
 |---|---|
-| A conta está certa? | `npm test` — 470 testes sobre as funções puras |
+| A conta está certa? | `npm test` — 474 testes sobre as funções puras |
 | A chave da Nuvemshop vale? Os pedidos chegam como esperado? | `npm run nuvemshop:testar` |
 | A página monta? O perfil bloqueia? | `npm run fumaca` |
 | Funciona no celular? | `npm run celular` |
@@ -2055,10 +2084,18 @@ está listado abaixo **não está**, de propósito.
   pública da loja) e foi conferido chamando `/store` com a chave — a API não
   diz o id a partir da chave. As quatro chaves novas trazem o cliente no
   pedido (a da Tha não).
-- **Os quatro contratos novos são PREMISSA**: copiados da Tha (25% sobre o que
-  cai na conta, Lucro Presumido, GO), porque ninguém informou os termos. Está
-  escrito na observação de cada um. A Revenda é canal de revenda (ticket
-  médio ~R$ 1.500) e pode nem pagar comissão.
+- **Os quatro contratos novos nasceram como PREMISSA** (cópia da Tha: 25%
+  sobre o que cai na conta, Lucro Presumido, GO), e o dono já editou três pela
+  tela: Ka 22%, Duale 30% e Laoli 20%, os três no **Simples Nacional** — por
+  isso não têm DIFAL. A Revenda continua com a premissa (e é canal de revenda,
+  ticket médio ~R$ 1.500: pode nem pagar comissão). O regime da Laoli pode ter
+  vindo do formulário da Duale (defeito abaixo): confirmar com o dono.
+- **Defeito corrigido em 17/09/2026**: na tela de um influencer, trocar de
+  cartão com "Editar contrato" aberto mantinha os campos do anterior, e o
+  contrato da Laoli foi gravado com a marca "Duale Beauty" — a loja Laoli
+  ficou sem contrato e os 29 produtos sem dono. Corrigido com `key` no
+  componente, uma trava na action (um contrato ativo por marca) e a marca
+  devolvida para "Laoli Beauty".
 - **Duas empresas, cinco contratos.** Tha, Ka e Laoli são do mesmo CNPJ
   (46.549.339/0001-42); Duale e Revenda, de outro (63.934.671/0001-40). O
   painel apura imposto por contrato, e no Lucro Presumido a dedução do
@@ -2093,6 +2130,6 @@ pós-instalação (armadilha 6), `npx prisma generate` antes do
 
 ### Conferido no fim da sessão
 
-470 testes, tipos sem erro, `npm run fumaca:live` contra a loja real (todas as
+474 testes, tipos sem erro, `npm run fumaca:live` contra a loja real (todas as
 telas, os dois perfis), sincronização de 3 meses. Ainda **não** conferido: um
 mês fechado contra o relatório da própria Nuvemshop.

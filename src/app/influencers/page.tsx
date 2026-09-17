@@ -225,7 +225,10 @@ export default async function PaginaInfluencers({
                   titulo={`Contrato de ${selecionado.nome}`}
                   descricao="Percentual, base da comissão e regime tributário. O regime decide os impostos dos produtos da loja dele."
                 >
-                  <ContratoDoInfluencer influencer={selecionado} marcas={marcas} />
+                  {/* A chave recria o formulario ao trocar de influencer: sem
+                      ela, os campos (defaultValue) continuavam com os valores
+                      do anterior e o salvar gravava a marca dele no outro. */}
+                  <ContratoDoInfluencer key={selecionado.id} influencer={selecionado} marcas={marcas} />
                 </Cartao>
 
                 <Cartao

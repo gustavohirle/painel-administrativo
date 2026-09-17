@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import type { DemonstrativoResultado } from "@/lib/costing";
-import { fecharMes, lerReais } from "@/lib/fechamento";
+import { fecharMes } from "@/lib/fechamento";
+import { lerReais } from "@/lib/format";
 
 /** So o que `fecharMes` le da DRE. */
 function dre(): DemonstrativoResultado {
@@ -51,7 +52,8 @@ describe("fecharMes", () => {
   });
 });
 
-describe("lerReais", () => {
+// O campo do fechamento usa o mesmo leitor dos simuladores.
+describe("lerReais no fechamento", () => {
   it.each([
     ["12.345,67", 12345.67],
     ["12345,67", 12345.67],
@@ -65,10 +67,10 @@ describe("lerReais", () => {
     expect(lerReais(texto)).toBe(esperado);
   });
 
-  it("vazio é nulo; texto que não é número é NaN", () => {
+  it("vazio e texto que não é número dão nulo (a action separa os dois)", () => {
     expect(lerReais("")).toBeNull();
     expect(lerReais("  ")).toBeNull();
-    expect(lerReais("doze")).toBeNaN();
-    expect(lerReais("12,34,56")).toBeNaN();
+    expect(lerReais("doze")).toBeNull();
+    expect(lerReais("12,34,56")).toBeNull();
   });
 });

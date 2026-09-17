@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 import { moeda, moedaRedonda, percentual, razaoSegura } from "@/lib/format";
 import type { DemonstrativoResultado } from "@/lib/costing";
 import { INTERMEDIARIO_FRETE } from "@/lib/config";
@@ -45,6 +47,8 @@ interface Fatia {
   opcional?: boolean;
   /** Valor que o fechamento do mes pode substituir. */
   campo?: CampoFechamento;
+  /** Fatia com memoria de calculo (5.1.4): clicar abre a conta. */
+  detalhe?: "impostos" | "difal";
 }
 
 function montarFatias(dre: DemonstrativoResultado, fechado: MesFechado): Fatia[] {
@@ -71,8 +75,14 @@ function montarFatias(dre: DemonstrativoResultado, fechado: MesFechado): Fatia[]
       cor: "var(--color-intermediario-frete)",
       opcional: true,
     },
-    { rotulo: "Impostos", valor: usado.impostos, cor: "var(--color-imposto)", campo: "impostos" },
-    { rotulo: "DIFAL", valor: usado.difal, cor: "var(--color-difal)", campo: "difal" },
+    {
+      rotulo: "Impostos",
+      valor: usado.impostos,
+      cor: "var(--color-imposto)",
+      campo: "impostos",
+      detalhe: "impostos",
+    },
+    { rotulo: "DIFAL", valor: usado.difal, cor: "var(--color-difal)", campo: "difal", detalhe: "difal" },
     // Fatia propria, nao somada aos impostos: taxa e preco de servico, a unica
     // das duas que da para renegociar.
     // Todas as taxas juntas: a da Nuvemshop e as do cartao e do pix.
@@ -175,6 +185,9 @@ export function ComposicaoFaturamento({
   const fatias = montarFatias(dre, fechado).filter((f) => !(f.opcional && f.valor === 0));
 
   const prejuizo = fechado.lucroOperacional < 0;
+  // A memoria de calculo precisa do mes: sem ele (fora da tela inicial), sem link.
+  const linkDe = (fatia: Fatia) =>
+    fatia.detalhe && mes ? `/calculo?item=${fatia.detalhe}&mes=${mes}` : null;
 
   /*
    * Com prejuizo nao ha fatia de lucro: as deducoes sozinhas ja passam de 100%
@@ -228,19 +241,33 @@ export function ComposicaoFaturamento({
             .map((f) => `${f.rotulo} ${percentual(f.fracao)}`)
             .join(", ")}`}
         >
-          {desenhadas.map((fatia) => (
-            <path
-              key={fatia.rotulo}
-              d={fatia.caminho}
-              fill={fatia.cor}
-              stroke="var(--color-superficie)"
-              strokeWidth={2}
-            >
-              <title>
-                {`${fatia.rotulo}: ${moeda(fatia.valor)} (${percentual(fatia.fracao)})`}
-              </title>
-            </path>
-          ))}
+          {desenhadas.map((fatia) => {
+            const href = linkDe(fatia);
+            const caminho = (
+              <path
+                key={fatia.rotulo}
+                d={fatia.caminho}
+                fill={fatia.cor}
+                stroke="var(--color-superficie)"
+                strokeWidth={2}
+                className={href ? "cursor-pointer hover:opacity-85" : undefined}
+              >
+                <title>
+                  {`${fatia.rotulo}: ${moeda(fatia.valor)} (${percentual(fatia.fracao)})${
+                    href ? " — clique para ver a conta" : ""
+                  }`}
+                </title>
+              </path>
+            );
+            // <a> do SVG: o Link do Next nao funciona dentro de <svg>.
+            return href ? (
+              <a key={fatia.rotulo} href={href}>
+                {caminho}
+              </a>
+            ) : (
+              caminho
+            );
+          })}
 
           {desenhadas
             .filter((f) => f.fracao * 100 >= FATIA_MINIMA_PARA_TEXTO)
@@ -255,6 +282,8 @@ export function ComposicaoFaturamento({
                 fontSize={15}
                 fontWeight={700}
                 fill="#ffffff"
+                // O clique atravessa o numero e chega na fatia.
+                pointerEvents="none"
               >
                 {percentual(fatia.fracao)}
               </text>
@@ -293,7 +322,17 @@ export function ComposicaoFaturamento({
                           : "font-medium text-tinta"
                       }`}
                     >
-                      {fatia.rotulo}
+                      {linkDe(fatia) ? (
+                        <Link
+                          href={linkDe(fatia)!}
+                          className="underline decoration-borda-forte underline-offset-2 hover:decoration-tinta"
+                        >
+                          {fatia.rotulo}
+                          <span className="ml-1 text-xs font-normal text-tinta-fraca">ver a conta →</span>
+                        </Link>
+                      ) : (
+                        fatia.rotulo
+                      )}
                     </span>
                     <span
                       className={`numerico block text-base font-semibold ${

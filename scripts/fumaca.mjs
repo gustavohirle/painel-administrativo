@@ -72,6 +72,7 @@ const AREA_DA_ROTA = {
   "/simulador": "financeiro",
   "/impostos": "fiscal",
   "/difal": "fiscal",
+  "/calculo": "fiscal",
   "/custos": "custos",
   "/produtos": "produtos",
   "/kits": "produtos",

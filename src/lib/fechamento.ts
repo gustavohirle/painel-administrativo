@@ -68,26 +68,3 @@ export function fecharMes(
   };
 }
 
-/**
- * Le um valor em reais digitado a mao. `null` para campo vazio, `NaN` para o
- * que nao da para ler.
- *
- * Aceita "12.345,67", "12345,67", "R$ 12.345", "12345.67" e "12345". Com
- * virgula, ela e o decimal e os pontos sao milhar. Sem virgula, um ponto so
- * seguido de uma ou duas casas e decimal ("12345.67"); qualquer outro ponto e
- * milhar ("12.345" = doze mil).
- */
-export function lerReais(texto: string): number | null {
-  const limpo = texto.replace(/R\$/gi, "").replace(/\s/g, "");
-  if (limpo === "") return null;
-  let normalizado: string;
-  if (limpo.includes(",")) {
-    normalizado = limpo.replace(/\./g, "").replace(",", ".");
-  } else if (/^\d+\.\d{1,2}$/.test(limpo)) {
-    normalizado = limpo;
-  } else {
-    normalizado = limpo.replace(/\./g, "");
-  }
-  if (!/^-?\d+(\.\d+)?$/.test(normalizado)) return Number.NaN;
-  return Number(normalizado);
-}

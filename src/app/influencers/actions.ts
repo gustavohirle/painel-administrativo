@@ -81,6 +81,22 @@ export async function salvarInfluencer(
 
   try {
     const repositorio = await obterRepositorioCadastros();
+
+    // Um contrato ativo por marca (5.9): cada loja e de um influencer. Um
+    // segundo contrato ativo na mesma marca ficaria sem efeito (o primeiro
+    // manda) e deixaria a loja de origem dele sem dono.
+    if (entrada.ativo) {
+      const ocupada = (await repositorio.listarInfluencers()).find(
+        (i) => i.ativo && i.marca === entrada.marca && i.id !== id,
+      );
+      if (ocupada) {
+        return {
+          ok: false,
+          mensagem: `A marca "${entrada.marca}" já é do contrato de ${ocupada.nome}. Cada loja tem um influencer: confira a marca.`,
+        };
+      }
+    }
+
     await repositorio.salvarInfluencer(
       { ...entrada, observacao: entrada.observacao ?? null },
       id,
