@@ -5,6 +5,7 @@ import {
   aplicarPercentualNosContratos,
   BASE_SEM_CONTRATO,
   calcularCMV,
+  catalogoVendido,
   calcularComissoesPorInfluencer,
   cruzarMarcasComContratos,
   custoUnitarioDe,
@@ -797,3 +798,25 @@ describe("montarDemonstrativo com despesas de influencer", () => {
   });
 });
 
+describe("brinde a R$ 0", () => {
+  const brinde = { id: 9, product_id: 2002, variant_id: 200201, name: "Beauty Balm Sortido", price: "0.00", quantity: 3, sku: null };
+  const pedidos = [pedido({ products: [pedido().products[0]!, brinde] })];
+
+  it("sem ficha, fica fora do custo, da rentabilidade e da lista de vendidos", () => {
+    const cmv = calcularCMV(pedidos, [custo()]);
+    expect(cmv).toMatchObject({ produtosSemCusto: 0, cobertura: 1, cmv: 30 });
+    expect(rentabilidadePorProduto(pedidos, [custo()]).map((l) => l.produtoId)).toEqual([1001]);
+    expect(catalogoVendido(pedidos, [custo()]).map((p) => p.produtoId)).toEqual([1001]);
+  });
+
+  it("com ficha, o custo dele é real e sai da margem", () => {
+    const fichaBrinde = custo({ id: "c2", produtoId: 2002, varianteId: 200201, custoMateriaPrima: 4, custoEmbalagem: 0, custoMaoDeObra: 0, custoIndireto: 0 });
+    const cmv = calcularCMV(pedidos, [custo(), fichaBrinde]);
+    expect(cmv.cmv).toBe(30 + 12);
+    expect(rentabilidadePorProduto(pedidos, [custo(), fichaBrinde])).toHaveLength(2);
+  });
+
+  it("produto vendido com preço e sem ficha continua sendo apontado", () => {
+    expect(calcularCMV(pedidos, []).produtosSemCusto).toBe(1);
+  });
+});

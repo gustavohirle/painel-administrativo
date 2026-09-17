@@ -659,18 +659,29 @@ describe("produtosParaCadastrar", () => {
     ...extra,
   });
 
-  it("junta o catálogo às vendas: o que não vendeu entra, depois dos vendidos", () => {
-    const pedidos = [pedido({ products: [item(1, 10, "Nome antigo na venda")] })];
+  it("só entra o que teve venda paga; o catálogo dá o nome e o SKU atuais", () => {
+    const pedidos = [
+      pedido({ products: [item(1, 10, "Nome antigo na venda"), item(3, 30, "Alfa")] }),
+    ];
     const catalogo = [
       doCatalogo(1, "Nome atual no catálogo"),
       doCatalogo(2, "Zeta sem venda"),
-      doCatalogo(3, "Alfa sem venda", { publicado: false }),
+      doCatalogo(3, "Alfa despublicado", { publicado: false }),
     ];
     const novos = produtosParaCadastrar(pedidos, [], [], [], catalogo);
-    expect(novos.map((n) => n.chave)).toEqual(["1:10", "3:30", "2:20"]);
+    expect(novos.map((n) => n.chave).sort()).toEqual(["1:10", "3:30"]);
+    const atual = novos.find((n) => n.chave === "1:10");
     // O catálogo manda no nome e no SKU: é o que a loja mostra hoje.
-    expect(novos[0]).toMatchObject({ nome: "Nome atual no catálogo", sku: "CAT-1", observacao: null });
-    expect(novos[1]!.observacao).toContain("Não publicado");
+    expect(atual).toMatchObject({ nome: "Nome atual no catálogo", sku: "CAT-1", observacao: null });
+    expect(novos.find((n) => n.chave === "3:30")!.observacao).toContain("Não publicado");
+  });
+
+  it("brinde a R$ 0 e item só não pago não entram", () => {
+    const pedidos = [
+      pedido({ products: [item(1, 10, "Creme"), item(5, 50, "Beauty Balm Sortido", "0.00", 3)] }),
+      pedido({ payment_status: "pending", paid_at: null, products: [item(6, 60, "Só boleto")] }),
+    ];
+    expect(produtosParaCadastrar(pedidos, [], [], [], [doCatalogo(5, "Beauty Balm Sortido")]).map((n) => n.chave)).toEqual(["1:10"]);
   });
 
   it("vendido que saiu do catálogo entra, e a observação diz isso", () => {
@@ -681,7 +692,8 @@ describe("produtosParaCadastrar", () => {
   });
 
   it("kit pelo nome entra marcado como kit, sem componentes e com aviso", () => {
-    const novos = produtosParaCadastrar([], [], [], [], [
+    const vendidos = [pedido({ products: [item(1, 10, "Kit"), item(2, 20, "Avulso")] })];
+    const novos = produtosParaCadastrar(vendidos, [], [], [], [
       doCatalogo(1, "Kit Aurora: Body Splash + Loção Hidratante"),
       doCatalogo(2, "Body Splash Sortido"),
     ]);
@@ -693,7 +705,8 @@ describe("produtosParaCadastrar", () => {
   });
 
   it("item do catálogo já cadastrado não volta", () => {
-    const novos = produtosParaCadastrar([], [produto({ produtoId: 1, varianteId: 10 })], [], [], [doCatalogo(1, "Já existe")]);
+    const vendidos = [pedido({ products: [item(1, 10, "Já existe")] })];
+    const novos = produtosParaCadastrar(vendidos, [produto({ produtoId: 1, varianteId: 10 })], [], [], [doCatalogo(1, "Já existe")]);
     expect(novos).toHaveLength(0);
   });
 

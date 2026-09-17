@@ -301,7 +301,7 @@ describe("loja de origem dos produtos já cadastrados", () => {
 describe("produtosParaCadastrar com várias lojas", () => {
   it("cada produto sai com a loja de onde veio e o influencer dela", () => {
     const novos = produtosParaCadastrar(
-      [venda("Tha Beauty", 1)],
+      [venda("Tha Beauty", 1), venda("Loja Ana", 2), venda("Loja Bia", 3)],
       [],
       [],
       [influencer("tha", "Tha Beauty"), influencer("ana", "Loja Ana")],

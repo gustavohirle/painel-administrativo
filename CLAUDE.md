@@ -632,6 +632,13 @@ Ficha de variante tem precedência sobre ficha de produto inteiro
 cálculo em silêncio: o painel mostra quantos produtos faltam e quanto de
 receita eles representam.
 
+**Exceção: brinde sem ficha** (item a R$ 0 sem custo cadastrado) fica fora do
+CMV, da rentabilidade por produto e da lista de vendidos da aba Custos
+(`brindeSemCusto`, decisão do cliente em 17/09/2026). Não tem receita nem custo
+conhecido, e só aparecia como "produto sem custo". Brinde **com** ficha conta:
+o custo dele é real e sai da margem. O estoque continua baixando o brinde, se
+ele tiver cadastro.
+
 ### 5.8 Raio-x do resultado (DRE)
 
 ```
@@ -863,13 +870,15 @@ branco. O botão "Trazer da Nuvemshop" grava uma entrada por variante que nenhum
 cadastro cobre (`produtosParaCadastrar`, em `costing.ts`). Na loja real, em
 16/09/2026: 82 produtos, 33 deles kits. Quatro decisões:
 
-1. **A lista junta o catálogo (`GET /products`, pela API) e as vendas.** O
-   catálogo traz o que ainda não vendeu e o nome atual; as vendas trazem o que
-   saiu do catálogo mas vendeu no período (4 na loja real, com observação
-   dizendo isso). O catálogo não passa pelo cache: só o clique chama a API
-   (`FonteDePedidos.listarCatalogo`; na demonstração vem de `catalogo.ts`).
-   Se a API falhar, vêm só as vendas, e a mensagem diz. A action não recebe a
-   lista do navegador; monta no servidor.
+1. **Só entra o que teve venda paga com preço** (decisão do cliente em
+   17/09/2026, que também mandou apagar os 33 que não tinham: brindes a R$ 0,
+   combos que só saíram de graça, itens que nunca venderam). O catálogo
+   (`GET /products`, pela API) não acrescenta itens: dá o nome e o SKU atuais
+   e diz se o item está despublicado ou saiu da loja (observação). Antes o
+   catálogo trazia também o que não vendeu. O catálogo não passa pelo cache:
+   só o clique chama a API (`FonteDePedidos.listarCatalogo`; na demonstração
+   vem de `catalogo.ts`). Se a API falhar, vêm os nomes das vendas, e a
+   mensagem diz. A action não recebe a lista do navegador; monta no servidor.
 2. **Kit é reconhecido pelo nome** (`pareceKit`: "Kit", "Combo" ou " + "). A
    Nuvemshop não diz — `is_kit` vem falso nos 33 — nem informa a composição
    (não há endpoint de componentes). O kit entra com a composição vazia e uma
@@ -1889,7 +1898,7 @@ em 1366×768. Isso é `npm test` e olho na tela.
 
 | Pergunta | Onde |
 |---|---|
-| A conta está certa? | `npm test` — 474 testes sobre as funções puras |
+| A conta está certa? | `npm test` — 478 testes sobre as funções puras |
 | A chave da Nuvemshop vale? Os pedidos chegam como esperado? | `npm run nuvemshop:testar` |
 | A página monta? O perfil bloqueia? | `npm run fumaca` |
 | Funciona no celular? | `npm run celular` |
@@ -2106,9 +2115,11 @@ está listado abaixo **não está**, de propósito.
   do dono): 133 fichas, 35% do preço médio pago de cada variante nos pedidos
   de jul–set — a mesma regra das fichas da Tha. Cobertura de custo de 100% em
   setembro nas cinco lojas. Na **Revenda** o preço é de atacado, então os 35%
-  saem abaixo do custo real do mesmo produto nas outras lojas. **32 produtos
-  seguem sem custo**: sem venda paga com preço (brindes a R$ 0, combos e kits
-  que só saíram de graça, ou que não venderam).
+  saem abaixo do custo real do mesmo produto nas outras lojas. Os **33 produtos sem
+  venda paga com preço** (brindes a R$ 0, combos que só saíram de graça, itens
+  que não venderam, e o "Combo: Red Moon + Moon Black", que tinha ficha) foram
+  **apagados** do cadastro, com a ficha do combo; restam 208, todos com custo.
+  Nenhum era componente de kit, nem tinha contagem ou ordem.
 - Para uma chave nova: bloco preenchido, `nuvemshop:testar`,
   `nuvemshop:sincronizar` com o painel **parado** (o servidor no ar não conhece
   a loja nova e, na atualização seguinte, tiraria os pedidos dela da cópia),
@@ -2135,6 +2146,6 @@ pós-instalação (armadilha 6), `npx prisma generate` antes do
 
 ### Conferido no fim da sessão
 
-474 testes, tipos sem erro, `npm run fumaca:live` contra a loja real (todas as
+478 testes, tipos sem erro, `npm run fumaca:live` contra a loja real (todas as
 telas, os dois perfis), sincronização de 3 meses. Ainda **não** conferido: um
 mês fechado contra o relatório da própria Nuvemshop.

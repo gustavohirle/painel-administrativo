@@ -147,6 +147,18 @@ export function custoUnitarioComKit(
 // CMV -- custo das mercadorias vendidas
 // ---------------------------------------------------------------------------
 
+/**
+ * Brinde sem ficha: item que saiu a R$ 0 e nao tem custo cadastrado.
+ *
+ * Fica fora das contas de custo (decisao do cliente em 17/09/2026): nao tem
+ * receita, nao tem custo conhecido e, sem cadastro, so aparecia como "produto
+ * sem custo" em aviso e lista. Brinde COM ficha continua contando -- ai o
+ * custo dele e real e sai da margem.
+ */
+function brindeSemCusto(item: { price: string | number }, unitario: number | null): boolean {
+  return unitario === null && paraNumero(item.price) <= 0;
+}
+
 export interface ResultadoCMV {
   /** Custo de fabricacao total dos itens efetivamente pagos. */
   cmv: number;
@@ -189,6 +201,7 @@ export function calcularCMV(
         item.product_id,
         item.variant_id,
       );
+      if (brindeSemCusto(item, unitario)) continue;
 
       if (unitario === null) {
         receitaSemCusto += receitaItem;
@@ -647,6 +660,14 @@ export function rentabilidadePorProduto(
     );
 
     for (const item of pedido.products) {
+      const unitario = custoUnitarioComKit(
+        indice,
+        indiceProdutos,
+        item.product_id,
+        item.variant_id,
+      );
+      if (brindeSemCusto(item, unitario)) continue;
+
       let acc = mapa.get(item.product_id);
       if (!acc) {
         acc = {
@@ -666,12 +687,6 @@ export function rentabilidadePorProduto(
       acc.receita += receitaItem;
       acc.taxa += taxaDoPedidoInteiro * razaoSegura(receitaItem, receitaDoPedido);
 
-      const unitario = custoUnitarioComKit(
-        indice,
-        indiceProdutos,
-        item.product_id,
-        item.variant_id,
-      );
       if (unitario !== null) {
         acc.custo += unitario * item.quantity;
         acc.unidadesComCusto += item.quantity;
@@ -764,6 +779,9 @@ export function catalogoVendido(
 
   for (const pedido of pedidosRecebidos(pedidos)) {
     for (const item of pedido.products) {
+      const unitario = custoUnitarioComKit(indice, indiceProdutos, item.product_id, item.variant_id);
+      if (brindeSemCusto(item, unitario)) continue;
+
       let produto = produtos.get(item.product_id);
       if (!produto) {
         produto = {
@@ -833,9 +851,12 @@ export function catalogoVendido(
  * devolve as entradas prontas para gravar: uma por variante que nenhum
  * cadastro cobre -- nem o da variante, nem o do produto inteiro.
  *
- * As duas fontes se completam. O catalogo traz o que ainda nao vendeu (e o
- * nome atual); as vendas trazem o que saiu do catalogo mas entrou no mes, e
- * sem cadastro ficaria sem imposto e sem custo. Sem `catalogo`, so as vendas.
+ * So entra o que teve VENDA PAGA COM PRECO no periodo (decisao do cliente em
+ * 17/09/2026). Brinde que sai a R$ 0 e produto que nunca vendeu nao pesam em
+ * conta nenhuma -- receita zero, custo que a cobertura nao enxerga -- e so
+ * enchiam o cadastro. O catalogo entra para dar o nome e o SKU atuais e dizer
+ * se o item saiu da loja ou esta despublicado; ele nao acrescenta itens. Sem
+ * `catalogo`, nome e SKU sao os da venda.
  *
  * Cada entrada ja sai com dono e impostos, pela MESMA regra da apuracao: o
  * primeiro influencer ativo da marca (5.9) e, sem ele, `REGIME_SEM_INFLUENCER`.
@@ -879,6 +900,8 @@ export function produtosParaCadastrar(
   for (const pedido of pedidosRecebidos(pedidos)) {
     for (const item of pedido.products) {
       if (produtoDoItem(indice, item.product_id, item.variant_id)) continue;
+      // Brinde (preco zero) nao conta como venda.
+      if (paraNumero(item.price) <= 0) continue;
 
       const chave = chaveProduto(item.product_id, item.variant_id);
       const receita = paraNumero(item.price) * item.quantity;
@@ -906,21 +929,15 @@ export function produtosParaCadastrar(
     }
   }
 
-  // O catalogo manda no nome e no SKU: e o que a loja mostra hoje.
+  // O catalogo manda no nome e no SKU: e o que a loja mostra hoje. So para o
+  // que vendeu -- item do catalogo sem venda paga nao entra.
   for (const item of catalogo) {
-    if (produtoDoItem(indice, item.produtoId, item.varianteId)) continue;
-    const chave = chaveProduto(item.produtoId, item.varianteId);
-    const visto = vistos.get(chave);
-    vistos.set(chave, {
-      produtoId: item.produtoId,
-      varianteId: item.varianteId,
-      nome: item.nome,
-      sku: item.sku ?? visto?.sku ?? null,
-      marca: item.marca,
-      receita: visto?.receita ?? 0,
-      vendidoEm: visto?.vendidoEm ?? "",
-      publicado: item.publicado,
-    });
+    const visto = vistos.get(chaveProduto(item.produtoId, item.varianteId));
+    if (!visto) continue;
+    visto.nome = item.nome;
+    visto.sku = item.sku ?? visto.sku;
+    visto.marca = item.marca;
+    visto.publicado = item.publicado;
   }
 
   return [...vistos.entries()]
