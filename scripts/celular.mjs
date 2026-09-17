@@ -209,11 +209,12 @@ const MEDIDA = `JSON.stringify({
  * Abre o formulario de edicao da primeira linha e mede se ele cabe.
  *
  * Precisa ser um clique de verdade: o formulario nao existe no HTML inicial.
- * "Editar" nas telas de cadastro, "Contar" no estoque, "Montar" nos kits.
+ * "Editar" nas telas de cadastro, "Editar contrato" na tela de um influencer,
+ * "Contar" no estoque, "Montar" nos kits.
  */
 const ABRIR_EDICAO = `new Promise((resolve) => {
   const gatilho = [...document.querySelectorAll('button')]
-    .find(b => /^(editar|contar|montar)$/i.test((b.textContent || '').trim()));
+    .find(b => /^(editar|editar contrato|contar|montar)$/i.test((b.textContent || '').trim()));
   if (!gatilho) return resolve(JSON.stringify({ semFormulario: true }));
 
   gatilho.click();

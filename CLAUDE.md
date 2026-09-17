@@ -1269,7 +1269,12 @@ e numa "Visão geral" com os totais e o cadastro de contratos. Cartão e não
 pergunta antes do clique. A escolha mora na URL (`?influencer=`), como os
 filtros do relatório, e o seletor de mês do cabeçalho a preserva.
 
-Escolhido um influencer, aparece a **grade dele no mês**:
+Escolhido um influencer, aparece primeiro o **contrato dele** (marca,
+percentual, base, regime, estado e situação), com "Editar contrato", que abre o
+mesmo formulário da tabela da Visão geral (`ContratoDoInfluencer`). O cliente
+procurou a edição ali e não achou: ela só existia na tabela da Visão geral, que
+some quando um influencer é escolhido. Abaixo do contrato vem a **grade dele no
+mês**:
 
 1. **A primeira linha é sempre a comissão**, calculada dos pedidos do mês e do
    contrato (5.2). Não se edita na grade e **não é gravada**: gravar faria a

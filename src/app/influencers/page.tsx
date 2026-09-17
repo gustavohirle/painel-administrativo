@@ -1,6 +1,6 @@
 import { Cabecalho } from "@/components/Cabecalho";
 import { Cartao, NumeroDestaque } from "@/components/Cartao";
-import { GestaoComissoes } from "@/components/GestaoComissoes";
+import { ContratoDoInfluencer, GestaoComissoes } from "@/components/GestaoComissoes";
 import { GestaoDespesasInfluencer } from "@/components/GestaoDespesasInfluencer";
 import { RodapeDemonstracao } from "@/components/RodapeDemonstracao";
 import { SeletorInfluencer, type CartaoDeInfluencer } from "@/components/SeletorInfluencer";
@@ -150,7 +150,7 @@ export default async function PaginaInfluencers({
 
         <Cartao
           titulo="Escolha o influencer"
-          descricao="Toque num contrato para ver a grade de custos dele no mês."
+          descricao="Toque num contrato para ver o contrato (e editá-lo) e a grade de custos dele no mês."
         >
           <SeletorInfluencer
             influencers={cartoes}
@@ -220,6 +220,13 @@ export default async function PaginaInfluencers({
                     mês — o raio-x do resultado só existe onde houve venda.
                   </p>
                 )}
+
+                <Cartao
+                  titulo={`Contrato de ${selecionado.nome}`}
+                  descricao="Percentual, base da comissão e regime tributário. O regime decide os impostos dos produtos da loja dele."
+                >
+                  <ContratoDoInfluencer influencer={selecionado} marcas={marcas} />
+                </Cartao>
 
                 <Cartao
                   titulo={`Custos de ${selecionado.nome} em ${mesAnoLongo(mesSelecionado)}`}

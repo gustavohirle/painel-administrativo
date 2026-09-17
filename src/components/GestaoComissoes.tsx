@@ -187,6 +187,69 @@ export function GestaoComissoes({
 
 // ---------------------------------------------------------------------------
 
+/**
+ * O contrato de UM influencer, na tela dele, com o formulario de edicao.
+ *
+ * O cliente escolhe o influencer pelo cartao e procura ali o que mudar
+ * (percentual, regime). A tabela da Visao geral continua editando tambem --
+ * o formulario e o mesmo.
+ */
+export function ContratoDoInfluencer({
+  influencer,
+  marcas,
+}: {
+  influencer: Influencer;
+  marcas: string[];
+}) {
+  const [editando, setEditando] = useState(false);
+
+  const termos: [string, string][] = [
+    ["Marca", influencer.marca],
+    ["Percentual", percentual(influencer.percentual / 100)],
+    ["Base de cálculo", ROTULO_BASE[influencer.baseComissao]],
+    ["Regime tributário", ROTULO_REGIME[influencer.regime]],
+    ["Estado", influencer.uf],
+    ["Situação", influencer.ativo ? "Ativo" : "Inativo"],
+  ];
+
+  if (editando) {
+    // Mesma trava de largura da aba Kits: o formulario tem grade de tres
+    // colunas e, sem ela, passaria da tela no celular.
+    return (
+      <div className="linha-de-edicao [--recuo-da-tabela:4.5rem]">
+        <FormularioInfluencer
+          influencer={influencer}
+          marcas={marcas}
+          aoFechar={() => setEditando(false)}
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <dl className="grid gap-x-6 gap-y-3 sm:grid-cols-3 xl:grid-cols-6">
+        {termos.map(([rotulo, valor]) => (
+          <div key={rotulo}>
+            <dt className="text-xs uppercase tracking-wider text-tinta-fraca">{rotulo}</dt>
+            <dd className="mt-0.5 font-semibold text-tinta">{valor}</dd>
+          </div>
+        ))}
+      </dl>
+      {influencer.observacao && (
+        <p className="text-sm leading-relaxed text-tinta-media">{influencer.observacao}</p>
+      )}
+      <button
+        type="button"
+        onClick={() => setEditando(true)}
+        className="rounded-lg bg-tinta px-4 py-2 text-sm font-semibold text-white transition-opacity hover:opacity-90"
+      >
+        Editar contrato
+      </button>
+    </div>
+  );
+}
+
 function FormularioInfluencer({
   influencer,
   marcas,
