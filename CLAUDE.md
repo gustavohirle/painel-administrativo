@@ -831,7 +831,9 @@ daquela marca (`donoPelaLoja`, em `lib/donoProduto.ts`).
   contrato da loja existir passar para o influencer quando ele é cadastrado.
 - **Trocar de dono pode trocar de regime**: aí os impostos do produto voltam
   aos que nascem marcados no regime novo; mesmo regime, a marcação feita à mão
-  fica (`ajustesDeDono`).
+  fica (`ajustesDeDono`). O mesmo vale quando o **contrato** muda de regime
+  (`ajustesDeRegime`, na action do influencer): as marcações do regime antigo
+  não contam no novo, e sem isso o produto ficava sem os tributos do novo.
 - **No formulário o dono é leitura** para produto com loja. Loja sem
   influencer mostra o aviso e segue o `REGIME_SEM_INFLUENCER` — lista de
   impostos vazia ali apagaria as marcações ao salvar. A action lê a loja do
@@ -1898,7 +1900,7 @@ em 1366×768. Isso é `npm test` e olho na tela.
 
 | Pergunta | Onde |
 |---|---|
-| A conta está certa? | `npm test` — 478 testes sobre as funções puras |
+| A conta está certa? | `npm test` — 479 testes sobre as funções puras |
 | A chave da Nuvemshop vale? Os pedidos chegam como esperado? | `npm run nuvemshop:testar` |
 | A página monta? O perfil bloqueia? | `npm run fumaca` |
 | Funciona no celular? | `npm run celular` |
@@ -2111,6 +2113,18 @@ está listado abaixo **não está**, de propósito.
   adicional de IRPJ (R$ 20 mil/mês) é **por CNPJ**: aplicada por contrato, ela
   entra três vezes numa empresa e duas na outra, e o IRPJ sai menor que o
   devido. Não corrigido — pede o regime por empresa, e não por contrato.
+- **Quatro contratos no Simples, com ICMS de 12% por fora da guia** (dono,
+  17/09/2026). Ka, Duale, Laoli e Revenda estão no Simples Nacional; o dono
+  cadastrou um **ICMS 12% só do Simples**, "já vem marcado", e pediu que todos
+  os produtos desses quatro o tenham — 133 produtos, que ficaram só com ele (as
+  marcações do Presumido não contam no Simples). Setembro: Ka R$ 12,5 mil →
+  R$ 24,9 mil; Duale R$ 7,7 mil → R$ 15,7 mil; Revenda R$ 6,7 mil →
+  R$ 15,4 mil; Laoli R$ 0,9 mil → R$ 2,5 mil. **A confirmar com o contador:**
+  o DAS já traz uma parcela de ICMS (5.10); somar 12% por fora conta o ICMS
+  duas vezes, a menos que a marca tenha passado do sublimite (aí o ICMS sai da
+  guia, e o painel não modela essa saída). Desde então, mudar o regime de um
+  contrato devolve os produtos dele às marcações padrão do regime novo
+  (`ajustesDeRegime`).
 - **Custos provisórios de 35% também nas lojas novas** (17/09/2026, a pedido
   do dono): 133 fichas, 35% do preço médio pago de cada variante nos pedidos
   de jul–set — a mesma regra das fichas da Tha. Cobertura de custo de 100% em
@@ -2146,6 +2160,6 @@ pós-instalação (armadilha 6), `npx prisma generate` antes do
 
 ### Conferido no fim da sessão
 
-478 testes, tipos sem erro, `npm run fumaca:live` contra a loja real (todas as
+479 testes, tipos sem erro, `npm run fumaca:live` contra a loja real (todas as
 telas, os dois perfis), sincronização de 3 meses. Ainda **não** conferido: um
 mês fechado contra o relatório da própria Nuvemshop.

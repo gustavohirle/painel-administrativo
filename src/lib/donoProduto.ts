@@ -162,3 +162,26 @@ export function lojasParaCompletar(
   }
   return resultado;
 }
+
+/**
+ * Produtos de um influencer que mudou de REGIME, com os impostos do regime novo.
+ *
+ * Mesma regra de `ajustesDeDono`: regime novo, marcacao volta aos tributos que
+ * nascem marcados nele (`idsMarcadosPorPadrao`). Sem isso, o produto de quem
+ * passou do Presumido para o Simples continuava com o ICMS do Presumido -- que
+ * no Simples nao conta -- e sem o do Simples.
+ */
+export function ajustesDeRegime(
+  produtos: Produto[],
+  influencerId: string,
+  impostos: Imposto[],
+  regimeNovo: Influencer["regime"],
+): { id: string; entrada: EntradaProduto }[] {
+  const padrao = idsMarcadosPorPadrao(impostos, regimeNovo);
+  return produtos
+    .filter((p) => p.influencerId === influencerId)
+    .map((produto) => {
+      const { id, atualizadoEm: _atualizadoEm, ...entrada } = produto;
+      return { id, entrada: { ...entrada, impostosIds: padrao } };
+    });
+}
