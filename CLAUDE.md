@@ -2281,6 +2281,38 @@ isso a configuração do painel é `00-painel.conf`, e não `99-`.
 **Ainda não feito, e vale um dia:** segundo fator no login, backup copiado para
 fora do servidor, e alerta quando a sincronização com a Nuvemshop falhar.
 
+### Backup e avisos (17/09/2026)
+
+**Backup** (`painel-backup.timer`, 03h20): `pg_dump -Fc` para
+`/var/backups/painel` (14 dias) e cópia no **Google Drive** do dono, em
+`Backups/painel` (60 dias), por `rclone`. A autorização é OAuth com escopo
+`drive.file` — o rclone só enxerga o que ele mesmo criou, e não lê o resto do
+Drive; o token fica em `/root/.config/rclone/rclone.conf`, modo 600. O token
+de autorização foi gerado no Windows (`rclone authorize "drive"`, com
+`RCLONE_DRIVE_SCOPE=drive.file`), porque o retorno do Google vai para
+`127.0.0.1:53682` — o navegador precisa estar na mesma máquina.
+
+**Dump pequeno não sobe nem apaga nada.** Abaixo de 10 KB o script falha de
+propósito: backup ruim sobrescrevendo backup bom é como se perde tudo.
+
+**Avisos por e-mail** (`msmtp` pelo Gmail, senha de app revogável em
+`myaccount.google.com/apppasswords`; `/etc/msmtprc` modo 600). Duas fontes:
+
+- `OnFailure=` em `painel.service` e `painel-backup.service`: avisa **na hora**,
+  com as últimas 20 linhas do log no corpo;
+- `painel-vigia.timer`, de 15 em 15 minutos: painel fora do ar, cópia de
+  pedidos com mais de 3 horas, backup ausente há 48 h, disco em 85% e
+  certificado vencendo em menos de 10 dias.
+
+**O mesmo aviso não repete antes de 6 horas** (marca em `/var/lib/painel-avisos`).
+Um problema que dura o dia inteiro viraria 96 e-mails, e a caixa de entrada
+ensina a pessoa a ignorar o aviso — é assim que um alerta de verdade passa
+despercebido.
+
+Cada checagem responde a uma pergunta que, sem ela, só se descobriria olhando:
+o painel está no ar, os pedidos estão atualizando, o backup aconteceu, o disco
+vai acabar, o certificado vai vencer.
+
 ### O que NÃO vem no deploy
 
 Pedido e cadastro não estão no git. Cópia dos pedidos se atualiza sozinha
