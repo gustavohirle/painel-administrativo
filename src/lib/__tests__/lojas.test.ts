@@ -4,7 +4,6 @@ import { lojasNuvemshop, REGIME_SEM_INFLUENCER } from "@/lib/config";
 import { produtosParaCadastrar } from "@/lib/costing";
 import {
   ajustesDeDono,
-  ajustesDeRegime,
   donoPelaLoja,
   lojasParaCompletar,
   lojasPorChave,
@@ -314,17 +313,5 @@ describe("produtosParaCadastrar com várias lojas", () => {
       "2:20": ["Loja Ana", "ana"],
       "3:30": ["Loja Bia", null],
     });
-  });
-});
-
-describe("ajustesDeRegime", () => {
-  it("quem mudou de regime fica com os impostos que nascem marcados no novo; os outros não mudam", () => {
-    const icmsPresumido = imposto("icms-lp", ["lucro_presumido"], true);
-    const icmsSimples = imposto("icms-sn", ["simples_nacional"], true);
-    const pis = imposto("pis", ["lucro_presumido"], false);
-    const dele = produto(1, { influencerId: "ka", impostosIds: ["icms-lp", "pis"] });
-    const deOutro = produto(2, { influencerId: "tha", impostosIds: ["icms-lp"] });
-    const ajustes = ajustesDeRegime([dele, deOutro], "ka", [icmsPresumido, icmsSimples, pis], "simples_nacional");
-    expect(ajustes).toEqual([{ id: "p1", entrada: expect.objectContaining({ influencerId: "ka", impostosIds: ["icms-sn"] }) }]);
   });
 });

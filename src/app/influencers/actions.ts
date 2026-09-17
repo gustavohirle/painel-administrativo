@@ -5,7 +5,6 @@ import { z } from "zod";
 
 import { obterRepositorioCadastros } from "@/data";
 import { aplicarDonosPelaLoja } from "@/data/donosPelaLoja";
-import { ajustesDeRegime } from "@/lib/donoProduto";
 import { exigirArea } from "@/lib/sessao";
 import type { EstadoFormulario } from "@/types/formulario";
 
@@ -83,9 +82,6 @@ export async function salvarInfluencer(
   try {
     const repositorio = await obterRepositorioCadastros();
 
-    // O contrato como estava, para saber se o regime mudou.
-    const antes = id ? (await repositorio.listarInfluencers()).find((i) => i.id === id) : undefined;
-
     // Um contrato ativo por marca (5.9): cada loja e de um influencer. Um
     // segundo contrato ativo na mesma marca ficaria sem efeito (o primeiro
     // manda) e deixaria a loja de origem dele sem dono.
@@ -108,18 +104,6 @@ export async function salvarInfluencer(
     // A loja decide o dono do produto: influencer novo (ou que mudou de
     // marca, ou foi desativado) leva junto os produtos da loja dele.
     await aplicarDonosPelaLoja(repositorio);
-
-    // Mudou de regime: os produtos dele passam a ter os impostos que nascem
-    // marcados no regime novo (os do antigo nao contam mais).
-    if (antes && id && antes.regime !== entrada.regime) {
-      const [produtos, impostos] = await Promise.all([
-        repositorio.listarProdutos(),
-        repositorio.listarImpostos(),
-      ]);
-      for (const ajuste of ajustesDeRegime(produtos, id, impostos, entrada.regime)) {
-        await repositorio.salvarProduto(ajuste.entrada, ajuste.id);
-      }
-    }
   } catch (erro) {
     return {
       ok: false,
