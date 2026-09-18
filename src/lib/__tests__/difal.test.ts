@@ -256,10 +256,12 @@ describe("apurarDifal", () => {
     expect(r.temEstadoNaoConfirmado).toBe(false);
   });
 
-  it("ordena por DIFAL, maior primeiro", () => {
-    // MA tem interna 23% (11 pontos de diferenca), SP tem 18% (6 pontos).
-    const r = apurarDifal([pedido("SP"), pedido("MA")], TODAS, "GO");
-    expect(r.porEstado[0]!.uf).toBe("MA");
+  it("ordena por UF, e nao pelo valor", () => {
+    // MA tem interna 23% (11 pontos de diferenca) e SP tem 18% (6 pontos):
+    // pelo valor, MA viria primeiro. A lista e discriminacao, nao ranking --
+    // quem confere procura o estado pelo nome.
+    const r = apurarDifal([pedido("SP"), pedido("MA"), pedido("BA")], TODAS, "GO");
+    expect(r.porEstado.map((l) => l.uf)).toEqual(["BA", "MA", "SP"]);
   });
 
   it("nao produz NaN sem nenhum pedido", () => {
@@ -284,6 +286,8 @@ describe("somarDifal", () => {
     expect(total.total).toBeCloseTo(a.total + b.total, 6);
     expect(total.porEstado.find((l) => l.uf === "SP")!.pedidos).toBe(2);
     expect(total.porEstado).toHaveLength(2);
+    // Mesma ordem alfabetica da apuracao de uma marca so.
+    expect(total.porEstado.map((l) => l.uf)).toEqual(["BA", "SP"]);
   });
 
   it("uma marca nao confirmada contamina o consolidado", () => {

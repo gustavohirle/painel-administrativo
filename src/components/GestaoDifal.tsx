@@ -364,7 +364,16 @@ export function DifalPorEstado({
   porEstado: LinhaEstado[];
   total: number;
 }) {
-  const comDifal = porEstado.filter((l) => l.difal > 0);
+  /*
+   * Aqui a ordem por valor E o assunto: o cartao promete "os maiores destinos"
+   * e corta nos 12 primeiros. `porEstado` chega em ordem alfabetica (e o que
+   * serve as tabelas de conferencia, ver `apurarDifal`), entao a barra ordena
+   * por conta propria -- cortar 12 de uma lista alfabetica entregaria os
+   * estados que comecam com A, nao os maiores.
+   */
+  const comDifal = porEstado
+    .filter((l) => l.difal > 0)
+    .sort((a, b) => b.difal - a.difal || b.receita - a.receita);
   if (comDifal.length === 0) {
     return (
       <p className="text-sm text-tinta-media">

@@ -182,10 +182,18 @@ export function apurarDifal(
     baseInterestadual,
     baseInterna,
     cargaSobreReceita: razaoSegura(total, receitaTotal),
-    // Maior DIFAL primeiro; empate (zero) desempata pela receita.
-    porEstado: porEstado.sort(
-      (a, b) => b.difal - a.difal || b.receita - a.receita,
-    ),
+    // Alfabetica por UF, e nao pelo valor.
+    //
+    // Esta lista e DISCRIMINACAO, nao ranking: quem a le esta conferindo um
+    // estado especifico contra a propria apuracao, e procurar "PE" numa lista
+    // ordenada por valor obriga a varrer as 27 linhas toda vez. A ordem por
+    // valor tambem mudava de um mes para o outro, entao a mesma UF aparecia
+    // num lugar diferente a cada visita.
+    //
+    // Onde a ordem por valor e o proprio assunto -- o grafico "para quais
+    // estados vai o DIFAL", que mostra os 12 maiores -- a componente ordena
+    // por conta propria.
+    porEstado: porEstado.sort((a, b) => a.uf.localeCompare(b.uf)),
     receitaSemEstado,
     pedidosSemEstado,
     temEstadoNaoConfirmado,
@@ -229,9 +237,10 @@ export function somarDifal(
       total,
       baseInterestadual + baseInterna + receitaSemEstado,
     ),
-    porEstado: [...porUF.values()].sort(
-      (a, b) => b.difal - a.difal || b.receita - a.receita,
-    ),
+    // Mesma ordem alfabetica da apuracao de uma marca: o consolidado e lido
+    // do lado da lista de cada marca, e duas ordens diferentes na mesma tela
+    // fariam procurar o estado duas vezes.
+    porEstado: [...porUF.values()].sort((a, b) => a.uf.localeCompare(b.uf)),
     receitaSemEstado,
     pedidosSemEstado: resultados.reduce((s, r) => s + r.pedidosSemEstado, 0),
     temEstadoNaoConfirmado: resultados.some((r) => r.temEstadoNaoConfirmado),

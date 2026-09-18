@@ -520,7 +520,8 @@ com as fatias da pizza, e cada passo é base × alíquota.
   (5.1.3), os dois diferem e a tela diz a diferença.
 
 As tabelas são `tabela-ancorada` e não cartões: aqui a leitura é comparar
-estado com estado.
+estado com estado — e, pela mesma razão, a lista de estados vem **em ordem
+alfabética de UF** (ver 5.10.1).
 
 ### 5.1.5 Resultado oculto
 
@@ -844,6 +845,19 @@ Três regras que mudam o resultado e são fáceis de errar:
 3. **A apuração oficial usa base dupla** (o imposto entra na própria base). O
    painel **não** faz esse gross-up, então o valor fica um pouco abaixo do
    devido. Está dito na tela.
+
+**A lista por estado é ordenada por UF, em ordem alfabética** (`porEstado`, em
+`apurarDifal` e em `somarDifal`). Ela é **discriminação, não ranking**: quem a
+lê está conferindo um estado específico contra a própria apuração, e procurar
+"PE" numa lista ordenada por valor obriga a varrer as 27 linhas — que ainda por
+cima trocam de posição de um mês para o outro. Vale para a tabela da memória de
+cálculo (5.1.4) e para o cadastro de alíquotas, que já vinha assim do
+repositório.
+
+A exceção é o gráfico **"Para quais estados vai o DIFAL"**, em `/difal`: ali a
+ordem por valor é o próprio assunto — o cartão promete "os maiores destinos" e
+corta nos 12 primeiros. Ele reordena por conta própria, porque cortar 12 de uma
+lista alfabética entregaria os estados que começam com A, e não os maiores.
 
 As 27 alíquotas internas vêm semeadas de `types/estados.ts` e são editáveis em
 `/difal`. Nenhuma nasce confirmada: vários estados mexeram nas suas entre 2023
@@ -1461,8 +1475,9 @@ A aba se chamava "Comissões" e virou **Influencers** (`/influencers`; o endere�
 antigo `/comissoes` redireciona, com os parâmetros). A pergunta mudou de "quanto
 de comissão cada contrato gera" para "quanto cada influencer custa".
 
-Abre num **seletor de cartões** — um por contrato, com o custo do mês já escrito —
-e numa "Visão geral" com os totais e o cadastro de contratos. Cartão e não
+No topo, **Vendas de hoje** (`VendasDeHoje`) — ver 5.16.1. Abaixo dele, o
+**seletor de cartões** — um por contrato, com o custo do mês já escrito —
+e a "Visão geral" com os totais e o cadastro de contratos. Cartão e não
 `<select>`: o nome sozinho não ajuda a escolher, e o cartão responde a primeira
 pergunta antes do clique. A escolha mora na URL (`?influencer=`), como os
 filtros do relatório, e o seletor de mês do cabeçalho a preserva.
@@ -1539,6 +1554,44 @@ Três detalhes de comportamento:
   do lucro sem aparecer em tela nenhuma.
 - Remover despesa é em dois passos na própria linha, sem `window.confirm`, que
   some atrás de abas no celular e trava a auditoria automatizada.
+
+### 5.16.1 Vendas de hoje
+
+Pedido do cliente (18/09/2026): quantas vendas e quanto de valor **hoje**,
+"começando à meia-noite", e explicitamente **não** nas últimas 24 horas — ele
+acompanha o dia enquanto ele acontece, e uma janela móvel misturaria a noite de
+ontem com a manhã de hoje.
+
+Fica no topo da aba Influencers, em três números: **vendas hoje** (quantidade),
+**valor de hoje** e **já pago hoje**. Sem influencer escolhido, é a operação
+inteira, com uma linha por marca abaixo; escolhido um, é só a marca dele.
+
+Quatro decisões:
+
+1. **Meia-noite de BRASÍLIA, e não a do servidor** (`diaDeHoje`, com
+   `paraHorarioDeBrasilia`). Produção roda em UTC: com o relógio da máquina, o
+   quadro zeraria às 21h — três horas antes da hora, no meio da noite de
+   trabalho. `filtrarPorDia` compara texto com texto, como `filtrarPorMes`; em
+   live o `created_at` já vem em `-03:00` da borda, então o corte cai exato. Na
+   demonstração as datas são UTC e o corte fica 3 horas deslocado, a mesma
+   aproximação que o agrupamento por mês já tinha.
+2. **Não segue o mês do cabeçalho.** Hoje é hoje, mesmo com julho na tela, e a
+   descrição do cartão diz isso — senão o quadro pareceria contradizer o resto
+   da página.
+3. **O número grande é o BRUTO do dia, com o já pago ao lado.** No dia em que o
+   pedido nasce quase nada está pago: boleto e pix levam horas. Só o bruto
+   exagera o dia; só o recebido faria parecer que ninguém comprou. A tese da
+   seção 1 vale aqui também, e por isso as duas coisas aparecem juntas.
+4. **Nenhuma conta nova**: é `reconciliar` sobre os pedidos do dia, a mesma
+   função da tela inicial.
+
+O número vem da cópia em disco, que no servidor é atualizada de 5 em 5 minutos —
+é o selo de sincronização do cabeçalho (seção 12) que diz de quando ela é. Os
+dois foram pedidos juntos, e é assim que se lêem.
+
+`dataPadraoDoMes` (dia sugerido para despesa nova) passou a usar o mesmo
+`diaDeHoje` pelo mesmo motivo: com o relógio do servidor, despesa cadastrada às
+21h nascia com a data de amanhã.
 
 ### 5.17 Simulador
 
@@ -2095,6 +2148,33 @@ segundo, são minutos. Por isso `cachePedidos.ts`:
 
 Estado em `globalThis` e arquivo como fonte da verdade, pela armadilha 2. Uma
 busca por vez por processo. Gravação em arquivo temporário + `rename`.
+
+#### A hora da última sincronização fica no cabeçalho
+
+`SeloSincronizacao` ocupa, em modo live, **o mesmo lugar do selo de
+demonstração** — e o par não é coincidência: os dois respondem "de onde vem o
+número que estou lendo". Em demonstração, que ele é fictício; em produção, de
+quando ele é. A informação existia só no rodapé, depois da tela inteira, longe
+demais de quem abre o painel para conferir se a venda de agora há pouco já
+entrou.
+
+Três decisões:
+
+1. **A hora é absoluta ("13:46"), nunca "há 4 minutos".** A página é montada no
+   servidor e não se atualiza sozinha: um "há 4 minutos" deixado aberto na tela
+   continuaria dizendo 4 minutos duas horas depois. Hora cheia envelhece
+   sozinha, à vista de quem lê. Por isso também `horaCurta` traz o **dia** de
+   volta quando a cópia não é de hoje — "03:20" sozinho se lê como "hoje de
+   madrugada".
+2. **Vermelho acima de meia hora** (`ATRASO_QUE_PREOCUPA_MS`), e igualmente com
+   loja pendente ou erro na última busca. O servidor busca de 5 em 5 minutos e
+   a página tenta a cada 25 (seção 14): meia hora não é demora, é o timer
+   parado, a chave recusada ou a Nuvemshop fora do ar. O `title` diz qual dos
+   casos é.
+3. **No celular sobra só a hora.** O rótulo "Nuvemshop" tomaria a linha do
+   botão de sair. O selo é mais estreito que o de demonstração, então a
+   auditoria de 390px em modo demonstração continua sendo o teto — mas ela foi
+   rodada nos dois modos.
 
 **Uma loja por influencer, e cada loja por conta própria** (17/09/2026). A
 busca passa loja por loja, e a falha de uma — chave recusada, loja fora do
