@@ -947,6 +947,32 @@ Está dito na tela.
 Vale pedir ao contador **as 27 alíquotas** de uma vez: se AL estava errada, as
 outras provavelmente também.
 
+#### Por que o total não bate, e por que NÃO é a alíquota
+
+Com o resumo de **julho e agosto** na mão, o painel ficou assim contra ele:
+
+| | Painel | Contador | |
+|---|---|---|---|
+| Julho | R$ 115.770 | R$ 122.536 | −5,5% |
+| Agosto | R$ 97.128 | R$ 108.242 | −10,3% |
+
+A tentação é achar a alíquota de cada estado por engenharia reversa — resolver
+qual alíquota reproduziria o número dele. **Não faça isso.** O valor não é
+estável entre os meses, e AL prova por quê: a implícita dá 21,33% em julho e
+18,77% em agosto, enquanto a verdadeira, escrita no demonstrativo dele, é
+**19,00%**. Ajustar o cadastro por um mês faria esse mês fechar por construção
+e estragaria o outro.
+
+**A causa é outra, e o dono achou em 18/09/2026: a empresa também vende por
+TikTok Shop e Mercado Livre, e isso não passa pela Nuvemshop.** A apuração do
+contador é do CNPJ inteiro; o painel lê só as cinco lojas. Conferido nos dados:
+em jul+ago só existem dois gateways (Appmax e Nuvem Pago) e dois meios (pix e
+cartão) — nenhum pedido de marketplace entra por aqui. Pela diferença de DIFAL,
+são uns **R$ 100 mil em julho e R$ 160 mil em agosto** de venda fora do painel,
+no CNPJ da Tha.
+
+Isso não afeta só o imposto. Ver seção 9, "Fase 4".
+
 As 27 alíquotas internas vêm semeadas de `types/estados.ts` e são editáveis em
 `/difal`. Nenhuma nasce confirmada: vários estados mexeram nas suas entre 2023
 e 2025, e algumas já embutem fundo de combate à pobreza enquanto outras não.
@@ -2079,6 +2105,27 @@ Não implemente nada disto. Está aqui para não tomar decisões que fechem port
   consulta de status e rastreio de pedido.
 - **Multi-usuário.** Hoje não há login. Quando houver, o `RepositorioCadastros`
   ganha um escopo de organização.
+- **Fase 4 — TikTok Shop e Mercado Livre.** A empresa vende por esses dois
+  canais e eles **não passam pela Nuvemshop**, então hoje estão fora do painel
+  inteiro. Decisão do dono em 18/09/2026: **não mexer agora**, integrar as APIs
+  no futuro. Enquanto isso, três coisas ficam sabidamente furadas, e quem for
+  usar o painel para decidir precisa saber:
+
+  1. **O estoque é otimista.** O saldo é "última contagem − vendido desde
+     então" (5.12), e o vendido só conta a Nuvemshop. Venda de marketplace
+     consome produto e não aparece: o painel diz que há mais do que há. É a
+     consequência mais operacional das três.
+  2. **O RBT12 é menor que o real**, e com ele a faixa e os limites do Simples
+     (5.10). A Ka Beauty apareceu a R$ 4,22 mi contando só a Nuvemshop; com os
+     outros canais, a distância do teto de R$ 4,8 mi é menor que a exibida.
+  3. **Faturamento, imposto e lucro são da NUVEMSHOP, não da empresa** — e
+     nenhuma tela diz isso hoje, por decisão do dono. Foi o que fez o DIFAL do
+     painel não bater com o do contador (5.10.1).
+
+  Ao integrar: os dois têm API própria e OAuth próprio, e o caminho é o mesmo
+  da Nuvemshop — conversão na borda para `Pedido`, cache por loja, e `marca`
+  carimbando a origem. Nenhuma regra de negócio muda (seção 3).
+
 - **Bling (ERP), se o cliente quiser.** Ele já usa o Bling ligado à Nuvemshop, e
   de lá sairia o que a API da loja não tem: **composição de kit**
   (`GET /produtos/estruturas/{id}` devolve `componentes[{produto, quantidade}]`),
