@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useMemo, useState } from "react";
+import { useActionState, useCallback, useEffect, useMemo, useState } from "react";
 
 import {
   assinarEtapa,
@@ -62,15 +62,30 @@ export function GestaoOrdens({
 }: GestaoOrdensProps) {
   const [novaAberta, setNovaAberta] = useState(false);
   /*
-   * A ordem que esta esperando VOCE ja abre expandida.
+   * Uma ordem por vez, e so a que a pessoa abriu.
    *
-   * Quem entra na tela normalmente tem uma coisa para fazer, e ela e a
-   * primeira da fila (`montarFila`). Obrigar um clique antes do formulario
-   * seria um clique para chegar no unico lugar em que a pessoa ia.
+   * Nada abre sozinho: com a fila ordenada, a primeira aberta automaticamente
+   * seria quase sempre a certa -- mas "quase sempre" numa tela que assina
+   * documento e pior que um clique.
    */
-  const [abertaId, setAbertaId] = useState<string | null>(
-    abertaPorPadrao ?? fila.find((f) => f.minha)?.ordem.id ?? null,
-  );
+  const [abertaId, setAbertaId] = useState<string | null>(abertaPorPadrao);
+  const [aviso, setAviso] = useState<string | null>(null);
+
+  /*
+   * Assinou: FECHA o cartao.
+   *
+   * Duas razoes, e a segunda e um defeito que so aparece usando. A ordem
+   * andou, entao o que estava na tela nao vale mais -- e, deixando o cartao
+   * aberto, o quadro de assinatura nao e desmontado e chega na etapa seguinte
+   * com o traco anterior ainda desenhado. Fechar resolve os dois: o proximo
+   * passo se abre com um clique, e o quadro nasce limpo.
+   */
+  // `useCallback` porque ela e dependencia de um efeito la embaixo: recriada a
+  // cada render, o efeito rodaria de novo a cada render.
+  const concluir = useCallback((mensagem: string) => {
+    setAbertaId(null);
+    setAviso(mensagem);
+  }, []);
 
   return (
     <div>
@@ -99,6 +114,13 @@ export function GestaoOrdens({
         />
       )}
 
+      {/* O aviso fica AQUI, e nao dentro do cartao: o cartao fechou. */}
+      {aviso && (
+        <p className="mb-4 rounded-lg border border-borda bg-real-claro px-4 py-3 text-sm text-real">
+          {aviso}
+        </p>
+      )}
+
       {fila.length === 0 ? (
         <p className="rounded-lg border border-dashed border-borda-forte px-4 py-8 text-center text-sm text-tinta-media">
           {totalNaBase === 0
@@ -112,9 +134,11 @@ export function GestaoOrdens({
               key={item.ordem.id}
               item={item}
               aberta={abertaId === item.ordem.id}
-              aoAbrir={() =>
-                setAbertaId((atual) => (atual === item.ordem.id ? null : item.ordem.id))
-              }
+              aoAbrir={() => {
+                setAviso(null);
+                setAbertaId((atual) => (atual === item.ordem.id ? null : item.ordem.id));
+              }}
+              aoConcluir={concluir}
               nomeDoUsuario={nomeDoUsuario}
               ehAdministrador={ehAdministrador}
               hoje={hoje}
@@ -141,6 +165,7 @@ function CartaoDeOrdem({
   item,
   aberta,
   aoAbrir,
+  aoConcluir,
   nomeDoUsuario,
   ehAdministrador,
   hoje,
@@ -148,6 +173,7 @@ function CartaoDeOrdem({
   item: OrdemNaFila;
   aberta: boolean;
   aoAbrir: () => void;
+  aoConcluir: (mensagem: string) => void;
   nomeDoUsuario: string;
   ehAdministrador: boolean;
   hoje: string;
@@ -213,6 +239,7 @@ function CartaoDeOrdem({
         <DetalheDaOrdem
           ordem={ordem}
           minha={minha}
+          aoConcluir={aoConcluir}
           nomeDoUsuario={nomeDoUsuario}
           ehAdministrador={ehAdministrador}
           hoje={hoje}
@@ -229,12 +256,14 @@ function CartaoDeOrdem({
 function DetalheDaOrdem({
   ordem,
   minha,
+  aoConcluir,
   nomeDoUsuario,
   ehAdministrador,
   hoje,
 }: {
   ordem: OrdemFabricacao;
   minha: boolean;
+  aoConcluir: (mensagem: string) => void;
   nomeDoUsuario: string;
   ehAdministrador: boolean;
   hoje: string;
@@ -275,15 +304,25 @@ function DetalheDaOrdem({
           fazer, e esconder atras de um botao seria um clique para nada. */}
       {ordem.situacao === "andamento" && ordem.etapaAtual && minha && (
         <FormularioDaEtapa
+          /* A chave inclui o passo: a ordem que anda troca de formulario, e com
+             ele o quadro de assinatura -- que nasce limpo. */
+          key={`${ordem.etapaAtual}-${ordem.passos.length}`}
           ordem={ordem}
           etapa={ordem.etapaAtual}
+          aoConcluir={aoConcluir}
           nomeDoUsuario={nomeDoUsuario}
           hoje={hoje}
         />
       )}
 
       {ordem.situacao === "revisao" && ehAdministrador && (
-        <FormularioDeRevisao ordem={ordem} nomeDoUsuario={nomeDoUsuario} hoje={hoje} />
+        <FormularioDeRevisao
+          key={`revisao-${ordem.passos.length}`}
+          ordem={ordem}
+          aoConcluir={aoConcluir}
+          nomeDoUsuario={nomeDoUsuario}
+          hoje={hoje}
+        />
       )}
 
       <HistoricoDosPassos ordem={ordem} />
@@ -386,15 +425,23 @@ function quantidadePadrao(ordem: OrdemFabricacao, etapa: EtapaOrdem, chave: stri
 function FormularioDaEtapa({
   ordem,
   etapa,
+  aoConcluir,
   nomeDoUsuario,
   hoje,
 }: {
   ordem: OrdemFabricacao;
   etapa: EtapaOrdem;
+  aoConcluir: (mensagem: string) => void;
   nomeDoUsuario: string;
   hoje: string;
 }) {
   const [estado, acao, pendente] = useActionState(assinarEtapa, ESTADO_INICIAL);
+
+  // Assinou: quem fecha o cartao e a lista, e o formulario sai da tela junto
+  // com o quadro de assinatura -- que e o que impede o traco de sobrar.
+  useEffect(() => {
+    if (estado.ok && estado.mensagem) aoConcluir(estado.mensagem);
+  }, [estado.ok, estado.mensagem, aoConcluir]);
   const [temAssinatura, setTemAssinatura] = useState(false);
   const [respostas, setRespostas] = useState<Record<string, boolean>>({});
   const [cumpre, setCumpre] = useState(true);
@@ -584,14 +631,20 @@ function FormularioDaEtapa({
 
 function FormularioDeRevisao({
   ordem,
+  aoConcluir,
   nomeDoUsuario,
   hoje,
 }: {
   ordem: OrdemFabricacao;
+  aoConcluir: (mensagem: string) => void;
   nomeDoUsuario: string;
   hoje: string;
 }) {
   const [estado, acao, pendente] = useActionState(retomarOrdem, ESTADO_INICIAL);
+
+  useEffect(() => {
+    if (estado.ok && estado.mensagem) aoConcluir(estado.mensagem);
+  }, [estado.ok, estado.mensagem, aoConcluir]);
   const [temAssinatura, setTemAssinatura] = useState(false);
   const sugerida = passoDaEtapa(ordem, "conferencia")?.conferencia?.dataPossivel;
 
