@@ -13,6 +13,7 @@ import {
   type Pedido,
 } from "@/types/nuvemshop";
 import { razaoSegura } from "@/lib/format";
+import { paraHorarioDeBrasilia } from "@/lib/nuvemshop";
 
 // ---------------------------------------------------------------------------
 // Classificacao do pedido
@@ -358,6 +359,41 @@ export function mesesDisponiveis(pedidos: Pedido[]): string[] {
 
 export function filtrarPorMes(pedidos: Pedido[], mes: string): Pedido[] {
   return pedidos.filter((p) => chaveMes(p.created_at) === mes);
+}
+
+// ---------------------------------------------------------------------------
+// O dia de hoje (5.16, "Vendas de hoje")
+// ---------------------------------------------------------------------------
+
+/** Chave de agrupamento diario "2026-09-18", pelo mesmo corte de `chaveMes`. */
+export function chaveDia(iso: string): string {
+  return iso.slice(0, 10);
+}
+
+/**
+ * Hoje em BRASILIA, na forma das chaves acima.
+ *
+ * O pedido foi pedido assim: "comecando a meia-noite", e nao as ultimas 24
+ * horas. Meia-noite de onde importa: o servidor de producao roda em UTC, entao
+ * `new Date().getDate()` la vira o dia seguinte as 21h daqui -- e o quadro de
+ * vendas de hoje zeraria no meio da noite de trabalho, tres horas antes da
+ * hora. Por isso o dia sai de `paraHorarioDeBrasilia`, a mesma funcao que
+ * reescreve a data de todo pedido na borda da API.
+ */
+export function diaDeHoje(agora: Date = new Date()): string {
+  return chaveDia(paraHorarioDeBrasilia(agora.toISOString()) ?? agora.toISOString());
+}
+
+/**
+ * Pedidos CRIADOS num dia.
+ *
+ * Como `filtrarPorMes`, compara texto com texto: em modo live o `created_at` ja
+ * esta em -03:00, entao o corte cai exatamente na meia-noite de Brasilia. Na
+ * demonstracao as datas sao UTC (nao passam pela borda), e ali o corte fica 3
+ * horas deslocado -- a mesma aproximacao que o agrupamento por mes ja tem.
+ */
+export function filtrarPorDia(pedidos: Pedido[], dia: string): Pedido[] {
+  return pedidos.filter((p) => chaveDia(p.created_at) === dia);
 }
 
 // ---------------------------------------------------------------------------

@@ -4,6 +4,7 @@ import { ContratoDoInfluencer, GestaoComissoes } from "@/components/GestaoComiss
 import { GestaoDespesasInfluencer } from "@/components/GestaoDespesasInfluencer";
 import { RodapeDemonstracao } from "@/components/RodapeDemonstracao";
 import { SeletorInfluencer, type CartaoDeInfluencer } from "@/components/SeletorInfluencer";
+import { VendasDeHoje } from "@/components/VendasDeHoje";
 
 import { obterFonteDePedidos, obterRepositorioCadastros } from "@/data";
 import { lojasNuvemshop, modoDemonstracao } from "@/lib/config";
@@ -14,7 +15,13 @@ import {
   totalComissoes,
 } from "@/lib/costing";
 import { mesAnoLongo, moedaRedonda, percentual, razaoSegura } from "@/lib/format";
-import { filtrarPorMes, mesesDisponiveis, reconciliar } from "@/lib/metrics";
+import {
+  diaDeHoje,
+  filtrarPorDia,
+  filtrarPorMes,
+  mesesDisponiveis,
+  reconciliar,
+} from "@/lib/metrics";
 import { apurarTaxasPlataforma } from "@/lib/plataforma";
 import { mesDaTela } from "@/lib/mesDaTelaServidor";
 import { exigirArea } from "@/lib/sessao";
@@ -27,11 +34,12 @@ export const dynamic = "force-dynamic";
  * primeiro do mes aberto. Calculado aqui, no servidor, e passado pronto -- no
  * navegador o "hoje" poderia cair em outro dia por causa do fuso e a
  * hidratacao reclamaria.
+ *
+ * O "hoje" vem de `diaDeHoje`, em Brasilia: o servidor de producao roda em
+ * UTC, e com o relogio dele a despesa cadastrada as 21h ja nasceria com a data
+ * de amanha.
  */
-function dataPadraoDoMes(mes: string): string {
-  const hoje = new Date();
-  const dois = (n: number) => String(n).padStart(2, "0");
-  const hojeTexto = `${hoje.getFullYear()}-${dois(hoje.getMonth() + 1)}-${dois(hoje.getDate())}`;
+function dataPadraoDoMes(mes: string, hojeTexto: string): string {
   if (!mes || hojeTexto.startsWith(mes)) return hojeTexto;
   return `${mes}-01`;
 }
@@ -69,6 +77,11 @@ export default async function PaginaInfluencers({
   const meses = mesesDisponiveis(todosOsPedidos);
   const mesSelecionado = await mesDaTela(meses, mesPedido);
   const pedidosDoMes = filtrarPorMes(todosOsPedidos, mesSelecionado);
+
+  // Hoje NAO segue o mes do cabecalho: o quadro de vendas do dia vale mesmo
+  // com julho aberto na tela.
+  const hoje = diaDeHoje();
+  const pedidosDeHoje = filtrarPorDia(todosOsPedidos, hoje);
 
   const reconciliacao = reconciliar(pedidosDoMes);
   // A base "o que cai na conta" desconta a mesma taxa que a DRE desconta.
@@ -147,6 +160,17 @@ export default async function PaginaInfluencers({
             Referência: {mesAnoLongo(mesSelecionado)}.
           </p>
         </div>
+
+        <VendasDeHoje
+          pedidos={
+            selecionado
+              ? pedidosDeHoje.filter((p) => p.marca === selecionado.marca)
+              : pedidosDeHoje
+          }
+          dia={hoje}
+          marca={selecionado?.marca ?? null}
+          porMarca={!selecionado}
+        />
 
         <Cartao
           titulo="Escolha o influencer"
@@ -251,7 +275,7 @@ export default async function PaginaInfluencers({
                     }
                     motivoSemComissao={motivoSemComissao}
                     despesas={despesasDele}
-                    dataPadrao={dataPadraoDoMes(mesSelecionado)}
+                    dataPadrao={dataPadraoDoMes(mesSelecionado, hoje)}
                   />
                 </Cartao>
               </>

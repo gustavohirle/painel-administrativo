@@ -3,10 +3,13 @@ import { describe, expect, it } from "vitest";
 import {
   agruparPorMarca,
   agruparPorMetodoPagamento,
+  chaveDia,
   chaveMes,
   classificarPedido,
   compararComissao,
+  diaDeHoje,
   evolucaoMensal,
+  filtrarPorDia,
   filtrarPorMes,
   mesesDisponiveis,
   reconciliar,
@@ -419,5 +422,56 @@ describe("base de demonstracao", () => {
     const boleto = linhas.find((l) => l.metodo === "boleto")!;
     const cartao = linhas.find((l) => l.metodo === "credit_card")!;
     expect(boleto.taxaNaoPagamento).toBeGreaterThan(cartao.taxaNaoPagamento * 3);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// O dia de hoje (5.16, "Vendas de hoje")
+// ---------------------------------------------------------------------------
+
+describe("dia de hoje", () => {
+  it("corta o dia do created_at, como chaveMes corta o mes", () => {
+    expect(chaveDia("2026-09-18T22:30:00.000-03:00")).toBe("2026-09-18");
+  });
+
+  it("le o dia em Brasilia, e nao em UTC", () => {
+    // 01:30 de 19/09 em UTC ainda e 22:30 de 18/09 aqui. Num servidor em UTC
+    // -- que e o caso da producao -- o quadro de vendas de hoje zeraria tres
+    // horas antes da meia-noite de quem esta olhando.
+    expect(diaDeHoje(new Date("2026-09-19T01:30:00.000Z"))).toBe("2026-09-18");
+    expect(diaDeHoje(new Date("2026-09-19T03:30:00.000Z"))).toBe("2026-09-19");
+  });
+
+  it("comeca a contar na meia-noite, nao nas ultimas 24 horas", () => {
+    const ontemTarde = pedido({ created_at: "2026-09-17T23:59:00.000-03:00" });
+    const logoDepoisDaMeiaNoite = pedido({ created_at: "2026-09-18T00:01:00.000-03:00" });
+    const hojeANoite = pedido({ created_at: "2026-09-18T23:59:00.000-03:00" });
+    const amanha = pedido({ created_at: "2026-09-19T00:00:00.000-03:00" });
+
+    const doDia = filtrarPorDia(
+      [ontemTarde, logoDepoisDaMeiaNoite, hojeANoite, amanha],
+      "2026-09-18",
+    );
+    expect(doDia).toEqual([logoDepoisDaMeiaNoite, hojeANoite]);
+  });
+
+  it("o valor do dia sai de reconciliar, sem conta propria", () => {
+    const doDia = filtrarPorDia(
+      [
+        pedido({ created_at: "2026-09-18T09:00:00.000-03:00", total: "100.00" }),
+        pedido({
+          created_at: "2026-09-18T10:00:00.000-03:00",
+          total: "50.00",
+          payment_status: "pending",
+          status: "open",
+        }),
+        pedido({ created_at: "2026-09-17T10:00:00.000-03:00", total: "999.00" }),
+      ],
+      "2026-09-18",
+    );
+    const r = reconciliar(doDia);
+    expect(r.quantidade.total).toBe(2);
+    expect(r.bruto).toBeCloseTo(150, 2);
+    expect(r.recebido).toBeCloseTo(100, 2);
   });
 });
