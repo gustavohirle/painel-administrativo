@@ -79,24 +79,26 @@ function iniciais(nome: string): string {
 function MenuUsuario({ usuario }: { usuario: UsuarioPublico }) {
   return (
     <div className="flex items-center gap-2 border-l border-borda pl-2 sm:gap-3 sm:pl-3">
-      <div
-        className="hidden text-right sm:block"
-        title={`${usuario.nome} -- ${ROTULO_PERFIL[usuario.perfil]}`}
+      <Link
+        href="/conta"
+        className="hidden rounded-lg px-2 py-1 text-right transition-colors hover:bg-fundo sm:block"
+        title={`${usuario.nome} -- ${ROTULO_PERFIL[usuario.perfil]}. Abrir minha conta.`}
       >
         <p className="text-sm font-semibold leading-tight text-tinta">
           {usuario.nome}
         </p>
         <p className="text-xs leading-tight text-tinta-fraca">
-          {ROTULO_PERFIL[usuario.perfil]}
+          {ROTULO_PERFIL[usuario.perfil]} · minha conta
         </p>
-      </div>
+      </Link>
       {/* No celular so as iniciais: o nome inteiro empurrava o Sair para outra linha. */}
-      <span
-        title={`${usuario.nome} -- ${ROTULO_PERFIL[usuario.perfil]}`}
+      <Link
+        href="/conta"
+        title={`${usuario.nome} -- ${ROTULO_PERFIL[usuario.perfil]}. Abrir minha conta.`}
         className="flex h-8 w-8 items-center justify-center rounded-full bg-fundo text-xs font-bold text-tinta-media sm:hidden"
       >
         {iniciais(usuario.nome)}
-      </span>
+      </Link>
       <form action={sair}>
         <button
           type="submit"

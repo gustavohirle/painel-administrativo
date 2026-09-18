@@ -9,6 +9,16 @@
 
 export type PerfilUsuario = "dono" | "estoque";
 
+/**
+ * Minimo para senha de painel financeiro exposto na internet.
+ *
+ * Mora aqui, e nao em `lib/usuarios.ts`, porque o formulario e componente de
+ * NAVEGADOR: importar de la traria `data/seeds` junto, e com ele o
+ * `node:crypto` -- o build quebra com "Reading from node:util is not handled".
+ * Tipo e constante sem dependencia viajam para os dois lados.
+ */
+export const TAMANHO_MINIMO_SENHA = 10;
+
 export interface Usuario {
   id: string;
   nome: string;
@@ -92,14 +102,14 @@ export function areasDoPerfil(perfil: PerfilUsuario): Area[] {
 }
 
 export const ROTULO_PERFIL: Record<PerfilUsuario, string> = {
-  dono: "Dono",
-  estoque: "Estoque e produtos",
+  dono: "Administrador",
+  estoque: "Produção",
 };
 
 export const DESCRICAO_PERFIL: Record<PerfilUsuario, string> = {
-  dono: "Vê o painel inteiro, incluindo faturamento, custos, comissões e lucro.",
+  dono: "Vê o painel inteiro, incluindo faturamento, comissões, lucro e o cadastro de usuários.",
   estoque:
-    "Cadastra produtos e registra contagens de estoque. Não vê nenhum valor financeiro.",
+    "Produtos, kits, ordens de fabricação, estoque e custo de fabricação. Não vê faturamento, comissão, margem nem lucro.",
 };
 
 /** Rota inicial de cada perfil apos o login. */

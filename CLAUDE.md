@@ -1051,6 +1051,50 @@ Quatro decisoes:
 O IP vem de `origemDaRequisicao` (`x-forwarded-for`), que so vale porque ha um
 nginx confiavel na frente (secao 14). Sem IP, sobra a conta por login.
 
+### 5.13.2 Cadastro de usuarios (`/usuarios` e `/conta`)
+
+Dois perfis, e so dois, por decisao do cliente: **Administrador** (`dono`) vê
+tudo, inclusive o cadastro de usuários; **Produção** (`estoque`) vê produtos,
+kits, ordens, estoque e custo de fabricação. Os valores gravados continuam
+`dono` e `estoque` — trocar o que está no banco quebraria as sessões abertas e
+os registros existentes; só os rótulos mudaram.
+
+`/usuarios` é da área `usuarios`. `/conta` é a **única tela sem área**: quem
+está logado entra, inclusive a produção, porque trocar a própria senha não pode
+depender de pedir a alguém.
+
+As travas vivem em `lib/usuarios.ts`, puras e com teste, e rodam **no
+servidor**, dentro de cada action — desabilitar botão no navegador não impede
+nada:
+
+1. **Sempre sobra um administrador ativo.** Sem isso, um clique tira de todo
+   mundo o acesso ao cadastro, para sempre: só mexendo no banco na mão.
+2. **Ninguém se remove nem se rebaixa.** O caminho é outra pessoa fazer, e o
+   engano continua reversível.
+3. **Senha de pelo menos 10 caracteres**, nunca uma das publicadas aqui
+   (`dono123`, `estoque123`), nunca igual ao login, nunca só números.
+4. **Trocar a própria senha exige a senha atual.** Computador deixado aberto na
+   fábrica, sem isso, é conta tomada.
+
+**Desativar ≠ remover**, e a tela diz isso: desativado não entra e o login
+continua reservado; removido some. A saída de uma pessoa da empresa quase
+sempre é o primeiro caso.
+
+Três detalhes que já cobraram tempo:
+
+- **A página monta `UsuarioNaTela`, sem hash e sem sal.** Passar o registro
+  inteiro para o componente publicaria o hash da senha no HTML — é o acidente
+  clássico desta tela.
+- **`TAMANHO_MINIMO_SENHA` mora em `types/usuario.ts`, não em `lib/usuarios.ts`.**
+  O formulário é componente de navegador; importar do `lib` traz
+  `data/seeds` junto, e com ele o `node:crypto` — o build quebra com
+  "Reading from node:util is not handled".
+- **Trocar a senha de alguém não derruba a sessão aberta dele**: o cookie é
+  assinado e só expira. Está escrito na tela para ninguém supor o contrário.
+
+O `fumaca` entende `null` em `AREA_DA_ROTA` como "qualquer pessoa logada", que
+é o caso do `/conta`.
+
 ### 5.13.1 Taxa da plataforma e do meio de pagamento
 
 O que a Nuvemshop e o gateway retêm de cada venda. **Não é tributo**, e a

@@ -78,6 +78,9 @@ const AREA_DA_ROTA = {
   "/kits": "produtos",
   "/ordens": "produtos",
   "/estoque": "estoque",
+  "/usuarios": "usuarios",
+  // Minha conta: sem area, qualquer pessoa logada entra.
+  "/conta": null,
 };
 
 // Espelha PERMISSOES de src/types/usuario.ts.
@@ -139,6 +142,13 @@ for (const perfil of Object.keys(PERMISSOES)) {
 
   for (const rota of rotasDoProjeto()) {
     const area = AREA_DA_ROTA[rota];
+    if (area === null) {
+      const { status, estourou } = await visitar(rota, perfil);
+      const ok = status === 200 && !estourou;
+      console.log(`  ${ok ? "ok" : "x "} ${rota.padEnd(12)} ${status} (qualquer perfil)`);
+      if (!ok) falhas.push(`${perfil} ${rota}: esperado 200, veio ${status}`);
+      continue;
+    }
     if (!area) {
       console.log(`  ?  ${rota.padEnd(12)} rota nova -- acrescente em AREA_DA_ROTA`);
       falhas.push(`${rota}: sem area declarada em scripts/fumaca.mjs`);
