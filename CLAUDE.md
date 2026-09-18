@@ -2333,6 +2333,36 @@ Quatro decisões do script:
 servidor: o script roda como `root` numa pasta do usuário `painel`, e sem isso
 o git recusa ("dubious ownership").
 
+### Deploy automático: o servidor olha o GitHub
+
+`painel-auto-deploy.timer`, **de 3 em 3 minutos**: `git fetch`, compara
+`HEAD` com `origin/main` e, se chegou coisa nova, roda o mesmo
+`atualizar.sh` do `npm run deploy`.
+
+Existe porque o `npm run deploy` precisa da chave SSH e do `.env.servidor`,
+que não vão para o git — de outro computador, publicar exigiria instalar chave
+antes. Com o timer, **`git push` é o deploy**, de onde quer que o commit
+saia. O `npm run deploy` continua valendo para quem quer publicar na hora,
+sem esperar os 3 minutos.
+
+O resultado chega por e-mail, com o commit no assunto (senão a trava de 6
+horas do aviso engoliria o segundo deploy do dia):
+
+| Situação | Assunto |
+|---|---|
+| Publicou | `publicado <commit>` |
+| `prisma/schema.prisma` mudou | `deploy parado em <commit>: o banco mudou` — o painel fica na versão anterior até alguém rodar `npm run deploy -- --banco` |
+| Build ou conferência falhou | `deploy FALHOU em <commit>` — o `atualizar.sh` já voltou para o build e o commit anteriores |
+
+**Consequência assumida: o que for para a `main` vai para o ar.** Trabalho pela
+metade fica em outro ramo. Para desligar por um tempo — mexer no servidor na
+mão, por exemplo:
+
+```bash
+ssh -i ~/.ssh/gustavo_battlehost root@188.220.168.188 'touch /opt/painel/sem-auto-deploy'
+# apagar o arquivo religa
+```
+
 ### Endurecimento do servidor (17/09/2026)
 
 Feito depois de o painel entrar no ar, com o motivo de cada item:
