@@ -780,6 +780,25 @@ marcado no produto novo"** (`idsMarcadosPorPadrao`): no Lucro Presumido, os que
 dependem do NCM — ICMS, ICMS-ST e IPI. PIS e COFINS nascem desmarcados e valem
 assim que alguém os marcar.
 
+**A aba mostra dois regimes, não três.** O Lucro Real saiu a pedido do
+cliente (17/09/2026): nenhuma marca dele está nesse regime, e a terceira seção
+só embaralhava a leitura das duas que importam. O tipo `RegimeTributario`
+continua com os três — o cadastro do influencer ainda aceita —, mas a tela
+recusa mostrar o que não se usa:
+
+- cada regime é um **bloco fechado**, com borda de duas marcas, faixa de título
+  colorida (verde no Simples, roxo no Presumido) e espaço entre um e outro.
+  Antes eram títulos com um traço embaixo e tabelas correndo uma atrás da
+  outra: dava para ler a linha do Presumido achando que era do Simples, e a
+  conta de um regime não vale no outro;
+- tributo que só valia no Lucro Real (PIS e COFINS não cumulativos) não some:
+  fica num bloco recolhido no fim, dizendo que continua cadastrado e não entra
+  em conta nenhuma;
+- marca em regime que a tela não mostra vira **aviso em vermelho** no topo, com
+  o nome dela — senão os produtos dela ficariam sem tributo marcado e ninguém
+  veria por quê;
+- a nota "vale também em" cita só os regimes exibidos.
+
 **Tributo do regime que está inativo não some em silêncio.** Ele volta em
 `inativosDoRegime` e a tela diz "o ICMS não está nesta conta", em vez de exibir
 um total menor sem explicar por quê.

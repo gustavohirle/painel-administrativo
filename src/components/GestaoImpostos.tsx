@@ -7,11 +7,29 @@ import { inteiro, moeda, percentual } from "@/lib/format";
 import { ESTADO_INICIAL } from "@/types/formulario";
 import type { EsferaImposto, Imposto, RegimeTributario } from "@/types/fiscal";
 
-const REGIMES: RegimeTributario[] = [
-  "simples_nacional",
-  "lucro_presumido",
-  "lucro_real",
-];
+/*
+ * Regimes que esta tela mostra. O Lucro Real saiu a pedido do cliente: nenhuma
+ * marca dele esta nesse regime, e a terceira secao so embaralhava a leitura
+ * das duas que importam. Tributo que so valia la aparece recolhido no fim da
+ * pagina, para nao sumir em silencio -- e o tipo continua existindo, porque o
+ * cadastro do influencer ainda aceita.
+ */
+const REGIMES: RegimeTributario[] = ["simples_nacional", "lucro_presumido"];
+
+/** Cor de identidade de cada secao, para os blocos nao se confundirem. */
+const COR_DO_REGIME: Record<RegimeTributario, { faixa: string; borda: string; texto: string }> = {
+  simples_nacional: {
+    faixa: "bg-real-claro",
+    borda: "border-real",
+    texto: "text-real",
+  },
+  lucro_presumido: {
+    faixa: "bg-[#ede9fe]",
+    borda: "border-imposto",
+    texto: "text-imposto",
+  },
+  lucro_real: { faixa: "bg-fundo", borda: "border-borda-forte", texto: "text-tinta" },
+};
 
 const ROTULO_REGIME: Record<RegimeTributario, string> = {
   simples_nacional: "Simples Nacional",
@@ -96,8 +114,16 @@ export function GestaoImpostos({
 
   const semRegime = impostos.filter((i) => i.regimes.length === 0);
 
+  // So no Lucro Real: sem secao na tela desde que o regime saiu daqui.
+  const soNoLucroReal = impostos.filter(
+    (i) => i.regimes.length > 0 && !i.regimes.some((r) => REGIMES.includes(r)),
+  );
+
+  // Marca em regime que a tela nao mostra mais: aviso, nao silencio.
+  const foraDaTela = operacoes.filter((o) => !REGIMES.includes(o.regime));
+
   return (
-    <div className="space-y-7">
+    <div className="space-y-8">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <p className="max-w-3xl text-sm leading-relaxed text-tinta-media">
           Estes são os tributos que podem incidir sobre um produto. Cada um vale
@@ -116,6 +142,15 @@ export function GestaoImpostos({
 
       {editando === "novo" && (
         <FormularioImposto imposto={null} aoFechar={() => setEditando(null)} />
+      )}
+
+      {foraDaTela.length > 0 && (
+        <p className="rounded-lg border border-alerta-borda bg-alerta-fundo px-4 py-3 text-sm text-naopago">
+          {foraDaTela.map((o) => `${o.marca} (${o.nome})`).join(", ")}{" "}
+          {foraDaTela.length === 1 ? "está" : "estão"} no Lucro Real, que esta tela
+          não mostra mais. Os produtos dessas marcas ficam sem tributo marcado —
+          troque o regime no cadastro do influencer.
+        </p>
       )}
 
       {REGIMES.map((regime) => (
@@ -142,6 +177,27 @@ export function GestaoImpostos({
           setEditando={setEditando}
         />
       )}
+
+      {/*
+        Tributo que so valia no Lucro Real nao pode evaporar junto com a secao:
+        ele continua no cadastro, e um dia alguem procura por ele. Fica
+        recolhido, fechado, com o motivo escrito.
+      */}
+      {soNoLucroReal.length > 0 && (
+        <details className="rounded-xl border border-borda bg-fundo px-4 py-3">
+          <summary className="cursor-pointer text-sm font-semibold text-tinta-media">
+            {soNoLucroReal.length} tributo(s) que só valiam no Lucro Real
+          </summary>
+          <p className="mt-2 text-sm leading-relaxed text-tinta-media">
+            Continuam cadastrados e não entram em conta nenhuma, porque nenhuma
+            marca está nesse regime:{" "}
+            <strong className="text-tinta">
+              {soNoLucroReal.map((i) => i.sigla).join(", ")}
+            </strong>
+            .
+          </p>
+        </details>
+      )}
     </div>
   );
 }
@@ -166,14 +222,30 @@ function SecaoDoRegime({
   setEditando: (chave: string | null) => void;
 }) {
   const chaveDaSecao = regime ?? "sem";
+  const cor = regime
+    ? COR_DO_REGIME[regime]
+    : { faixa: "bg-fundo", borda: "border-borda-forte", texto: "text-tinta-media" };
+
+  /*
+   * Cada regime e um BLOCO fechado, com borda e faixa de titulo propria.
+   *
+   * Antes as secoes eram so um titulo com um traco embaixo, e as tabelas
+   * corriam uma atras da outra: na tela grande dava para ler a linha do
+   * Presumido achando que era do Simples. A borda de duas marcas de espessura,
+   * a faixa colorida e o espaco entre os blocos existem para isso -- a conta
+   * de um regime nao vale no outro, e a tela precisa dizer isso antes de
+   * alguem ler o numero.
+   */
   return (
-    <section>
-      <div className="mb-3 border-b border-borda-forte pb-2">
-        <div className="flex flex-wrap items-baseline justify-between gap-3">
-          <h3 className="text-base font-semibold text-tinta">
+    <section
+      className={`overflow-hidden rounded-xl border-2 ${cor.borda} bg-superficie shadow-[0_1px_2px_rgba(16,24,40,0.05)]`}
+    >
+      <div className={`border-b-2 ${cor.borda} ${cor.faixa} px-4 py-4 sm:px-6`}>
+        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+          <h3 className={`text-lg font-semibold ${cor.texto} xl:text-xl`}>
             {regime ? ROTULO_REGIME[regime] : "Sem regime definido"}
           </h3>
-          <p className="text-sm text-tinta-media">
+          <p className="text-sm font-medium text-tinta-media">
             {regime === null
               ? "Não entram em nenhum cálculo enquanto não tiverem regime."
               : marcas.length === 0
@@ -182,18 +254,18 @@ function SecaoDoRegime({
           </p>
         </div>
         {regime && (
-          <p className="mt-1 max-w-4xl text-xs leading-relaxed text-tinta-fraca">
+          <p className="mt-2 max-w-4xl text-xs leading-relaxed text-tinta-media">
             {NOTA_DO_REGIME[regime]}
           </p>
         )}
       </div>
 
       {impostos.length === 0 ? (
-        <p className="py-4 text-sm text-tinta-media">
+        <p className="px-4 py-5 text-sm text-tinta-media sm:px-6">
           Nenhum imposto cadastrado para este regime.
         </p>
       ) : (
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto px-4 pb-2 sm:px-6">
           <table className="tabela-ancorada w-full min-w-[900px] border-collapse text-sm">
             <thead>
               <tr className="border-b border-borda text-left text-xs uppercase tracking-wider text-tinta-fraca">
@@ -233,15 +305,20 @@ function SecaoDoRegime({
                           </span>
                         </p>
                         <p className="text-xs text-tinta-fraca">{imposto.nome}</p>
-                        {imposto.regimes.length > 1 && regime && (
-                          <p className="mt-0.5 text-xs text-tinta-fraca">
-                            vale também em{" "}
-                            {imposto.regimes
-                              .filter((r) => r !== regime)
-                              .map((r) => ROTULO_REGIME_CURTO[r])
-                              .join(", ")}
-                          </p>
-                        )}
+                        {/* So os regimes que a tela mostra: citar o Lucro Real
+                            aqui traria de volta o que saiu da pagina. */}
+                        {regime &&
+                          imposto.regimes.some(
+                            (r) => r !== regime && REGIMES.includes(r),
+                          ) && (
+                            <p className="mt-0.5 text-xs text-tinta-fraca">
+                              vale também em{" "}
+                              {imposto.regimes
+                                .filter((r) => r !== regime && REGIMES.includes(r))
+                                .map((r) => ROTULO_REGIME_CURTO[r])
+                                .join(", ")}
+                            </p>
+                          )}
                       </td>
 
                       <td className="numerico py-3 pr-4 text-right font-semibold text-tinta">
