@@ -9,20 +9,25 @@
  *
  * Tres decisoes que valem ser lidas antes de mexer aqui:
  *
- * 1. A base e o RECEBIDO, COM o frete cobrado do cliente. Pedido cancelado nao
- *    gera receita tributavel, e boleto nunca pago tambem nao, no regime de
- *    caixa -- mas o frete entra.
+ * 1. A base e o FATURADO: o valor de TODO pedido criado no mes, com o frete
+ *    cobrado do cliente, pago ou nao. Vale para TODO tributo -- DAS, PIS,
+ *    COFINS, ICMS, IRPJ, CSLL e DIFAL -- e para o RBT12, entao a faixa do
+ *    Simples acompanha.
  *
- *    Mudou em 18/09/2026, a pedido do dono, e vale para TODO tributo: DAS,
- *    PIS, COFINS, ICMS, IRPJ, CSLL e DIFAL. Na legislacao o frete cobrado do
- *    destinatario integra a base do ICMS, do PIS/COFINS e a receita bruta do
- *    Simples; ate aqui o painel o deixava de fora, e o imposto saia ~15%
- *    abaixo do que pode ser devido. O RBT12 acompanha, entao a faixa do
- *    Simples tambem sobe.
+ *    Duas decisoes do dono, no mesmo dia (18/09/2026): primeiro o frete
+ *    entrou na base (na legislacao o frete cobrado do destinatario integra a
+ *    base do ICMS, do PIS/COFINS e a receita bruta do Simples), depois a base
+ *    passou do recebido para o faturado.
+ *
+ *    RESSALVA REGISTRADA: pedido cancelado e boleto nunca pago normalmente
+ *    nao geram nota nem saida de mercadoria, e tributa-los cobra imposto de
+ *    venda que nao aconteceu. O painel passa a superestimar o imposto nessa
+ *    medida. Foi dito ao dono e ele manteve a decisao -- so mude de volta se
+ *    ele pedir.
  *
  *    A COMISSAO do influencer NAO acompanhou: ela continua sobre o que cai na
- *    conta, sem frete (5.1.2). Sao duas decisoes separadas do dono, e mexer
- *    numa nao autoriza mexer na outra.
+ *    conta, sem frete (5.1.2). Sao decisoes separadas, e mexer numa nao
+ *    autoriza mexer na outra.
  *
  * 2. O que esta DENTRO do DAS nunca soma no total. A guia unica ja e um valor
  *    fechado; a quebra por tributo existe so para leitura.
@@ -43,7 +48,7 @@ import { REGIME_SEM_INFLUENCER } from "@/lib/config";
 import { chaveProduto, type ChaveProduto, type Produto } from "@/types/produto";
 import { razaoSegura } from "@/lib/format";
 import { apurarDifal, somarDifal, type ResultadoDifal } from "@/lib/difal";
-import { chaveMes, pedidosRecebidos, reconciliar } from "@/lib/metrics";
+import { chaveMes, reconciliar } from "@/lib/metrics";
 import {
   apurarSimples,
   monitorarTeto,
@@ -182,8 +187,8 @@ export function calcularRBT12(
 
   const meses = [...porMes.keys()].sort((a, b) => b.localeCompare(a)).slice(0, 12);
   const soma = meses.reduce(
-    // Recebido COM frete, a mesma base do imposto do mes (decisao 1).
-    (total, mes) => total + reconciliar(porMes.get(mes)!).recebido,
+    // Faturado COM frete, a mesma base do imposto do mes (decisao 1).
+    (total, mes) => total + reconciliar(porMes.get(mes)!).bruto,
     0,
   );
 
@@ -325,7 +330,8 @@ function receitaPorImposto(
 ): Map<string, number> {
   const mapa = new Map<string, number>();
 
-  for (const pedido of pedidosRecebidos(pedidos)) {
+  // TODO pedido criado, pago ou nao: a base e o faturado (decisao 1).
+  for (const pedido of pedidos) {
     for (const { item, base } of basesDosItens(pedido)) {
       const produto = produtoDoItem(indice, item.product_id, item.variant_id);
       if (!produto) continue;
@@ -353,8 +359,9 @@ function apurarGrupo(
   impostos: Imposto[],
   aliquotasEstaduais: AliquotaEstado[],
 ): ApuracaoDeUmInfluencer {
-  // Recebido COM o frete cobrado do cliente (decisao 1 no topo).
-  const baseReceita = reconciliar(pedidosDoMes).recebido;
+  // Faturado: todo pedido criado, com o frete (decisao 1 no topo).
+  const r = reconciliar(pedidosDoMes);
+  const baseReceita = r.bruto;
   const doRegime = impostosDoRegime(impostos, fiscal.regime);
   const porImposto = receitaPorImposto(pedidosDoMes, indice);
 
@@ -539,9 +546,10 @@ export function apurarImpostos(
   let receitaComCadastro = 0;
   const semCadastro = new Set<number>();
 
-  // Mesma base do tributo por produto, frete rateado incluido: senao a
-  // "receita sem cadastro fiscal" declararia uma lacuna menor do que a real.
-  for (const pedido of pedidosRecebidos(pedidosDoMes)) {
+  // Mesma base do tributo por produto -- todo pedido criado, frete rateado
+  // incluido: senao a "receita sem cadastro fiscal" declararia uma lacuna
+  // menor do que a real.
+  for (const pedido of pedidosDoMes) {
     for (const { item, base } of basesDosItens(pedido)) {
       const produto = produtoDoItem(indice, item.product_id, item.variant_id);
 

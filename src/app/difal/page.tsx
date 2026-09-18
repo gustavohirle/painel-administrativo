@@ -81,8 +81,8 @@ export default async function PaginaDifal({
             Na venda interestadual ao consumidor final, a diferença entre a
             alíquota interna do estado de destino e a interestadual vai para
             aquele estado. O painel calcula isso pedido a pedido, pelo endereço
-            de entrega, sobre o valor do pedido <strong>com o frete</strong>, e
-            soma no custo tributário. Referência:{" "}
+            de entrega, sobre o valor do pedido <strong>com o frete</strong> —
+            pago ou não —, e soma no custo tributário. Referência:{" "}
             {mesAnoLongo(mesSelecionado)}.
           </p>
         </div>
@@ -106,13 +106,13 @@ export default async function PaginaDifal({
           <NumeroDestaque
             rotulo="DIFAL no mês"
             valor={moedaRedonda(difal.total)}
-            apoio={`${percentual(difal.cargaSobreBase)} do valor vendido, com o frete`}
+            apoio={`${percentual(difal.cargaSobreBase)} do faturado, com o frete`}
             cor="var(--color-imposto)"
           />
           <NumeroDestaque
             rotulo="Base interestadual"
             valor={moedaRedonda(difal.baseInterestadual)}
-            apoio="Venda para fora do estado, com o frete cobrado do cliente"
+            apoio="Venda para fora do estado, com frete, paga ou não"
           />
           <NumeroDestaque
             rotulo="Venda dentro do estado"

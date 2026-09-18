@@ -16,17 +16,15 @@
  *    o STF suspendeu a exigencia na ADI 5464. Como o regime aqui e por
  *    influencer, isso sai de graca: marca no Simples fica fora da conta.
  *
- * 3. A base e o valor da operacao COM O FRETE cobrado do cliente -- o
- *    faturamento do pedido pago, inteiro. Mudou em 18/09/2026, a pedido do
- *    dono: na legislacao o frete cobrado do destinatario integra a base do
- *    ICMS, e tira-lo deixava o DIFAL do painel ~15% abaixo do devido.
+ * 3. A base e o FATURADO: o valor de TODO pedido criado, com o frete cobrado
+ *    do cliente, pago ou nao. Decisao do dono em 18/09/2026, a mesma dos
+ *    demais tributos (5.1.1) -- DAS, PIS, COFINS, ICMS, IRPJ e CSLL usam esta
+ *    base. Fora dela fica so a COMISSAO do influencer, que segue sobre o que
+ *    cai na conta sem frete (5.1.2).
  *
- *    Vale para TODO tributo desde a mesma data (5.1.1): DAS, PIS, COFINS,
- *    ICMS, IRPJ e CSLL usam a mesma base. Fora dela fica so a COMISSAO do
- *    influencer, que segue sobre o que cai na conta sem frete (5.1.2).
- *
- *    Continua de fora o que nao virou dinheiro: boleto nunca pago, cancelado e
- *    reembolsado, que normalmente nao geram nota nem saida de mercadoria.
+ *    Isso inclui pedido cancelado e boleto nunca pago, que normalmente nao
+ *    geram nota nem saida de mercadoria: o numero fica acima do devido nessa
+ *    medida. A ressalva foi dita ao dono, que manteve a decisao.
  *
  *    A apuracao real ainda usa base dupla (o imposto entra na propria base),
  *    o que aumenta um pouco o valor devido -- este painel NAO faz o gross-up,
@@ -37,14 +35,13 @@ import { paraNumero, type Pedido } from "@/types/nuvemshop";
 import type { AliquotaEstado } from "@/types/fiscal";
 import { aliquotaInterestadual, nomeDoEstado, normalizarUF } from "@/types/estados";
 import { razaoSegura } from "@/lib/format";
-import { pedidosRecebidos } from "@/lib/metrics";
 
 export interface LinhaEstado {
   uf: string;
   nome: string;
-  /** Quantos pedidos recebidos foram para este estado. */
+  /** Quantos pedidos criados foram para este estado, pagos ou nao. */
   pedidos: number;
-  /** Base do DIFAL deste estado: o total dos pedidos pagos, COM o frete. */
+  /** Base do DIFAL deste estado: o total dos pedidos criados, COM o frete. */
   base: number;
   /** Aliquota interna cadastrada, em percentual. */
   aliquotaInterna: number;
@@ -105,8 +102,7 @@ export function apurarDifal(
   ufOrigem: string,
   recolheDifal = true,
 ): ResultadoDifal {
-  const recebidos = pedidosRecebidos(pedidos);
-  if (recebidos.length === 0) return VAZIO(ufOrigem);
+  if (pedidos.length === 0) return VAZIO(ufOrigem);
 
   const porUF = new Map(aliquotas.map((a) => [a.uf.toUpperCase(), a]));
   const origem = ufOrigem.toUpperCase();
@@ -120,9 +116,8 @@ export function apurarDifal(
   let baseSemEstado = 0;
   let pedidosSemEstado = 0;
 
-  for (const pedido of recebidos) {
-    // O total do pedido, COM o frete: o frete cobrado do cliente integra a
-    // base do ICMS (regra 3 no topo). E o unico tributo do painel assim.
+  for (const pedido of pedidos) {
+    // O total do pedido, COM o frete, pago ou nao (regra 3 no topo).
     const valor = paraNumero(pedido.total);
     const uf = normalizarUF(pedido.shipping_address?.province);
 

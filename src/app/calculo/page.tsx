@@ -143,8 +143,8 @@ export default async function PaginaCalculo({
             )}
             apoio={
               item === "difal"
-                ? `Venda para fora de ${resultado.difal.ufOrigem}, com o frete`
-                : "O recebido das marcas, com o frete cobrado do cliente"
+                ? `Venda para fora de ${resultado.difal.ufOrigem}, com frete, paga ou não`
+                : "O faturado das marcas, com o frete e com o não pago"
             }
           />
         </div>
@@ -180,12 +180,16 @@ function MarcaImpostos({ marca }: { marca: MemoriaDaMarca }) {
       titulo={`${marca.marca} — ${moeda(marca.total)}`}
       descricao={`${marca.semInfluencer ? "Sem influencer cadastrado" : marca.nome} · ${ROTULO_REGIME[marca.regime]}`}
     >
-      {/* De onde vem a base do imposto: o recebido, com o frete dentro. */}
+      {/* A base do imposto e o faturado inteiro; as duas linhas da direita
+          dizem o que esta dentro dele e costuma surpreender. */}
       <dl className="grid gap-x-6 gap-y-3 text-sm sm:grid-cols-4">
-        <Par rotulo="Faturamento bruto" valor={moeda(marca.bruto)} />
-        <Par rotulo="− Não pago, cancelado e reembolsado" valor={moeda(marca.bruto - marca.recebido)} />
-        <Par rotulo="= Base do imposto (com frete)" valor={moeda(marca.baseDoImposto)} forte />
+        <Par rotulo="Base do imposto: faturamento bruto" valor={moeda(marca.baseDoImposto)} forte />
         <Par rotulo="dos quais, frete" valor={moeda(marca.frete)} />
+        <Par
+          rotulo="dos quais, não pago ou cancelado"
+          valor={moeda(marca.bruto - marca.recebido)}
+        />
+        <Par rotulo="Recebido (referência)" valor={moeda(marca.recebido)} />
       </dl>
 
       {marca.passos.length === 0 ? (
@@ -248,7 +252,7 @@ function ComoABase({ passo }: { passo: PassoDoImposto }) {
   if (o.tipo === "das") {
     return (
       <>
-        Guia única do Simples sobre o recebido do mês, com frete. Alíquota efetiva pela receita de 12
+        Guia única do Simples sobre o faturado do mês, com frete. Alíquota efetiva pela receita de 12
         meses ({moeda(o.rbt12)}
         {o.rbt12Projetado ? ", projetada" : ""}): faixa {o.faixa}, nominal {aliquota(o.aliquotaNominal)}.
       </>
@@ -257,7 +261,7 @@ function ComoABase({ passo }: { passo: PassoDoImposto }) {
   if (o.tipo === "lucro") {
     return (
       <>
-        Lucro presumido: {aliquota(o.presuncao)} × recebido {moeda(o.baseDoImposto)}
+        Lucro presumido: {aliquota(o.presuncao)} × faturado {moeda(o.baseDoImposto)}
         {o.deducao > 0 ? ` − dedução de ${moeda(o.deducao)} por mês` : ""}. Vale para a marca
         inteira, não por produto.
       </>
@@ -267,7 +271,7 @@ function ComoABase({ passo }: { passo: PassoDoImposto }) {
     <>
       Receita dos produtos com {passo.sigla} marcado ({inteiro(o.produtosMarcados)} de{" "}
       {inteiro(o.produtosDaMarca)} produtos da marca)
-      {o.baseDoImposto > 0 ? `: ${percentual(passo.base / o.baseDoImposto)} do recebido` : ""}.
+      {o.baseDoImposto > 0 ? `: ${percentual(passo.base / o.baseDoImposto)} do faturado` : ""}.
     </>
   );
 }
@@ -277,7 +281,7 @@ function DifalPorMarca({ marcas, ufOrigem }: { marcas: MemoriaDaMarca[]; ufOrige
     <>
       <Cartao
         titulo="A conta"
-        descricao="Por pedido recebido, pelo estado de entrega."
+        descricao="Por pedido criado, pelo estado de entrega."
       >
         <p className="numerico rounded-lg bg-fundo px-4 py-3 text-sm text-tinta">
           DIFAL = valor do pedido (com o frete) × (alíquota interna do destino − alíquota interestadual)

@@ -265,7 +265,9 @@ describe("calcularRBT12", () => {
     expect(r.valor).toBeCloseTo(1_200, 6); // media 100 x 12
   });
 
-  it("soma apenas o recebido -- pedido nao pago nao e receita tributavel", () => {
+  it("soma o FATURADO, inclusive o que nao foi pago", () => {
+    // Era o recebido ate 18/09/2026; o dono mandou usar o faturado, e o RBT12
+    // segue a base do imposto do mes (5.1.1). Um mes de historico projeta x12.
     const pedidos = [
       pedido({ created_at: "2026-09-01T12:00:00.000Z", total: "100.00" }),
       pedido({
@@ -274,7 +276,7 @@ describe("calcularRBT12", () => {
         payment_status: "pending",
       }),
     ];
-    expect(calcularRBT12(pedidos, null).valor).toBeCloseTo(1_200, 6);
+    expect(calcularRBT12(pedidos, null).valor).toBeCloseTo(12_000, 6);
   });
 });
 
@@ -283,7 +285,7 @@ describe("calcularRBT12", () => {
 // ---------------------------------------------------------------------------
 
 describe("apurarImpostos", () => {
-  it("calcula o DAS sobre o recebido, nao sobre o faturado", () => {
+  it("calcula o DAS sobre o FATURADO, inclusive o pedido nao pago", () => {
     const pedidos = [
       pedido({ total: "1000.00" }),
       pedido({ total: "1000.00", payment_status: "pending" }),
@@ -298,8 +300,8 @@ describe("apurarImpostos", () => {
     );
 
     const marca = r.porInfluencer[0]!;
-    expect(marca.baseReceita).toBe(1000);
-    expect(marca.simples?.valorDAS).toBeCloseTo(89.5, 6); // 8,95% de 1000
+    expect(marca.baseReceita).toBe(2000);
+    expect(marca.simples?.valorDAS).toBeCloseTo(179, 6); // 8,95% de 2000
   });
 
   it("o frete cobrado do cliente entra na base de TODO tributo", () => {

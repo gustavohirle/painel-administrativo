@@ -210,9 +210,8 @@ describe("apurarDifal", () => {
 
   it("poe o frete cobrado do cliente DENTRO da base", () => {
     // Decisao do dono em 18/09/2026: na legislacao o frete cobrado do
-    // destinatario integra a base do ICMS. E a unica conta do painel em que o
-    // frete entra na base de um tributo -- os demais impostos seguem sobre a
-    // receita real, sem frete (5.1.1).
+    // destinatario integra a base do ICMS. Vale para todo tributo do painel
+    // (5.1.1); so a comissao do influencer segue sem frete (5.1.2).
     const r = apurarDifal(
       [pedido("SP", { total: "1100.00", shipping_cost_customer: "100.00" })],
       TODAS,
@@ -225,13 +224,16 @@ describe("apurarDifal", () => {
     expect(r.total).toBeCloseTo(66, 6);
   });
 
-  it("conta so pedidos recebidos", () => {
+  it("conta TODO pedido criado, pago ou nao", () => {
+    // Decisao do dono em 18/09/2026: a base e o faturado. Boleto nao pago e
+    // pedido cancelado entram, embora normalmente nao gerem nota -- a
+    // ressalva esta registrada em 5.1.1 e no topo de difal.ts.
     const pedidos = [
       pedido("SP"),
       pedido("SP", { payment_status: "pending" }),
       pedido("SP", { status: "cancelled" }),
     ];
-    expect(apurarDifal(pedidos, TODAS, "GO").baseInterestadual).toBe(1000);
+    expect(apurarDifal(pedidos, TODAS, "GO").baseInterestadual).toBe(3000);
   });
 
   it("declara os pedidos sem estado identificado", () => {

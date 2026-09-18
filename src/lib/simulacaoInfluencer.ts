@@ -64,9 +64,9 @@ import type { Produto } from "@/types/produto";
 export type RegimeSimulado = "simples_nacional" | "lucro_presumido";
 
 interface CargaDoRegime {
-  /** Impostos SEM o DIFAL, como fracao da receita sem frete. */
+  /** Impostos SEM o DIFAL, como fracao do FATURADO com frete (5.1.1). */
   cargaImpostos: number;
-  /** DIFAL, como fracao da receita sem frete. */
+  /** DIFAL, como fracao do FATURADO com frete. */
   cargaDifal: number;
   marcas: number;
 }
@@ -83,6 +83,15 @@ export interface ReferenciaInfluencers {
   fracaoReceitaReal: number;
   /** frete cobrado / receita real: o frete que o cliente paga por fora */
   fracaoFrete: number;
+  /**
+   * faturado COM frete / faturado sem frete.
+   *
+   * A base de todo tributo e o faturado com frete (5.1.1), e a estimativa
+   * recebe o faturamento SEM frete. Este e o fator que liga os dois -- e ele
+   * inclui o frete dos pedidos que nunca foram pagos, que tambem entram na
+   * base.
+   */
+  fracaoFaturado: number;
   /** taxa da plataforma / recebido (valor pago, com frete) */
   cargaTaxas: number;
   /** CMV extrapolado pela cobertura / receita real */
@@ -94,7 +103,7 @@ export interface ReferenciaInfluencers {
   presumido: CargaDoRegime | null;
   /** Marcas no Simples, so para leitura. `null` se nao houver nenhuma. */
   simples: CargaDoRegime | null;
-  /** Carga total de impostos da empresa, fracao da receita sem frete. Plano B. */
+  /** Carga total de impostos da empresa, fracao do faturado com frete. Plano B. */
   cargaGeral: number;
 
   /** Soma das despesas compartilhadas cadastradas no mes. */
@@ -166,6 +175,7 @@ export function montarReferencia(entrada: EntradaReferencia): ReferenciaInfluenc
     brutoTotal: r.brutoSemFrete,
     fracaoReceitaReal: razaoSegura(r.receitaReal, r.brutoSemFrete),
     fracaoFrete: razaoSegura(r.frete, r.receitaReal),
+    fracaoFaturado: razaoSegura(r.bruto, r.brutoSemFrete),
     cargaTaxas: razaoSegura(taxas.total, r.recebido),
     cmvSobreReceitaReal: razaoSegura(cmvEstimado, r.receitaReal),
     coberturaCusto: cmv.cobertura,
@@ -254,9 +264,10 @@ export function estimarInfluencer(
   // O frete e cobrado do cliente POR FORA: soma no que ele paga, nao na receita.
   const frete = receitaReal * referencia.fracaoFrete;
   const recebido = receitaReal + frete;
-  // O imposto incide sobre o RECEBIDO, com frete (5.1.1): e essa a base do
-  // RBT12 e da guia, desde 18/09/2026.
-  const rbt12Projetado = recebido * 12;
+  // O imposto incide sobre o FATURADO com frete (5.1.1): todo pedido criado,
+  // pago ou nao. E essa a base do RBT12 e da guia.
+  const faturado = bruto * referencia.fracaoFaturado;
+  const rbt12Projetado = faturado * 12;
 
   let impostos: number;
   let difal = 0;
@@ -264,12 +275,12 @@ export function estimarInfluencer(
 
   if (entrada.regime === "simples_nacional") {
     // Simples nao recolhe DIFAL como remetente (secao 5.10.1).
-    impostos = apurarSimples(rbt12Projetado, recebido).valorDAS;
+    impostos = apurarSimples(rbt12Projetado, faturado).valorDAS;
   } else if (referencia.presumido) {
-    impostos = recebido * referencia.presumido.cargaImpostos;
-    difal = recebido * referencia.presumido.cargaDifal;
+    impostos = faturado * referencia.presumido.cargaImpostos;
+    difal = faturado * referencia.presumido.cargaDifal;
   } else {
-    impostos = recebido * referencia.cargaGeral;
+    impostos = faturado * referencia.cargaGeral;
     semReferenciaDoRegime = true;
   }
 

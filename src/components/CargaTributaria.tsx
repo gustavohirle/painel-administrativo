@@ -45,7 +45,7 @@ export function CargaTributaria({
             {moedaRedonda(resultado.totalSobreVenda)}
           </p>
           <p className="mt-1 text-sm text-tinta-media">
-            {percentual(resultado.cargaSobreReceita)} do que entrou, com o frete
+            {percentual(resultado.cargaSobreReceita)} do faturado, com o frete
           </p>
         </div>
 
@@ -69,7 +69,7 @@ export function CargaTributaria({
             {moedaRedonda(resultado.baseReceita)}
           </p>
           <p className="mt-1 text-sm text-tinta-media">
-            O que entrou em caixa, com o frete cobrado do cliente
+            Todo pedido criado, com o frete e com o não pago
           </p>
         </div>
       </div>

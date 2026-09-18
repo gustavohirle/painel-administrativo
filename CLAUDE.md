@@ -387,27 +387,35 @@ Precedência obrigatória para não contar o mesmo pedido duas vezes:
 `cancelado > reembolsado/estornado > não pago > recebido`. Está implementada em
 `classificarPedido()` e documentada lá.
 
-### 5.1.1 O frete é do cliente, mas é base de imposto
+### 5.1.1 A base do imposto é o FATURADO; a da comissão não
 
-**O frete não entra em comissão. Entra em todo imposto.** São duas decisões do
-cliente, tomadas em datas diferentes, e é fácil confundi-las numa só:
+**O imposto incide sobre o faturado, com frete. A comissão, não.** São duas
+decisões do cliente, tomadas em datas diferentes, e é fácil confundi-las numa só:
 
 - o frete é cobrado **por fora** — num produto de R$ 100 com R$ 19 de frete o
   cliente paga R$ 119 — e os R$ 19 vão para a transportadora. Não é venda do
-  influencer: **fora da comissão** (16/09/2026);
-- mas o fisco cobra sobre ele. Desde **18/09/2026**, a pedido do dono, o frete
-  **integra a base de todo tributo**: DAS, PIS, COFINS, ICMS, IRPJ, CSLL e
-  DIFAL. Antes ficava fora de tudo, e o imposto do painel saía ~16% abaixo do
-  que pode ser devido.
+  influencer: **fora da comissão** (16/09/2026), junto com as taxas (5.1.2);
+- o imposto segue outra régua. Em **18/09/2026**, em dois pedidos seguidos do
+  dono, a base de **todo tributo** — DAS, PIS, COFINS, ICMS, IRPJ, CSLL e
+  DIFAL — passou a ser o **faturamento bruto, com frete**: o valor de todo
+  pedido criado no mês, pago ou não. Primeiro entrou o frete (na legislação o
+  frete cobrado do destinatário integra a base do ICMS, do PIS/COFINS e a
+  receita bruta do Simples), depois a base saiu do recebido para o faturado.
+
+**Ressalva registrada, e mantida pelo dono:** pedido cancelado e boleto nunca
+pago normalmente **não geram nota fiscal nem saída de mercadoria**, e tributá-los
+cobra imposto de venda que não aconteceu. O painel passa a **superestimar** o
+imposto nessa medida — o contrário do que acontecia antes. Foi dito a ele antes
+de implementar; ele manteve. Só volte atrás se ele pedir.
 
 | Conta | Base | Onde |
 |---|---|---|
 | Comissão, base "bruto" | faturamento **sem frete** (`brutoSemFrete`, todos os pedidos) | `calcularComissoesPorInfluencer` |
 | Comissão, base "recebido" / "receita real" | receita real (recebido − frete) — as duas passam a dar o mesmo valor | idem |
 | **Comissão, base "o que cai na conta"** (`liquido`, a praticada) | receita real − taxas da Nuvemshop e do pagamento (`porMarca` de `apurarTaxasPlataforma`) | idem |
-| **Impostos, DAS, Presumido, RBT12** | **recebido, com frete** | `apurarGrupo`, `calcularRBT12` |
+| **Impostos, DAS, Presumido, RBT12** | **faturado: todo pedido criado, com frete** | `apurarGrupo`, `calcularRBT12` |
 | **Tributo por produto (PIS, COFINS, ICMS marcados)** | preço × quantidade **+ a parte do frete**, rateada pelo valor | `basesDosItens` |
-| **DIFAL** | valor da operação, **com** frete | `apurarDifal` |
+| **DIFAL** | valor de todo pedido criado, **com** frete | `apurarDifal` |
 | Divisão das despesas compartilhadas | faturamento sem frete | `ratearDespesas` |
 | Taxa do meio de pagamento | valor pago **com** frete | o gateway cobra sobre o total |
 | Participação dos sócios | recebido, **com** frete | definição do cliente: "do valor recebido" |
@@ -424,24 +432,29 @@ valor. Pedido só de brinde (itens a R$ 0) não tem por onde ratear: ali o frete
 fica fora da base. A "receita sem cadastro fiscal" usa a mesma função, senão a
 lacuna declarada seria menor que a real.
 
-**O que isso custou, medido nas cinco lojas reais em set/2026:**
+**O que isso custou, medido nas cinco lojas reais em set/2026.** Foram dois
+passos no mesmo dia, e vale ver os três lados a lado:
 
-| | Antes | Depois |
+| Base | Base tributada | Imposto + DIFAL |
 |---|---|---|
-| Base tributada | R$ 847.769 | R$ 973.947 |
-| Imposto + DIFAL | R$ 138.719 | **R$ 161.532** (+16,4%) |
+| Original: recebido, sem frete | R$ 847.769 | R$ 138.719 |
+| Depois: recebido, com frete | R$ 973.947 | R$ 161.532 |
+| **Agora: faturado, com frete** | **R$ 1.171.533** | **R$ 196.221** (+41,4%) |
 
-São ~R$ 22,8 mil por mês a mais, saindo direto do lucro operacional. Três
-efeitos de segunda ordem que **não** são proporcionais e precisam de olho:
+São ~R$ 57,5 mil por mês a mais que no começo do dia, saindo direto do lucro
+operacional. Três efeitos de segunda ordem que **não** são proporcionais e
+precisam de olho:
 
-1. **O RBT12 sobe junto**, e com ele a faixa do Simples. Duale (+21,4%) e Laoli
-   (+23,9%) subiram mais que a base porque a alíquota efetiva subiu também.
-2. **A Ka Beauty chegou a R$ 3,59 mi de RBT12** — a R$ 8 mil do sublimite de
-   ICMS (R$ 3,6 mi), que tira o ICMS da guia única. Era "perto do sublimite"
-   antes e continua, mas agora encostada. A Duale passou de "dentro" para
-   "perto do sublimite".
+1. **O RBT12 sobe junto**, e com ele a faixa do Simples — por isso Laoli
+   (+52,6%) e Revenda (+33,7%) subiram muito mais que a própria base.
+2. **A Ka Beauty passou do sublimite.** O RBT12 dela foi de R$ 3,59 mi para
+   **R$ 4,22 mi**: acima do sublimite de ICMS (R$ 3,6 mi), que tira o ICMS da
+   guia única — ele passa a ser recolhido por fora —, e já em "perto do teto"
+   (R$ 4,8 mi), que desenquadraria do regime. É a consequência mais séria da
+   mudança e vale conferir com o contador.
 3. **O preço mínimo dos simuladores subiu**: cada real de frete passou a
-   carregar imposto, além da taxa e dos sócios. Ver 5.17.
+   carregar imposto, e a carga por venda paga agora embute o imposto dos
+   pedidos que nunca foram pagos. Ver 5.17.
 
 **Ponto para o contador:** o painel continua **sem o gross-up** do DIFAL (base
 dupla), então aquele número segue conservador para menos. E o frete que a loja
@@ -538,14 +551,15 @@ base: quantos produtos da marca marcaram o tributo, qual presunção e qual
 dedução entraram, e a faixa e o RBT12 do Simples. Teste: a soma da tela bate
 com as fatias da pizza, e cada passo é base × alíquota.
 
-- **Impostos**, por marca: bruto → − não pago, cancelado e reembolsado → base
-  do imposto (o recebido, com o frete dentro, e a tela diz quanto dele é
-  frete); depois uma tabela Tributo | Como a base foi formada | Base ×
-  Alíquota = Valor. Três origens de base: produtos marcados (5.10), lucro
-  presumido (presunção × recebido − dedução) e DAS (alíquota efetiva pelo
-  RBT12). O DIFAL fica fora, porque tem fatia e aba próprias.
+- **Impostos**, por marca: a base é o **faturamento bruto**, e ao lado dela a
+  tela abre o que está dentro — quanto é frete e quanto é pedido não pago ou
+  cancelado —, mais o recebido como referência. Depois uma tabela Tributo |
+  Como a base foi formada | Base × Alíquota = Valor. Três origens de base:
+  produtos marcados (5.10), lucro presumido (presunção × faturado − dedução) e
+  DAS (alíquota efetiva pelo RBT12). O DIFAL fica fora, porque tem fatia e aba
+  próprias.
 - **DIFAL**, por marca: a fórmula e as regras (venda interna, 12%/7%, Simples,
-  base dupla) e, por estado, pedidos | base com frete | interna | −
+  base dupla) e, por estado, pedidos | base (com frete, paga ou não) | interna | −
   interestadual | = diferença | DIFAL. Marca no Simples aparece com a
   distribuição e zero.
 - O topo mostra o calculado e o **valor da pizza**: com fechamento informado
@@ -769,9 +783,9 @@ marcados; usar o consolidado superestimava).
 No Simples:
 
 ```
-RBT12          = receita dos últimos 12 meses (recebido, COM frete — ver 5.1.1)
+RBT12          = faturamento dos últimos 12 meses (todo pedido, COM frete — 5.1.1)
 alíquota efetiva = (RBT12 × nominal da faixa − parcela a deduzir) / RBT12
-DAS do mês     = alíquota efetiva × recebido do mês (com frete)
+DAS do mês     = alíquota efetiva × faturado do mês (com frete)
 ```
 
 A alíquota **efetiva** não é a da tabela — confundir as duas erra a conta em
@@ -855,7 +869,8 @@ origem, e a diferença entre a **interna do destino** e a interestadual vai para
 o estado de destino. Essa diferença é o DIFAL.
 
 ```
-DIFAL = valor da operação (com frete) × (alíquota interna do destino − interestadual)
+DIFAL = valor do pedido, com frete, pago ou não
+      × (alíquota interna do destino − interestadual)
 ```
 
 O estado de destino vem de `shipping_address.province` do pedido. A Nuvemshop
@@ -1654,7 +1669,10 @@ preço mínimo      = (fabricação + frete × (impostos + DIFAL + taxa + sócio
 da marca, medida pelas funções do painel (`apurarImpostos`,
 `apurarTaxasPlataforma`). Os três são fração do **recebido** e se aplicam ao
 preço **mais o frete**, porque desde 18/09/2026 o frete integra a base de todo
-tributo (5.1.1). O teste que
+tributo (5.1.1). Como o imposto passou a incidir sobre o **faturado**, essa
+fração embute o imposto dos pedidos que nunca foram pagos, rateado pelas vendas
+que entraram — que é o que a venda precisa cobrir para a operação fechar, e é o
+mesmo espírito da escolha 1 sobre a comissão. O teste que
 segura isso: simular o preço e o custo médios de cada marca reproduz o lucro
 operacional da DRE dela, a menos **exatamente** da comissão e das despesas que
 incidem sobre pedido não pago (escolha 1). Se alguém der ao simulador uma regra
@@ -1736,11 +1754,12 @@ mesma cadeia da DRE (5.8), com frações no lugar dos pedidos:
 
 ```
 faturamento  = informado, SEM frete (5.1.1)
+faturado     = faturamento × (faturado com frete ÷ faturado sem frete das marcas)
 receita real = faturamento × (receita real ÷ faturamento sem frete das marcas atuais)
 recebido     = receita real + frete (o cliente paga o frete por fora)
 lucro        = receita real − fabricação
-             − impostos − DIFAL − taxa − sócios  (os quatro sobre o RECEBIDO,
-                                                  com frete — 5.1.1)
+             − impostos − DIFAL        (sobre o FATURADO com frete — 5.1.1)
+             − taxa − sócios           (sobre o recebido, com frete)
              − comissão (% × (receita real − taxa)) − parte nas compartilhadas
 ```
 
@@ -1753,7 +1772,7 @@ Três escolhas:
 1. **Simples é calculado, Presumido é média.** No Simples a alíquota muda muito
    com o porte, e a média das marcas atuais daria a um influencer pequeno o
    imposto de uma marca de R$ 2,7 mi/ano; por isso a guia sai de
-   `apurarSimples` com o RBT12 projetado (recebido, com frete, × 12). No Presumido a carga
+   `apurarSimples` com o RBT12 projetado (faturado, com frete, × 12). No Presumido a carga
    quase não depende do porte (só o adicional de IRPJ), e a média das marcas do
    regime serve. O modo automático sugere Simples até o teto (R$ 4,8 mi
    de receita real por ano); escolher Simples acima dele mostra aviso.

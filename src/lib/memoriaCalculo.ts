@@ -62,7 +62,7 @@ export interface MemoriaDaMarca {
   bruto: number;
   recebido: number;
   frete: number;
-  /** Base de todo tributo: o recebido, COM o frete (5.1.1). */
+  /** Base de todo tributo: o FATURADO -- todo pedido criado, com frete (5.1.1). */
   baseDoImposto: number;
   passos: PassoDoImposto[];
   /** Tributos do regime fora da conta (inativos ou com aliquota zero). */
@@ -146,7 +146,8 @@ export function memoriaDosImpostos(
       semInfluencer: apuracao.influencerId === null,
       bruto: r.bruto,
       recebido: r.recebido,
-      frete: r.frete,
+      // Frete de TODO pedido criado, que e o que esta dentro da base.
+      frete: r.freteTotal,
       baseDoImposto: apuracao.baseReceita,
       passos,
       foraDaConta: apuracao.inativosDoRegime.map((i) => i.sigla),
