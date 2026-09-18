@@ -438,7 +438,7 @@ export function desenharOrdem(
     ["Contado na Demazon em", passoDaEtapa(ordem, "contagem")?.contagem?.dataContagem],
     ["Enviado para a Criar em", passoDaEtapa(ordem, "envio")?.envio?.dataEnvio],
     ["Recebido na Criar em", recebimento?.recebimento?.dataRecebimento],
-  ].filter(([, valor]) => Boolean(valor));
+  ].filter((par): par is [string, string] => Boolean(par[1]));
 
   if (datas.length > 0) {
     garantirEspaco(24 + datas.length * 18);

@@ -389,7 +389,7 @@ export function montarFila(
 /** Uma linha por etapa, para o assunto do e-mail e para a lista. */
 export function ondeEstaAOrdem(ordem: OrdemFabricacao): string {
   if (ordem.situacao === "revisao") return "Voltou para o administrador";
-  if (ordem.etapaAtual === null) return ROTULO_SITUACAO_CURTO[ordem.situacao];
+  if (ordem.etapaAtual === null) return ROTULO_SITUACAO_CURTO[ordem.situacao] ?? "Encerrada";
   return ROTULO_ETAPA[ordem.etapaAtual];
 }
 

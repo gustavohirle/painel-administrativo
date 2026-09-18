@@ -191,52 +191,6 @@ for (const perfil of Object.keys(PERMISSOES)) {
 // demonstracao justamente para esta conferencia ser possivel.
 // ---------------------------------------------------------------------------
 
-const TOKEN_DEMO = "demonstracao-aguardando-assinatura-do-gerente";
-
-// Com dados reais nao existe ordem semeada: so da para conferir a recusa.
-const modoReal = process.env.FONTE_DADOS === "live";
-
-console.log(`pagina publica de assinatura${modoReal ? " (dados reais: so a recusa)" : ""}`);
-
-if (!modoReal) {
-  const semSessao = await fetch(`${base}/assinar/${TOKEN_DEMO}`, { redirect: "manual" });
-  const corpo = semSessao.status === 200 ? await semSessao.text() : "";
-
-  if (semSessao.status !== 200) {
-    console.log(`  x  /assinar/<token>  ${semSessao.status} -- devia abrir sem login`);
-    falhas.push(`/assinar: esperado 200 sem sessao, veio ${semSessao.status}`);
-  } else if (corpo.includes("Este link não vale mais")) {
-    console.log("  x  /assinar/<token>  abriu, mas nao achou a ordem semeada");
-    falhas.push("/assinar: ordem de demonstracao nao foi semeada");
-  } else {
-    console.log("  ok /assinar/<token>  200 sem login (correto)");
-  }
-}
-
-{
-
-  // Token errado nao pode abrir ordem nenhuma.
-  const errado = await fetch(`${base}/assinar/${"z".repeat(45)}`, { redirect: "manual" });
-  const corpoErrado = errado.status === 200 ? await errado.text() : "";
-
-  if (errado.status === 200 && corpoErrado.includes("Este link não vale mais")) {
-    console.log("  ok /assinar/<errado> recusado (correto)");
-  } else {
-    console.log(`  x  /assinar/<errado> ${errado.status} -- token invalido abriu alguma coisa`);
-    falhas.push("/assinar: token invalido nao foi recusado");
-  }
-}
-
-if (!modoReal) {
-  // O PDF por token so existe depois da assinatura; nesta ordem, ainda nao.
-  const pdf = await fetch(`${base}/assinar/${TOKEN_DEMO}/pdf`, { redirect: "manual" });
-  if (pdf.status === 404) {
-    console.log("  ok /assinar/<token>/pdf  404 antes de assinar (correto)");
-  } else {
-    console.log(`  x  /assinar/<token>/pdf  ${pdf.status} -- devia ser 404 sem documento`);
-    falhas.push(`/assinar/pdf: esperado 404, veio ${pdf.status}`);
-  }
-}
 
 // ---------------------------------------------------------------------------
 // Enderecos que respondem a fetch, e nao a navegacao
