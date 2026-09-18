@@ -1139,7 +1139,7 @@ fábrica sabe quanto custa a matéria-prima e precisa cadastrar, mas a mesma tel
 esconde preço de venda e margem para esse perfil. Custo é o que o produto
 consome; margem é quanto a empresa ganha.
 
-A **ordem de fabricação** (5.15) fica na área `produtos`: os dois perfis pedem e
+O **processo de fabricação** (5.15) fica na área `produtos`: os dois perfis pedem e
 acompanham, porque a conversa ali é sobre unidade e prazo, não sobre dinheiro. A
 tela pública de assinatura é a exceção do painel inteiro — não tem perfil, e o
 que a limita é mostrar só produto, quantidade, data e saldo, nenhum valor.
@@ -1408,50 +1408,135 @@ Para conferir a impressão sem imprimir: emule a mídia `print` numa largura de
 1032px (A4 deitado, 96dpi, margens de 12mm) e veja se a última coluna termina
 antes da borda.
 
-### 5.15 Ordem de fabricação
+### 5.15 Processo de fabricação
 
-Aba `/ordens`, área `produtos`. Quem cuida das campanhas dos influencers pede a
-fabricação de uma quantidade de produto para uma data de lançamento; o link vai
-para quem toca a produção, que confere o estoque, aprova e **assina**. O
-resultado é um PDF com as duas assinaturas e as duas datas, gravado no banco.
+Aba `/ordens`, área `produtos`. **Seis etapas, cada uma assinada por quem a
+cumpriu**, do pedido do marketing até o estoque na Criar.
 
-O problema que resolve: hoje isso se combina por mensagem, e quando falta
-produto no dia do lançamento ninguém sabe se o pedido foi feito, se chegou nem
-se foi aceito. A ordem existe para virar **prova**.
+```
+Pedido → Conferência de insumos → Fabricação → Contagem na Demazon
+       → Envio para a Criar → Recebimento na Criar
+```
 
-#### As cinco decisões que sustentam a tela
+São **duas empresas**: a Demazon fabrica e vende para a Criar; a Criar faz as
+parcerias com influencers e vende. O processo atravessa as duas e termina
+quando o estoque chega na Criar — que é o estoque que abastece as lojas
+Nuvemshop do painel.
 
-1. **A ordem NÃO baixa nem reserva estoque.** O saldo é
-   `última contagem − vendido desde a contagem` (5.12), função pura e
-   idempotente. Descontar uma ordem dali criaria um segundo mecanismo mexendo
-   no mesmo número, e o estoque passaria a depender de quantas vezes a página
-   rodou. O saldo aparece **ao lado** do item, como informação para quem
-   decide.
+O problema que resolve, nas palavras do cliente: **decidir quando fabricar,
+saber se vai ficar pronto a tempo, e saber quando um produto está acabando**.
+Isso se combinava por mensagem, e quando faltava produto no dia do lançamento
+ninguém sabia em que pé estava — se a fábrica aceitou, se tinha embalagem, se
+chegou a ser contado.
 
-2. **Uma vez aprovada, congela.** É o único registro do projeto que não é
-   cadastro editável. Um documento que muda depois de assinado não prova nada.
-   Por isso o repositório tem `criarOrdem` e `gravarOrdem`, e não
-   `salvarOrdem(entrada, id)` como os outros.
+#### As decisões que sustentam o processo
 
-3. **O link é a credencial.** `/assinar/[token]` é **pública** — não chama
-   `exigirArea`. Quem toca a produção não tem conta no painel, e exigir que
-   tivesse trocaria uma assinatura de trinta segundos no celular por um
-   cadastro que ninguém faz. São 32 bytes de `randomBytes` (256 bits).
-   Como Server Action é endpoint público (5.13), **tudo que protege está
-   dentro da action**: o token é revalidado a cada chamada, só ordem em
-   `aguardando` aceita decisão, e o formulário só consegue mandar **nome,
-   traços e motivo**. Item, quantidade e data vêm do registro — se viessem do
-   corpo da requisição, quem tivesse o link assinaria um documento com números
-   diferentes dos que foram pedidos.
+1. **Cada etapa só termina quando alguém ASSINA.** Não existe "em fabricação"
+   como estado solto: estado que ninguém atualiza vira mentira na tela, e era
+   esse o defeito do processo por mensagem. A assinatura é a mesma de antes —
+   vetor, poucos KB, direto para o PDF como polilinha.
 
-4. **O nome do produto é COPIADO no momento do pedido**, e resolvido no
-   servidor a partir da chave. Renomear o produto depois não pode alterar o que
-   foi assinado, e aceitar o nome que veio do formulário deixaria assinar um
-   documento cujo texto não corresponde ao item.
+2. **Qualquer "não" na conferência devolve a ordem para quem abriu.** As cinco
+   perguntas (tem embalagem? tem a tampa/válvula? a tampa serve nesta
+   embalagem? tem a caixa? tem matéria-prima?) mais "fica pronto na data
+   pedida?" decidem se a ordem anda. Com qualquer resposta negativa ela volta
+   para o administrador, com a lista do que falta e a data que a fábrica
+   consegue; ele aceita a nova data ou cancela. **Sem isso o checklist seria
+   decoração** — foi o que faltava no pedido original, e o cliente confirmou
+   ("se for não, volta pra primeira pessoa").
 
-5. **Recusa não gera PDF.** O documento existe para provar um acordo; recusa
-   não é acordo, e não tem a assinatura dos dois lados que o papel afirma ter.
-   Fica o registro em tela, com quem recusou, quando e por quê.
+   É o único ponto em que o processo anda para trás. A situação chama-se
+   `revisao`, e a linha do tempo mostra a conferência em **vermelho**: dizer
+   "cumprida" afirmaria o contrário do que aconteceu.
+
+3. **O recebimento na Criar vira CONTAGEM DE ESTOQUE de verdade.** A ordem
+   continua **não** baixando nem reservando estoque — o saldo é `última
+   contagem − vendido desde a contagem` (5.12), função pura e idempotente. Mas
+   quando o estoquista conta na última etapa, aquilo é exatamente o que ele
+   digitaria na aba Estoque: vira uma contagem, com data e responsável. **Um
+   lançamento, não dois.** Entra depois de gravar a ordem — se a contagem
+   falhar, a assinatura já está salva e o estoquista lança à mão.
+
+4. **Cada passo é definitivo.** Não há "corrigir o passo anterior": o caminho
+   de volta é o administrador retomar a ordem, e isso entra como mais um passo.
+   Documento que muda depois de assinado não prova nada.
+
+5. **O hash cobre TODOS os passos.** Um hash que cobrisse só o pedido
+   continuaria valendo depois de alguém trocar quem assinou a fabricação — e é
+   justamente isso que ele existe para impedir.
+
+#### Quem assina o quê
+
+Na **fase de teste**, quem está logado assina qualquer etapa. Decisão do
+cliente: com a trava ligada, experimentar o processo de ponta a ponta exigiria
+criar cinco contas antes do primeiro teste.
+
+Quando for travar, é **um lugar só**: `TRAVAR_ETAPA_POR_PERFIL` em
+`lib/processoOrdem.ts` e o mapa `PERFIL_DA_ETAPA`. O resto do painel não muda —
+`podeAssinar` já é a única porta, e é conferida no servidor, dentro da action
+(5.13). O desenho final é um responsável por etapa: a conferência não assina a
+fabricação, e o administrador não assina pela fábrica. **Um documento em que
+uma pessoa carimba todas as etapas não prova nada**, que é exatamente o
+processo por mensagem que isto veio substituir.
+
+`contagem` e `envio` são do mesmo responsável de propósito: é o mesmo
+estoquista fazendo duas coisas — contou o que saiu da fábrica, e depois
+despachou. Juntar num passo só perderia a data do despacho, que é o que se
+procura quando a carga some no caminho.
+
+#### A tela
+
+Abre pela **fila**, não por filtros. A pergunta que se faz aqui todo dia é "o
+que está comigo, e o que está atrasado"; filtro por influencer e por situação
+respondiam outra coisa, e saíram junto com as duas etapas antigas.
+
+- **A ordem que espera você já abre expandida**, com o formulário da etapa
+  aberto. Quem entra tem uma coisa para fazer, e um clique antes do formulário
+  seria um clique para chegar no único lugar em que ia.
+- **A linha do tempo** (`LinhaDoTempoDaOrdem`) fica no topo da ordem aberta. Na
+  tela grande é horizontal; **no celular vira vertical**, porque seis etapas em
+  390px dariam 65px cada e nem o nome caberia — mesmo princípio da 2.1: no
+  telefone não se encolhe, troca-se de formato.
+- **Pedido × fabricado × recebido** lado a lado, na tela e no PDF, com o
+  fabricado em vermelho quando saiu menos do que foi pedido. É onde a confiança
+  no processo se decide.
+- **O formulário de abertura lista os produtos pelo que ACABA ANTES**, com a
+  cobertura em dias ao lado. É a outra metade do problema do cliente.
+- **Apagar existe, em dois passos**, só para a fase de teste: experimentar de
+  ponta a ponta gera ordens de mentira, e cancelar deixaria todas na lista para
+  sempre. O caminho normal continua sendo **cancelar**, que preserva a
+  evidência de que o pedido foi feito. Quando o processo entrar em uso, apague
+  a ação `removerOrdem` e o botão.
+
+#### O gerador de PDF é escrito à mão
+
+`lib/pdf.ts`, sem dependência. Mesma escolha dos gráficos: o painel precisa
+funcionar offline e sem CDN, e um PDF de uma página com texto, linhas e
+polilinha cabe em duzentas linhas. Faz texto em Helvetica nos dois pesos com
+**medição real de largura**, linhas, retângulos, polilinhas e múltiplas
+páginas. Não faz fonte embutida, imagem, nem unicode fora do WinAnsi — se algum
+dia precisar de uma dessas, é hora de pesar uma dependência de verdade, não de
+esticar o arquivo.
+
+Com seis etapas o documento virou uma **folha de assinaturas**: uma moldura por
+etapa, em duas colunas, cada uma dizendo a etapa, quem assinou e quando. Etapa
+não cumprida aparece com a moldura vazia e escrita — num documento de ordem
+cancelada é isso que mostra até onde o processo chegou. O PDF é gerado **uma
+vez**, quando a ordem fecha, e nunca regenerado no download.
+
+Quatro armadilhas que o teste cobre, todas do tipo "abre num leitor e não em
+outro":
+
+| Armadilha | O que acontece |
+|---|---|
+| Escrever o arquivo em utf-8 | Cada acento vira dois bytes e **todos** os deslocamentos da tabela `xref` depois dele ficam errados. Tudo é latin-1 do início ao fim, e é isso que faz `.length` valer como contagem de bytes |
+| `/Length` fora do tamanho real do fluxo | O leitor lê além ou aquém do `stream` |
+| Não escapar `(`, `)` e `\` | Parêntese num nome de produto fecha a string no meio e o resto do fluxo vira lixo |
+| Medir texto por largura média | `R$ 2.400 un` não fica embaixo de "Quantidade". As larguras AFM da Helvetica estão na tabela; acentuada mede o mesmo que a letra base, o que é exato nessa fonte |
+
+As coordenadas da API descem **do topo**, ao contrário do PDF, cujo eixo Y sobe
+da base. A conversão acontece num lugar só, em `fluxoDaPagina`. Escrever layout
+de documento de baixo para cima é fonte inesgotável de erro de um ponto.
 
 #### A assinatura é vetor, não imagem
 
@@ -1477,111 +1562,19 @@ Não basta pular o valor ruim: `Number(null)` e `Number("")` valem **zero**, nã
 pontos seguintes trocavam de eixo — a assinatura saía embaralhada em vez de
 faltar. Faltar é honesto; embaralhada parece assinatura de outra pessoa.
 
-#### O gerador de PDF é escrito à mão
+#### A rota pública por token foi REMOVIDA
 
-`lib/pdf.ts`, sem dependência. Mesma escolha dos gráficos: o painel precisa
-funcionar offline e sem CDN, e um PDF de uma página com texto, linhas e
-polilinha cabe em duzentas linhas. Faz texto em Helvetica nos dois pesos com
-**medição real de largura**, linhas, retângulos, polilinhas e múltiplas páginas.
-Não faz fonte embutida, imagem, nem unicode fora do WinAnsi — se algum dia
-precisar de uma dessas, é hora de pesar uma dependência de verdade, não de
-esticar o arquivo.
+Existia porque "quem toca a produção não tem conta no painel", e o link era a
+credencial. Com o processo de seis etapas **todo mundo loga** (decisão do
+cliente), então um caminho de assinatura sem sessão virou superfície de ataque
+sem uso. Saíram `/assinar/[token]`, `/assinar/[token]/pdf`, o token da ordem e
+o token fixo da demonstração.
 
-Quatro armadilhas que o teste cobre, todas do tipo "abre num leitor e não em
-outro":
+Junto com ela saiu o beco sem saída do link em HTTP puro (IP que o WhatsApp não
+linkifica, `sslip.io` que linkifica e não abre). Hoje o painel tem domínio e
+HTTPS, e o caminho é entrar no painel — não abrir um link.
 
-| Armadilha | O que acontece |
-|---|---|
-| Escrever o arquivo em utf-8 | Cada acento vira dois bytes e **todos** os deslocamentos da tabela `xref` depois dele ficam errados. Tudo é latin-1 do início ao fim, e é isso que faz `.length` valer como contagem de bytes |
-| `/Length` fora do tamanho real do fluxo | O leitor lê além ou aquém do `stream` |
-| Não escapar `(`, `)` e `\` | Parêntese num nome de produto fecha a string no meio e o resto do fluxo vira lixo |
-| Medir texto por largura média | `R$ 2.400 un` não fica embaixo de "Quantidade". As larguras AFM da Helvetica estão na tabela; acentuada mede o mesmo que a letra base, o que é exato nessa fonte |
-
-As coordenadas da API descem **do topo**, ao contrário do PDF, cujo eixo Y sobe
-da base. A conversão acontece num lugar só, em `fluxoDaPagina`. Escrever layout
-de documento de baixo para cima é fonte inesgotável de erro de um ponto.
-
-#### Dois hashes, e eles são diferentes
-
-- **`hashConteudo`** — SHA-256 da forma canônica dos dados, montada campo a
-  campo. Sai **impresso** no rodapé do documento. `JSON.stringify(ordem)` não
-  serviria: a ordem das chaves de um objeto lido do banco não é a de um
-  recém-criado, e o hash mudaria sem o conteúdo mudar.
-- **`sha256`** — hash dos **bytes** do arquivo, guardado ao lado. Não pode
-  viver dentro do PDF: o arquivo não carrega o próprio hash.
-
-O PDF é gerado **uma vez**, na assinatura, e nunca regenerado no download. Um
-documento reconstruído a cada leitura mudaria junto com o código que o desenha,
-e a assinatura deixaria de se referir a alguma coisa fixa.
-
-#### Duas rotas de download, não uma
-
-`/ordens/[id]/pdf` exige login; `/assinar/[token]/pdf` vai pelo token. Poderiam
-ser uma só com "aceita login OU token", mas duas regras de acesso no mesmo lugar
-são duas chances de a errada valer. A segunda existe porque quem aprovou assinou
-pelo celular, sem conta, e sai da página com o documento na mão.
-
-O `Content-Disposition` é `inline`, não `attachment`: no celular, `attachment`
-empurra o arquivo para a pasta de downloads e a pessoa some da página. É também
-o único recurso do painel com cache `immutable` — o único em que "estes bytes
-nunca mudam" é verdade por definição.
-
-#### O botão de copiar o link tem um campo de texto ao lado
-
-Não é enfeite. `navigator.clipboard` só existe em contexto seguro (HTTPS ou
-localhost), e o painel é acessado de fora por **HTTP puro** no IP fixo. Ali o
-botão simplesmente não funciona, e sem o campo visível não haveria como pegar o
-link de jeito nenhum. No celular esse campo ocupa a linha inteira: dividindo a
-linha com os dois botões sobravam ~90px e ele mostrava `http://177.223`.
-
-#### Endereço de IP, WhatsApp e HTTPS: um beco sem saída em HTTP puro
-
-Três fatos medidos no mesmo dia, e juntos eles fecham uma porta:
-
-1. **O WhatsApp não transforma IP em link.** Colado numa conversa,
-   `http://177.223.44.178:3000/assinar/...` chega como texto morto — ele só
-   linkifica domínio com terminação válida. Pior: pinta o IP com a **cor de
-   telefone**, porque é como telefone que ele o classifica. Quem recebe toca e
-   o celular tenta ligar.
-
-2. **Dar um nome ao IP resolve isso e quebra outra coisa.** `<ip>.sslip.io` é
-   DNS curinga e resolve de volta para o mesmo IP; o WhatsApp passa a
-   linkificar. E aí o link para de **abrir**, com `ERR_SSL_PROTOCOL_ERROR`: o
-   Chrome força HTTPS em endereço com **nome**, e o painel só fala HTTP.
-
-3. **Endereço de IP é isento dessa conversão.** É por isso que o IP abre e o
-   nome não — e é o que torna os dois requisitos incompatíveis:
-
-   > para ser tocável no WhatsApp, precisa de nome;
-   > tendo nome, o navegador exige HTTPS.
-
-Não é HSTS: nem `sslip.io` nem `nip.io` estão na lista pré-carregada. É o
-comportamento padrão do Chrome.
-
-**A decisão, então:** o link continua sendo o IP, que ao menos **abre** colado
-em qualquer navegador. A tela diz o passo que falta, e a mensagem do botão de
-WhatsApp leva a instrução junto ("copie o endereço e cole no navegador") —
-sem ela, quem recebe vê texto cinza que não responde ao toque e conclui que o
-link está quebrado. Foi o que aconteceu na primeira vez.
-
-A tentativa do `sslip.io` **foi revertida**. Se alguém pensar nela de novo:
-ela linkifica e não abre, que é pior que não linkificar.
-
-Link tocável exige **HTTPS de verdade** — túnel Cloudflare nomeado com domínio
-próprio, ou Tailscale Funnel. Ver `DEMONSTRACAO.md`.
-
-`localhost` ganha um aviso próprio, em vermelho: aquele link só abre na máquina
-que rodou o painel, e enviá-lo não produz erro nenhum — produz uma página que
-não carrega no telefone de quem recebeu.
-
-#### Túnel rápido da Cloudflare não serve para reunião marcada
-
-`cloudflared tunnel --url` sorteia um subdomínio **novo a cada vez que sobe**
-(o próprio log diz *"Requesting new quick Tunnel"*). Reiniciar troca o
-endereço e mata todo link já enviado. Funciona, dá HTTPS válido, e o fluxo de
-assinatura inteiro passa por ele — inclusive as Server Actions, que foi o que
-mais preocupou e foi testado ponta a ponta. Mas é conveniência, não
-infraestrutura.
+`/ordens/[id]/pdf` continua, e exige login.
 
 ### 5.16 Influencers: contrato e despesas
 
@@ -1931,17 +1924,15 @@ números toda vez que abre — não dá para os valores mudarem no meio da reuni
 Os rótulos de mês acompanham o calendário para a demonstração não parecer
 velha; os valores não dependem da data.
 
-Duas **ordens de fabricação** nascem semeadas: uma aguardando assinatura e uma
-já assinada, com o PDF gerado no momento da semeadura — exatamente como
-aconteceria numa assinatura de verdade. As duas existem porque a tela precisa se
-explicar sozinha: só com a primeira o arquivo de documentos fica vazio e ninguém
-vê o PDF; só com a segunda não há o que assinar na demonstração.
+Três **ordens de fabricação** nascem semeadas, uma em cada trecho do processo
+(5.15): uma esperando a conferência, uma no meio do caminho, e uma concluída —
+que é a única com PDF, gerado no momento da semeadura, exatamente como
+aconteceria de verdade. As três existem porque a tela precisa se explicar
+sozinha: com uma só, metade dela não teria o que mostrar.
 
-O token da que está em aberto é **fixo** (`TOKEN_ORDEM_DEMO`), por dois motivos,
-os dois de demonstração: dá para abrir o link de assinatura na reunião sem antes
-criar uma ordem, e `npm run celular --rota /assinar/<token>` consegue auditar a
-tela pública, que de outro modo seria inalcançável — o token real vem de
-`randomBytes(32)`. Em `FONTE_DADOS=live` as ordens começam vazias.
+A do meio tem a fabricação **abaixo do pedido** (4.850 de 5.000) de propósito.
+Não é descuido de semeadura: é o caso que a tela precisa saber mostrar, porque
+é onde a confiança no processo se decide.
 
 O rabisco das assinaturas semeadas é gerado por soma de senos, não sorteado:
 o painel inteiro é determinístico (mesmos números toda vez que abre).
@@ -2045,9 +2036,9 @@ quebram só quando alguém clica.
 
    O que isso quebra, **só em dev**:
 
-   - o perfil `estoque` recebe comissão e hash de senha, furando a 5.13;
-   - `/assinar/<qualquer-coisa>` — pública, sem login, com token inválido —
-     também devolve tudo isso.
+   - o perfil `estoque` recebe comissão e hash de senha, furando a 5.13.
+
+   A rota pública de assinatura, que era o outro furo, não existe mais (5.15).
 
    O `SESSAO_SECRET` **não** vaza (conferido), então não dá para forjar sessão.
    E em produção nada disso aparece: verificado em quatro rotas e nos dois
@@ -2177,10 +2168,11 @@ npm run celular   # idem, e precisa do Chrome instalado
 
 `fumaca` bate em todas as rotas com os dois perfis e diz se cada página montou
 no servidor. Também confirma que `estoque` leva 307 nas telas financeiras — a
-garantia da 5.13, que é invisível em teste unitário — e que a rota **pública**
-`/assinar/<token>` abre **sem** sessão, recusa token inválido e devolve 404 no
-PDF antes de a ordem ser assinada. Ela é a única do painel em que redirecionar
-para `/entrar` seria o defeito, não a proteção.
+garantia da 5.13, que é invisível em teste unitário — e que `/api/sincronizacao`
+devolve **401** sem sessão e 200 com ela. Manipulador de rota é endereço público
+como Server Action: quem confere a sessão é ele mesmo, e sem sessão tem que ser
+401, não um redirecionamento — quem chama é um `fetch`, que engoliria o 307 e
+receberia a página de login como se fosse resposta.
 
 Rota nova sem área declarada em `AREA_DA_ROTA` **falha** o script de propósito:
 sem isso, uma tela financeira nova entraria no ar sem ninguém conferir se o
@@ -2189,15 +2181,7 @@ perfil `estoque` está barrado nela.
 `celular` abre cada rota em 390px num Chrome headless e falha se houver
 transbordo horizontal, texto de gráfico abaixo de 9px **na tela** (não no JSX)
 ou tabela rolando sem coluna âncora. Ele varre só as pastas de primeiro nível de
-`src/app`; a tela de assinatura mora em `assinar/[token]/` e precisa do token no
-argumento:
-
-```bash
-node scripts/celular.mjs --rota /assinar/demonstracao-aguardando-assinatura-do-gerente
-```
-
-No Git Bash isso exige `MSYS_NO_PATHCONV=1` na frente, senão o `/assinar/...` é
-convertido em caminho do Windows antes de chegar ao Node. É a régua da seção 2.1. Não instala nada:
+`src/app`. É a régua da seção 2.1. Não instala nada:
 fala o protocolo do próprio Chrome por WebSocket, que o Node 24 já tem.
 
 **Não tente fazer login por `curl`.** O formulário é uma Server Action: o
