@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   escalaAgradavel,
+  horaCurta,
   inteiro,
   mesAno,
   mesAnoLongo,
@@ -105,5 +106,27 @@ describe("escalaAgradavel", () => {
   it("nao quebra com entrada invalida", () => {
     expect(escalaAgradavel(0).topo).toBe(1);
     expect(escalaAgradavel(Number.NaN).topo).toBe(1);
+  });
+});
+
+describe("horaCurta", () => {
+  const agora = new Date("2026-09-18T17:00:00.000-03:00");
+
+  it("mostra so a hora quando o instante e de hoje", () => {
+    expect(horaCurta("2026-09-18T13:46:00.000-03:00", agora)).toBe("13:46");
+  });
+
+  it("traz o dia de volta quando nao e de hoje", () => {
+    // Sem isso, uma copia parada desde ontem de madrugada apareceria como
+    // "03:20" -- que se le como "hoje de madrugada".
+    expect(horaCurta("2026-09-17T03:20:00.000-03:00", agora)).toBe("17/09 03:20");
+  });
+
+  it("usa o fuso de Brasilia, nao o da maquina", () => {
+    expect(horaCurta("2026-09-18T16:46:00.000Z", agora)).toBe("13:46");
+  });
+
+  it("devolve o texto recebido quando a data e ilegivel", () => {
+    expect(horaCurta("nunca", agora)).toBe("nunca");
   });
 });

@@ -54,6 +54,21 @@ const DATA_HORA = new Intl.DateTimeFormat("pt-BR", {
   timeZone: "America/Sao_Paulo",
 });
 
+/** Mesmo fuso fixo, nas duas formas curtas que o cabecalho usa. */
+const HORA = new Intl.DateTimeFormat("pt-BR", {
+  hour: "2-digit",
+  minute: "2-digit",
+  timeZone: "America/Sao_Paulo",
+});
+
+const DIA_E_HORA = new Intl.DateTimeFormat("pt-BR", {
+  day: "2-digit",
+  month: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+  timeZone: "America/Sao_Paulo",
+});
+
 const NOMES_MES_CURTO = [
   "Jan", "Fev", "Mar", "Abr", "Mai", "Jun",
   "Jul", "Ago", "Set", "Out", "Nov", "Dez",
@@ -124,6 +139,26 @@ export function dataHora(iso: string | Date): string {
   const d = typeof iso === "string" ? new Date(iso) : iso;
   if (Number.isNaN(d.getTime())) return String(iso);
   return DATA_HORA.format(d);
+}
+
+/**
+ * "14:22" quando o instante e de HOJE; "17/09 14:22" quando nao e.
+ *
+ * Existe para o selo de sincronizacao do cabecalho, onde cabem uns 60px. So a
+ * hora seria uma mentira confortavel num painel que passou a noite sem
+ * atualizar: "03:20" de ontem le-se como "hoje de madrugada". Por isso o dia
+ * volta a aparecer assim que a data muda.
+ *
+ * O "hoje" e o de Brasilia, como todo o resto (`DATA_HORA`), e nao o do
+ * servidor -- que em producao roda em UTC.
+ */
+export function horaCurta(iso: string | Date, agora: Date = new Date()): string {
+  const d = typeof iso === "string" ? new Date(iso) : iso;
+  if (Number.isNaN(d.getTime())) return String(iso);
+  const mesmoDia = DATA_HORA.format(d).slice(0, 10) === DATA_HORA.format(agora).slice(0, 10);
+  // "17/09, 03:20" -> "17/09 03:20": a virgula do Intl nao paga os pixels dela
+  // num selo de uns 60px.
+  return mesmoDia ? HORA.format(d) : DIA_E_HORA.format(d).replace(",", "");
 }
 
 /**

@@ -3,6 +3,7 @@ import Link from "next/link";
 import { sair } from "@/app/entrar/actions";
 import { SeletorMes } from "@/components/SeletorMes";
 import { NavegacaoPrincipal } from "@/components/NavegacaoPrincipal";
+import { SeloSincronizacao } from "@/components/SeloSincronizacao";
 import {
   areasDoPerfil,
   ROTA_INICIAL,
@@ -60,7 +61,9 @@ export function Cabecalho({
           {meses && mesSelecionado && (
             <SeletorMes meses={meses} mesSelecionado={mesSelecionado} />
           )}
-          {demonstracao && <SeloDemonstracao />}
+          {/* O mesmo lugar responde "de onde vem este numero": em demonstracao,
+              que ele e ficticio; em producao, de quando ele e. */}
+          {demonstracao ? <SeloDemonstracao /> : <SeloSincronizacao />}
           <MenuUsuario usuario={usuario} />
         </div>
       </div>
