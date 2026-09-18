@@ -1,17 +1,19 @@
 /**
- * Ordem de fabricacao: numeracao, token, hash e a montagem do documento.
+ * Ordem de fabricacao: numeracao, assinatura, hash e a montagem do documento.
  *
- * Tudo aqui e funcao PURA -- as unicas excecoes sao `novoToken`, que sorteia, e
- * `gerarDocumento`, que carimba uma data. As duas recebem o valor de fora nos
- * testes, para que os bytes do PDF sejam reproduziveis: e o que permite o teste
- * conferir o hash do arquivo em vez de so verificar que ele foi gerado.
+ * Tudo aqui e funcao PURA -- a unica excecao e `gerarDocumento`, que carimba
+ * uma data, e ela recebe o valor de fora nos testes, para que os bytes do PDF
+ * sejam reproduziveis: e o que permite o teste conferir o hash do arquivo em
+ * vez de so verificar que ele foi gerado.
  *
  * O desenho do documento mora aqui, e nao num componente, pelo mesmo motivo
  * que `lib/metrics.ts` nao importa React: o PDF e gerado no servidor, no
- * momento da assinatura, e precisa sair identico daqui a dois anos.
+ * momento em que a ordem fecha, e precisa sair identico daqui a dois anos.
+ *
+ * As regras de QUEM faz o que ficam em `lib/processoOrdem.ts`.
  */
 
-import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
+import { createHash } from "node:crypto";
 
 import { dataCalendario, dataHora, inteiro } from "@/lib/format";
 import {
@@ -23,24 +25,28 @@ import {
   type Desenho,
 } from "@/lib/pdf";
 import {
+  ETAPAS,
+  ITENS_DE_CONFERENCIA,
+  PERGUNTA_DE_CONFERENCIA,
   PROPORCAO_ASSINATURA,
-  ROTULO_PAPEL,
+  QUEM_FAZ_A_ETAPA,
+  ROTULO_ETAPA,
   ROTULO_SITUACAO,
+  passoDaEtapa,
   unidadesDaOrdem,
-  type AssinaturaOrdem,
   type DocumentoOrdem,
   type OrdemFabricacao,
-  type SituacaoOrdem,
+  type PassoDaOrdem,
 } from "@/types/ordemFabricacao";
 
 // ---------------------------------------------------------------------------
-// Numeracao e token
+// Numeracao
 // ---------------------------------------------------------------------------
 
 /**
  * "OF-2026-0007". Sequencial por ano.
  *
- * Por ano, e nao continuo, porque e o numero que as duas pessoas vao falar no
+ * Por ano, e nao continuo, porque e o numero que as pessoas vao falar no
  * telefone e escrever na caixa: "a OF sete deste ano". Um contador eterno
  * chegaria a cinco digitos e perderia essa propriedade.
  *
@@ -58,30 +64,6 @@ export function proximoNumero(ordens: OrdemFabricacao[], quando = new Date()): s
   return `${prefixo}${String(maior + 1).padStart(4, "0")}`;
 }
 
-/**
- * Token do link de assinatura: 32 bytes aleatorios em base64url.
- *
- * 256 bits de `randomBytes` -- nao `Math.random`, que e previsivel e nao serve
- * para nada que autorize alguma coisa. Aqui o link E a credencial.
- */
-export function novoToken(): string {
-  return randomBytes(32).toString("base64url");
-}
-
-/**
- * Compara tokens em tempo constante.
- *
- * O repositorio de demonstracao procura o token varrendo a lista, e um `===`
- * ali vaza, pelo tempo, quantos caracteres iniciais estavam certos. Custa uma
- * linha proteger; o mesmo cuidado ja esta em `verificarSenha`.
- */
-export function tokenConfere(recebido: string, guardado: string): boolean {
-  const a = Buffer.from(recebido);
-  const b = Buffer.from(guardado);
-  if (a.length === 0 || a.length !== b.length) return false;
-  return timingSafeEqual(a, b);
-}
-
 // ---------------------------------------------------------------------------
 // Assinatura
 // ---------------------------------------------------------------------------
@@ -94,9 +76,9 @@ const MAXIMO_DE_PONTOS_POR_TRACO = 600;
  * Limpa os tracos que chegaram do navegador.
  *
  * Isto e validacao de entrada, nao arredondamento por estetica: os numeros vem
- * de um `<form>` publico, sem login, e vao direto para um gerador de PDF. Um
- * `NaN` ou um `1e9` no meio da lista produziria um arquivo corrompido, e um
- * array de cem mil pontos encheria o banco.
+ * de um `<form>` e vao direto para um gerador de PDF. Um `NaN` ou um `1e9` no
+ * meio da lista produziria um arquivo corrompido, e um array de cem mil pontos
+ * encheria o banco.
  *
  * Tres casas decimais dao precisao de ~0,2mm num quadro de 70mm -- muito
  * abaixo do que a mao consegue, e mantem o JSON pequeno.
@@ -159,6 +141,10 @@ export function assinaturaTemTinta(tracos: number[][]): boolean {
  * A forma canonica e montada campo a campo, na mao. `JSON.stringify(ordem)`
  * nao serviria: a ordem das chaves de um objeto lido do banco nao e a mesma de
  * um objeto recem-criado, e o hash mudaria sem o conteudo mudar.
+ *
+ * TODOS os passos entram. Um hash que cobrisse so o pedido continuaria valendo
+ * depois de alguem trocar quem assinou a fabricacao, e e justamente isso que
+ * ele existe para impedir.
  */
 export function hashDoConteudo(ordem: OrdemFabricacao): string {
   const canonico = [
@@ -166,11 +152,32 @@ export function hashDoConteudo(ordem: OrdemFabricacao): string {
     ordem.dataLancamento,
     ordem.observacao ?? "",
     ...ordem.itens.map((i) => `${i.chave}|${i.nome}|${i.sku ?? ""}|${i.quantidade}`),
-    `${ordem.solicitante.nome}|${ordem.solicitante.assinadoEm}`,
-    ordem.aprovador ? `${ordem.aprovador.nome}|${ordem.aprovador.assinadoEm}` : "",
+    ...ordem.passos.map((p) =>
+      [
+        p.etapa,
+        p.assinatura.nome,
+        p.assinatura.assinadoEm,
+        p.conferencia
+          ? `${ITENS_DE_CONFERENCIA.map((i) => (p.conferencia?.respostas[i] ? "1" : "0")).join("")}|${
+              p.conferencia.cumpreAData ? "1" : "0"
+            }`
+          : "",
+        somaDasQuantidades(p),
+      ].join("|"),
+    ),
   ].join("\n");
 
   return createHash("sha256").update(canonico, "utf8").digest("hex");
+}
+
+/** Total registrado no passo, ou vazio quando a etapa nao conta unidades. */
+function somaDasQuantidades(passo: PassoDaOrdem): string {
+  const dados = passo.fabricacao ?? passo.contagem ?? passo.recebimento;
+  if (!dados) return "";
+  return Object.entries(dados.quantidades)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([chave, valor]) => `${chave}:${valor}`)
+    .join(",");
 }
 
 /** "a91f 3c02 ..." -- hash quebrado em blocos, para conferir a olho. */
@@ -239,7 +246,7 @@ export function desenharOrdem(
       tipo: "texto",
       x: MARGEM,
       y,
-      texto: `Emitida em ${dataHora(ordem.criadoEm)}`,
+      texto: `Aberta em ${dataHora(ordem.criadoEm)}`,
       tamanho: 9,
       cor: CINZA_ROTULO,
     },
@@ -264,7 +271,7 @@ export function desenharOrdem(
   y = campo(
     atual,
     y,
-    "Volume total",
+    "Volume pedido",
     `${inteiro(unidadesDaOrdem(ordem))} unidade(s) em ${ordem.itens.length} item(ns)`,
   );
 
@@ -281,14 +288,22 @@ export function desenharOrdem(
 
   // --- Itens ---------------------------------------------------------------
 
-  y = titulo(atual, y, "ITENS A FABRICAR");
+  const recebimento = passoDaEtapa(ordem, "recebimento");
+  const fabricacao = passoDaEtapa(ordem, "fabricacao");
 
-  const xSku = MARGEM + 300;
+  y = titulo(atual, y, "ITENS");
+
+  const xSku = MARGEM + 240;
+  const xPedido = MARGEM + 340;
+  const xFabricado = MARGEM + 420;
+
   const cabecalhoDaTabela = () => {
     atual.push(
       { tipo: "texto", x: MARGEM, y, texto: "Produto", tamanho: 8.5, negrito: true, cor: CINZA_ROTULO },
       { tipo: "texto", x: xSku, y, texto: "SKU", tamanho: 8.5, negrito: true, cor: CINZA_ROTULO },
-      { tipo: "texto", x: DIREITA, y, texto: "Quantidade", tamanho: 8.5, negrito: true, cor: CINZA_ROTULO, alinhamento: "direita" },
+      { tipo: "texto", x: xPedido, y, texto: "Pedido", tamanho: 8.5, negrito: true, cor: CINZA_ROTULO, alinhamento: "direita" },
+      { tipo: "texto", x: xFabricado, y, texto: "Fabricado", tamanho: 8.5, negrito: true, cor: CINZA_ROTULO, alinhamento: "direita" },
+      { tipo: "texto", x: DIREITA, y, texto: "Recebido", tamanho: 8.5, negrito: true, cor: CINZA_ROTULO, alinhamento: "direita" },
     );
     y += 6;
     atual.push({ tipo: "linha", x1: MARGEM, y1: y, x2: DIREITA, y2: y, espessura: 0.8, cor: 0.4 });
@@ -297,12 +312,20 @@ export function desenharOrdem(
 
   cabecalhoDaTabela();
 
+  let totalFabricado = 0;
+  let totalRecebido = 0;
+
   for (const item of ordem.itens) {
-    if (y + 18 > RODAPE - 200) {
+    if (y + 18 > RODAPE - 120) {
       abrirPagina();
-      y = titulo(atual, y, "ITENS A FABRICAR (continuação)");
+      y = titulo(atual, y, "ITENS (continuação)");
       cabecalhoDaTabela();
     }
+
+    const fab = fabricacao?.fabricacao?.quantidades[item.chave];
+    const rec = recebimento?.recebimento?.quantidades[item.chave];
+    totalFabricado += fab ?? 0;
+    totalRecebido += rec ?? 0;
 
     atual.push(
       {
@@ -310,16 +333,27 @@ export function desenharOrdem(
         x: MARGEM,
         y,
         // Truncar em vez de deixar invadir: nome de produto nao tem teto de
-        // tamanho e a coluna de quantidade tem que continuar legivel.
-        texto: truncarTexto(item.nome, 290, 10),
+        // tamanho e as colunas de quantidade tem que continuar legiveis.
+        texto: truncarTexto(item.nome, 230, 10),
         tamanho: 10,
       },
-      { tipo: "texto", x: xSku, y, texto: item.sku ?? "--", tamanho: 9, cor: CINZA_APOIO },
+      { tipo: "texto", x: xSku, y, texto: truncarTexto(item.sku ?? "--", 92, 9), tamanho: 9, cor: CINZA_APOIO },
+      { tipo: "texto", x: xPedido, y, texto: inteiro(item.quantidade), tamanho: 10, alinhamento: "direita" },
+      {
+        tipo: "texto",
+        x: xFabricado,
+        y,
+        texto: fab === undefined ? "--" : inteiro(fab),
+        tamanho: 10,
+        alinhamento: "direita",
+        cor: fab !== undefined && fab < item.quantidade ? 0.1 : 0.35,
+        negrito: fab !== undefined && fab < item.quantidade,
+      },
       {
         tipo: "texto",
         x: DIREITA,
         y,
-        texto: `${inteiro(item.quantidade)} un`,
+        texto: rec === undefined ? "--" : inteiro(rec),
         tamanho: 10,
         negrito: true,
         alinhamento: "direita",
@@ -332,32 +366,181 @@ export function desenharOrdem(
   atual.push({ tipo: "linha", x1: MARGEM, y1: y, x2: DIREITA, y2: y, espessura: 0.8, cor: 0.4 });
   y += 15;
   atual.push(
-    { tipo: "texto", x: MARGEM, y, texto: "Total a fabricar", tamanho: 10, negrito: true },
+    { tipo: "texto", x: MARGEM, y, texto: "Total", tamanho: 10, negrito: true },
+    { tipo: "texto", x: xPedido, y, texto: inteiro(unidadesDaOrdem(ordem)), tamanho: 10, negrito: true, alinhamento: "direita" },
+    {
+      tipo: "texto",
+      x: xFabricado,
+      y,
+      texto: fabricacao ? inteiro(totalFabricado) : "--",
+      tamanho: 10,
+      negrito: true,
+      alinhamento: "direita",
+    },
     {
       tipo: "texto",
       x: DIREITA,
       y,
-      texto: `${inteiro(unidadesDaOrdem(ordem))} un`,
+      texto: recebimento ? inteiro(totalRecebido) : "--",
       tamanho: 11,
       negrito: true,
       alinhamento: "direita",
     },
   );
-  y += 34;
+  y += 30;
+
+  // --- O que cada etapa registrou -----------------------------------------
+
+  const conferencia = passoDaEtapa(ordem, "conferencia");
+  if (conferencia?.conferencia) {
+    garantirEspaco(30 + ITENS_DE_CONFERENCIA.length * 14);
+    y = titulo(atual, y, "CONFERÊNCIA DE INSUMOS");
+
+    for (const item of ITENS_DE_CONFERENCIA) {
+      const sim = conferencia.conferencia.respostas[item] === true;
+      atual.push(
+        { tipo: "texto", x: MARGEM, y, texto: PERGUNTA_DE_CONFERENCIA[item], tamanho: 9.5 },
+        {
+          tipo: "texto",
+          x: DIREITA,
+          y,
+          texto: sim ? "SIM" : "NÃO",
+          tamanho: 9.5,
+          negrito: true,
+          cor: sim ? 0.25 : 0.1,
+          alinhamento: "direita",
+        },
+      );
+      y += 14;
+    }
+
+    const cumpre = conferencia.conferencia.cumpreAData;
+    atual.push(
+      { tipo: "texto", x: MARGEM, y, texto: "Fica pronto na data pedida?", tamanho: 9.5 },
+      {
+        tipo: "texto",
+        x: DIREITA,
+        y,
+        texto: cumpre
+          ? "SIM"
+          : `NÃO -- ${conferencia.conferencia.dataPossivel ? dataCalendario(conferencia.conferencia.dataPossivel) : "sem data"}`,
+        tamanho: 9.5,
+        negrito: true,
+        cor: 0.1,
+        alinhamento: "direita",
+      },
+    );
+    y += 26;
+  }
+
+  const datas: Array<[string, string | undefined]> = [
+    ["Fabricação concluída em", fabricacao?.fabricacao?.dataFabricacao],
+    ["Contado na Demazon em", passoDaEtapa(ordem, "contagem")?.contagem?.dataContagem],
+    ["Enviado para a Criar em", passoDaEtapa(ordem, "envio")?.envio?.dataEnvio],
+    ["Recebido na Criar em", recebimento?.recebimento?.dataRecebimento],
+  ].filter(([, valor]) => Boolean(valor));
+
+  if (datas.length > 0) {
+    garantirEspaco(24 + datas.length * 18);
+    y = titulo(atual, y, "DATAS DO PROCESSO");
+    for (const [rotulo, valor] of datas) y = campo(atual, y, rotulo, dataCalendario(valor!));
+    y += 12;
+  }
 
   // --- Assinaturas ---------------------------------------------------------
 
-  const alturaDoBloco = 62 + Math.round(((LARGURA_UTIL - 30) / 2) / PROPORCAO_ASSINATURA);
-  garantirEspaco(alturaDoBloco + 24);
+  /*
+   * Uma moldura por etapa, em duas colunas.
+   *
+   * Com seis etapas isto e uma folha de assinaturas, e nao duas caixinhas lado
+   * a lado: cada bloco diz a etapa, quem assinou e quando. Etapa nao cumprida
+   * aparece com a moldura vazia -- num documento de ordem cancelada e isso que
+   * mostra ate onde o processo chegou.
+   *
+   * O laco fica aqui, e nao numa funcao a parte, porque precisa de `atual` e
+   * `y`: passar os dois por closure para fora so escondia a quebra de pagina.
+   */
+  const espaco = 26;
+  const largura = (LARGURA_UTIL - espaco) / 2;
+  const alturaDaMoldura = largura / PROPORCAO_ASSINATURA;
+  const alturaDoBloco = alturaDaMoldura + 56;
 
   y = titulo(atual, y, "ASSINATURAS");
-  y = desenharAssinaturas(atual, y, ordem);
 
-  // --- Recusa --------------------------------------------------------------
+  for (let i = 0; i < ETAPAS.length; i += 2) {
+    garantirEspaco(alturaDoBloco);
 
-  if (ordem.situacao === "recusada" && ordem.motivoRecusa) {
+    for (const [coluna, etapa] of [ETAPAS[i], ETAPAS[i + 1]].entries()) {
+      if (!etapa) continue;
+      const x = MARGEM + coluna * (largura + espaco);
+      const passo = passoDaEtapa(ordem, etapa);
+
+      atual.push({
+        tipo: "retangulo",
+        x,
+        y,
+        largura,
+        altura: alturaDaMoldura,
+        contorno: 0.72,
+        espessura: 0.7,
+      });
+
+      if (passo) {
+        atual.push(...tracosNaMoldura(passo.assinatura.tracos, x, y, largura, alturaDaMoldura));
+      } else {
+        atual.push({
+          tipo: "texto",
+          x: x + largura / 2,
+          y: y + alturaDaMoldura / 2 + 3,
+          texto: "não assinada",
+          tamanho: 9,
+          cor: 0.68,
+          alinhamento: "centro",
+        });
+      }
+
+      let linha = y + alturaDaMoldura + 13;
+      atual.push({
+        tipo: "texto",
+        x,
+        y: linha,
+        texto: truncarTexto(passo?.assinatura.nome ?? "--", largura, 10.5, true),
+        tamanho: 10.5,
+        negrito: true,
+      });
+      linha += 12;
+
+      atual.push({
+        tipo: "texto",
+        x,
+        y: linha,
+        texto: `${ROTULO_ETAPA[etapa]} -- ${QUEM_FAZ_A_ETAPA[etapa]}`,
+        tamanho: 7.5,
+        cor: CINZA_ROTULO,
+      });
+      linha += 11;
+
+      if (passo) {
+        atual.push({
+          tipo: "texto",
+          x,
+          y: linha,
+          texto: `Assinado em ${dataHora(passo.assinatura.assinadoEm)}`,
+          tamanho: 7.5,
+          cor: CINZA_ROTULO,
+        });
+      }
+    }
+
+    y += alturaDoBloco;
+  }
+
+  // --- Cancelamento --------------------------------------------------------
+
+  if (ordem.situacao === "cancelada" && ordem.motivoCancelamento) {
+    garantirEspaco(40);
     y += 12;
-    for (const linha of quebrarTexto(`Motivo da recusa: ${ordem.motivoRecusa}`, LARGURA_UTIL, 10)) {
+    for (const linha of quebrarTexto(`Motivo do cancelamento: ${ordem.motivoCancelamento}`, LARGURA_UTIL, 10)) {
       atual.push({ tipo: "texto", x: MARGEM, y, texto: linha, tamanho: 10 });
       y += 13;
     }
@@ -408,7 +591,7 @@ function titulo(pagina: Desenho[], y: number, texto: string): number {
 function campo(pagina: Desenho[], y: number, rotulo: string, valor: string): number {
   pagina.push(
     { tipo: "texto", x: MARGEM, y, texto: rotulo, tamanho: 8.5, cor: CINZA_ROTULO },
-    { tipo: "texto", x: MARGEM + 132, y, texto: valor, tamanho: 10.5, negrito: true },
+    { tipo: "texto", x: MARGEM + 150, y, texto: valor, tamanho: 10.5, negrito: true },
   );
   return y + 18;
 }
@@ -434,97 +617,6 @@ function tarjaDeDemonstracao(): Desenho[] {
       alinhamento: "centro",
     },
   ];
-}
-
-/** As duas molduras, lado a lado, com o traco de cada um dentro. */
-function desenharAssinaturas(
-  pagina: Desenho[],
-  y: number,
-  ordem: OrdemFabricacao,
-): number {
-  const espaco = 30;
-  const largura = (LARGURA_UTIL - espaco) / 2;
-  const altura = largura / PROPORCAO_ASSINATURA;
-
-  const colunas: Array<{ x: number; assinatura: AssinaturaOrdem | null }> = [
-    { x: MARGEM, assinatura: ordem.solicitante },
-    { x: MARGEM + largura + espaco, assinatura: ordem.aprovador },
-  ];
-
-  for (const [indice, coluna] of colunas.entries()) {
-    pagina.push({
-      tipo: "retangulo",
-      x: coluna.x,
-      y,
-      largura,
-      altura,
-      contorno: 0.72,
-      espessura: 0.7,
-    });
-
-    if (coluna.assinatura) {
-      pagina.push(...tracosNaMoldura(coluna.assinatura.tracos, coluna.x, y, largura, altura));
-    } else {
-      pagina.push({
-        tipo: "texto",
-        x: coluna.x + largura / 2,
-        y: y + altura / 2 + 3,
-        texto: "aguardando assinatura",
-        tamanho: 9,
-        cor: 0.68,
-        alinhamento: "centro",
-      });
-    }
-
-    let linha = y + altura + 14;
-    const papel = indice === 0 ? "solicitante" : "aprovador";
-
-    pagina.push({
-      tipo: "texto",
-      x: coluna.x,
-      y: linha,
-      texto: truncarTexto(coluna.assinatura?.nome ?? "--", largura, 11, true),
-      tamanho: 11,
-      negrito: true,
-    });
-    linha += 12;
-
-    pagina.push({
-      tipo: "texto",
-      x: coluna.x,
-      y: linha,
-      texto: ROTULO_PAPEL[papel],
-      tamanho: 8,
-      cor: CINZA_ROTULO,
-    });
-    linha += 11;
-
-    if (coluna.assinatura) {
-      pagina.push({
-        tipo: "texto",
-        x: coluna.x,
-        y: linha,
-        texto: `Assinado em ${dataHora(coluna.assinatura.assinadoEm)}`,
-        tamanho: 8,
-        cor: CINZA_ROTULO,
-      });
-      linha += 10;
-
-      if (coluna.assinatura.ip) {
-        pagina.push({
-          tipo: "texto",
-          x: coluna.x,
-          y: linha,
-          texto: `Origem ${coluna.assinatura.ip}`,
-          tamanho: 7,
-          cor: 0.68,
-        });
-        linha += 10;
-      }
-    }
-  }
-
-  return y + altura + 60;
 }
 
 /**
@@ -564,10 +656,11 @@ function tracosNaMoldura(
 /**
  * Gera o PDF congelado da ordem.
  *
- * Chamado UMA vez, no momento da assinatura do aprovador. Dali em diante o
- * painel serve os bytes guardados, nunca regenera: um documento que se
- * reconstroi a cada download mudaria junto com o codigo que o desenha, e a
- * assinatura deixaria de se referir a alguma coisa fixa.
+ * Chamado UMA vez, quando a ordem fecha -- no recebimento na Criar, ou no
+ * cancelamento. Dali em diante o painel serve os bytes guardados, nunca
+ * regenera: um documento que se reconstroi a cada download mudaria junto com o
+ * codigo que o desenha, e as assinaturas deixariam de se referir a alguma
+ * coisa fixa.
  */
 export function gerarDocumento(
   ordem: OrdemFabricacao,
@@ -578,9 +671,7 @@ export function gerarDocumento(
   const bytes = montarPdf(paginas, {
     titulo: `Ordem de fabricação ${ordem.numero}`,
     autor: "Painel Administrativo",
-    assunto: `Pedido de fabricacao assinado por ${ordem.solicitante.nome} e ${
-      ordem.aprovador?.nome ?? "--"
-    }`,
+    assunto: `Processo de fabricacao com ${ordem.passos.length} etapa(s) assinada(s)`,
     criadoEm: opcoes.geradoEm,
   });
 
@@ -599,157 +690,49 @@ export function gerarDocumento(
 
 export interface ResumoOrdens {
   total: number;
-  aguardando: number;
-  aprovadas: number;
+  emAndamento: number;
+  emRevisao: number;
+  concluidas: number;
   /** Unidades das ordens ainda em aberto -- o que a fabrica ainda deve. */
   unidadesEmAberto: number;
   /** Ordens em aberto cuja data de lancamento ja passou. */
   atrasadas: number;
 }
 
-export function resumirOrdens(
-  ordens: OrdemFabricacao[],
-  hoje = new Date(),
-): ResumoOrdens {
-  const abertas = ordens.filter((o) => o.situacao === "aguardando");
-  const limite = hoje.toISOString().slice(0, 10);
+export function resumirOrdens(ordens: OrdemFabricacao[], hoje: string): ResumoOrdens {
+  let emAndamento = 0;
+  let emRevisao = 0;
+  let concluidas = 0;
+  let unidadesEmAberto = 0;
+  let atrasadas = 0;
+
+  for (const ordem of ordens) {
+    if (ordem.situacao === "concluida") concluidas += 1;
+    if (ordem.situacao === "revisao") emRevisao += 1;
+    if (ordem.situacao === "andamento") emAndamento += 1;
+
+    if (ordem.situacao === "andamento" || ordem.situacao === "revisao") {
+      unidadesEmAberto += unidadesDaOrdem(ordem);
+      if (ordem.dataLancamento < hoje) atrasadas += 1;
+    }
+  }
 
   return {
     total: ordens.length,
-    aguardando: abertas.length,
-    aprovadas: ordens.filter((o) => o.situacao === "aprovada").length,
-    unidadesEmAberto: abertas.reduce((soma, o) => soma + unidadesDaOrdem(o), 0),
-    atrasadas: abertas.filter((o) => o.dataLancamento < limite).length,
+    emAndamento,
+    emRevisao,
+    concluidas,
+    unidadesEmAberto,
+    atrasadas,
   };
 }
 
-// ---------------------------------------------------------------------------
-// Filtro da lista
-// ---------------------------------------------------------------------------
-
-/**
- * Teto de ordens desenhadas de uma vez.
- *
- * Nao e paginacao por elegancia: cada ordem carrega os TRACOS das duas
- * assinaturas, uns 3 KB por ordem. Quinhentas ordens seriam mais de um mega
- * atravessando para o navegador toda vez que a aba abre, para desenhar uma
- * lista que ninguem le inteira. O filtro corta antes, e o que sobra tem teto.
- */
 export const LIMITE_DA_LISTA = 50;
 
-/** Quem e o dono de um produto -- e por onde a ordem encontra o influencer. */
-export interface DonoDoProduto {
-  id: string;
-  nome: string;
-  marca: string;
-}
-
-export interface FiltrosOrdens {
-  /** Texto livre: produto, SKU, numero da ordem, quem pediu, quem aprovou. */
-  busca: string;
-  /** Id do influencer dono dos produtos pedidos. `null` = todos. */
-  influencerId: string | null;
-  situacao: SituacaoOrdem | null;
-}
-
-export const FILTROS_DE_ORDENS_VAZIOS: FiltrosOrdens = {
-  busca: "",
-  influencerId: null,
-  situacao: null,
-};
-
-export function haFiltroAtivo(filtros: FiltrosOrdens): boolean {
-  return (
-    filtros.busca.trim() !== "" ||
-    filtros.influencerId !== null ||
-    filtros.situacao !== null
-  );
-}
-
-/**
- * Caixa e acento fora, para a busca perdoar a digitacao.
- *
- * Nome de produto vindo da Nuvemshop vem acentuado, e ninguem
- * digita acento numa caixa de busca. Sem normalizar os DOIS lados, procurar
- * "serum" nao acharia "Serum" acentuado -- e o filtro pareceria quebrado no caso
- * mais comum.
- */
 export function normalizarBusca(texto: string): string {
   return texto
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
     .toLowerCase()
-    .trim();
-}
-
-/**
- * Filtra a lista de ordens.
- *
- * O influencer NAO mora na ordem: ele mora no produto (secao 5.11), e a ordem
- * so guarda a chave do item. O vinculo chega de fora, em `donoPorChave`, para
- * esta funcao continuar pura e para a pagina montar o indice uma vez so em vez
- * de uma vez por ordem.
- *
- * Uma ordem com varios itens casa se QUALQUER item casar. Exigir que todos
- * casassem esconderia justamente o pedido misto, que e o que a pessoa procura
- * quando pergunta "o que eu ja pedi do Serum?".
- */
-export function filtrarOrdens(
-  ordens: OrdemFabricacao[],
-  filtros: FiltrosOrdens,
-  donoPorChave: Map<string, DonoDoProduto>,
-): OrdemFabricacao[] {
-  const termo = normalizarBusca(filtros.busca);
-
-  return ordens.filter((ordem) => {
-    if (filtros.situacao && ordem.situacao !== filtros.situacao) return false;
-
-    if (filtros.influencerId) {
-      const daMarca = ordem.itens.some(
-        (item) => donoPorChave.get(item.chave)?.id === filtros.influencerId,
-      );
-      if (!daMarca) return false;
-    }
-
-    if (termo === "") return true;
-
-    const alvos = [
-      ordem.numero,
-      ordem.solicitante.nome,
-      ordem.aprovador?.nome ?? "",
-      ordem.observacao ?? "",
-      ...ordem.itens.flatMap((item) => {
-        const dono = donoPorChave.get(item.chave);
-        // O nome do influencer e o da marca entram na busca livre: quem
-        // procura "Aurora" quer as ordens da Aurora, sem ter que descobrir
-        // qual seletor usar.
-        return [item.nome, item.sku ?? "", dono?.nome ?? "", dono?.marca ?? ""];
-      }),
-    ];
-
-    return alvos.some((alvo) => normalizarBusca(alvo).includes(termo));
-  });
-}
-
-/**
- * Le os filtros da barra de endereco, validando contra o que existe.
- *
- * Mesma regra de `relatoriosUrl.ts`: nada vindo da URL entra sem passar por
- * uma lista conhecida. Um influencer que nao existe mais vira "todos", nao uma
- * lista vazia sem explicacao.
- */
-export function lerFiltrosDaUrl(
-  params: { busca?: string; influencer?: string; situacao?: string },
-  influencersValidos: string[],
-): FiltrosOrdens {
-  const situacoes: SituacaoOrdem[] = ["aguardando", "aprovada", "recusada", "cancelada"];
-
-  return {
-    busca: (params.busca ?? "").slice(0, 120),
-    influencerId:
-      params.influencer && influencersValidos.includes(params.influencer)
-        ? params.influencer
-        : null,
-    situacao: situacoes.find((s) => s === params.situacao) ?? null,
-  };
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "");
 }

@@ -5,9 +5,30 @@
  * cadastra produto e conta estoque NAO pode ver faturamento, custo, margem,
  * comissao nem lucro. Nao e preferencia de layout -- e separacao de acesso, e
  * por isso e verificada no servidor, nunca escondendo elemento no navegador.
+ *
+ * Desde 18/09/2026 os perfis tambem dizem QUEM ASSINA CADA ETAPA da ordem de
+ * fabricacao (5.15). Os quatro perfis do processo veem quase nada do painel: a
+ * fila de ordens deles, e mais nada. Um perfil por etapa, e nao uma permissao
+ * solta "pode assinar", porque assim a pergunta "quem faz a conferencia?" tem
+ * uma resposta so, no cadastro de usuarios.
  */
 
-export type PerfilUsuario = "dono" | "estoque";
+export type PerfilUsuario =
+  | "dono"
+  | "estoque"
+  | "conferencia"
+  | "fabricacao"
+  | "estoque_demazon"
+  | "estoque_criar";
+
+export const PERFIS: readonly PerfilUsuario[] = [
+  "dono",
+  "estoque",
+  "conferencia",
+  "fabricacao",
+  "estoque_demazon",
+  "estoque_criar",
+] as const;
 
 /**
  * Minimo para senha de painel financeiro exposto na internet.
@@ -26,6 +47,15 @@ export interface Usuario {
   usuario: string;
   perfil: PerfilUsuario;
   ativo: boolean;
+
+  /**
+   * Para onde vai o aviso quando uma ordem chega na etapa desta pessoa.
+   *
+   * `null` e permitido: sem e-mail a pessoa continua entrando no painel e
+   * vendo a fila dela, so nao e avisada. A tela diz isso, em vez de calar --
+   * um aviso que nunca chega e pior que aviso nenhum.
+   */
+  email: string | null;
 
   /** Hash scrypt da senha. NUNCA sai do servidor. */
   senhaHash: string;
@@ -48,6 +78,7 @@ export interface UsuarioPublico {
   usuario: string;
   perfil: PerfilUsuario;
   ativo: boolean;
+  email: string | null;
 }
 
 export function paraUsuarioPublico(usuario: Usuario): UsuarioPublico {
@@ -57,6 +88,7 @@ export function paraUsuarioPublico(usuario: Usuario): UsuarioPublico {
     usuario: usuario.usuario,
     perfil: usuario.perfil,
     ativo: usuario.ativo,
+    email: usuario.email,
   };
 }
 
@@ -67,11 +99,16 @@ export function paraUsuarioPublico(usuario: Usuario): UsuarioPublico {
 /**
  * Areas do painel. A lista e curta de proposito: permissao granular demais
  * vira configuracao que ninguem entende e todo mundo marca tudo.
+ *
+ * `ordens` nasceu separada de `produtos` quando o processo de fabricacao
+ * ganhou etapas (5.15): a conferencia e a fabricacao precisam da fila de
+ * ordens e de mais nada -- nao do cadastro de produtos, nem dos kits.
  */
 export type Area =
   | "financeiro"
   | "custos"
   | "produtos"
+  | "ordens"
   | "estoque"
   | "fiscal"
   | "usuarios";
@@ -80,7 +117,7 @@ export type Area =
 
 const PERMISSOES: Record<PerfilUsuario, Area[]> = {
   // O dono ve tudo.
-  dono: ["financeiro", "custos", "produtos", "estoque", "fiscal", "usuarios"],
+  dono: ["financeiro", "custos", "produtos", "ordens", "estoque", "fiscal", "usuarios"],
   /*
    * Quem cuida do estoque cadastra produto, conta e informa custo de
    * fabricacao -- e quem esta na fabrica que sabe quanto custa a materia-prima.
@@ -90,7 +127,19 @@ const PERMISSOES: Record<PerfilUsuario, Area[]> = {
    * A propria tela esconde preco de venda e margem para quem nao tem
    * `financeiro`.
    */
-  estoque: ["custos", "produtos", "estoque"],
+  estoque: ["custos", "produtos", "ordens", "estoque"],
+
+  /*
+   * Os quatro perfis do processo: a fila de ordens e nada mais.
+   *
+   * Os dois estoquistas ganham tambem a aba Estoque, porque e o trabalho
+   * deles e porque a contagem que fazem na ordem cai exatamente ali -- ver o
+   * resultado do proprio lancamento nao e privilegio, e conferencia.
+   */
+  conferencia: ["ordens"],
+  fabricacao: ["ordens"],
+  estoque_demazon: ["ordens", "estoque"],
+  estoque_criar: ["ordens", "estoque"],
 };
 
 export function podeAcessar(perfil: PerfilUsuario, area: Area): boolean {
@@ -104,16 +153,42 @@ export function areasDoPerfil(perfil: PerfilUsuario): Area[] {
 export const ROTULO_PERFIL: Record<PerfilUsuario, string> = {
   dono: "Administrador",
   estoque: "Produção",
+  conferencia: "Conferência",
+  fabricacao: "Fabricação",
+  estoque_demazon: "Estoque Demazon",
+  estoque_criar: "Estoque Criar",
 };
 
 export const DESCRICAO_PERFIL: Record<PerfilUsuario, string> = {
-  dono: "Vê o painel inteiro, incluindo faturamento, comissões, lucro e o cadastro de usuários.",
+  dono: "Vê o painel inteiro, incluindo faturamento, comissões, lucro e o cadastro de usuários. Abre as ordens de fabricação.",
   estoque:
     "Produtos, kits, ordens de fabricação, estoque e custo de fabricação. Não vê faturamento, comissão, margem nem lucro.",
+  conferencia:
+    "Só a fila de ordens. Confere se há embalagem, tampa, caixa e matéria-prima, e diz se dá para entregar na data.",
+  fabricacao:
+    "Só a fila de ordens. Assina quando a fabricação termina, com a data e a quantidade que saiu.",
+  estoque_demazon:
+    "A fila de ordens e o estoque. Conta o que foi fabricado e despacha para a Criar.",
+  estoque_criar:
+    "A fila de ordens e o estoque. Recebe e conta o que chegou da Demazon — é esta contagem que entra no estoque do painel.",
 };
 
 /** Rota inicial de cada perfil apos o login. */
 export const ROTA_INICIAL: Record<PerfilUsuario, string> = {
   dono: "/",
   estoque: "/estoque",
+  conferencia: "/ordens",
+  fabricacao: "/ordens",
+  estoque_demazon: "/ordens",
+  estoque_criar: "/ordens",
 };
+
+/**
+ * Perfis que so existem para o processo de fabricacao.
+ *
+ * A tela de usuarios usa isto para agrupar a lista: sem o agrupamento, seis
+ * perfis numa combo viram uma escolha as cegas.
+ */
+export function ehPerfilDoProcesso(perfil: PerfilUsuario): boolean {
+  return perfil !== "dono" && perfil !== "estoque";
+}
