@@ -33,6 +33,7 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 
 import type { CarrinhoAbandonado, Pedido } from "@/types/nuvemshop";
+import type { SincronizacaoNaTela } from "@/types/sincronizacao";
 import {
   intervaloAtualizacaoNuvemshop,
   lojasNuvemshop,
@@ -82,14 +83,13 @@ export interface BaseNuvemshop {
   ausentes: Record<string, Partial<Record<CampoVigiado, number>>>;
 }
 
-export interface EstadoDaSincronizacao {
-  /** A copia mais velha entre as lojas ja buscadas. `null` enquanto nao houve busca. */
-  atualizadoEm: string | null;
-  /** Lojas configuradas que ainda nao tem copia (a primeira busca leva minutos). */
-  lojasPendentes: string[];
-  sincronizando: boolean;
-  ultimoErro: string | null;
-}
+/**
+ * O que o rodape e o selo do cabecalho mostram.
+ *
+ * A forma mora em `types/sincronizacao.ts`: o selo e componente de navegador,
+ * e importar o tipo daqui traria este modulo junto, com `node:fs` dentro.
+ */
+export type EstadoDaSincronizacao = SincronizacaoNaTela;
 
 const pasta = () =>
   process.env.NUVEMSHOP_CACHE_DIR || path.join(process.cwd(), ".live-data");

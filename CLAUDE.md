@@ -2255,20 +2255,41 @@ quando ele é. A informação existia só no rodapé, depois da tela inteira, lo
 demais de quem abre o painel para conferir se a venda de agora há pouco já
 entrou.
 
-Três decisões:
+Quatro decisões:
 
-1. **A hora é absoluta ("13:46"), nunca "há 4 minutos".** A página é montada no
-   servidor e não se atualiza sozinha: um "há 4 minutos" deixado aberto na tela
-   continuaria dizendo 4 minutos duas horas depois. Hora cheia envelhece
-   sozinha, à vista de quem lê. Por isso também `horaCurta` traz o **dia** de
-   volta quando a cópia não é de hoje — "03:20" sozinho se lê como "hoje de
-   madrugada".
-2. **Vermelho acima de meia hora** (`ATRASO_QUE_PREOCUPA_MS`), e igualmente com
+1. **A hora é absoluta ("13:46"), nunca "há 4 minutos".** É hora de relógio,
+   que a pessoa compara com o próprio. Por isso também `horaCurta` traz o
+   **dia** de volta quando a cópia não é de hoje — "03:20" sozinho se lê como
+   "hoje de madrugada".
+
+2. **O selo se atualiza sozinho, de minuto em minuto.** A página é montada no
+   servidor e não se refaz: até 18/09/2026 a hora só mudava ao trocar de aba ou
+   recarregar, e o cliente reparou. `router.refresh()` resolveria e custaria
+   **reler a base de 40 mil pedidos a cada minuto**; por isso existe
+   `/api/sincronizacao`, que só olha a data do arquivo.
+
+   Três detalhes que o defeito ensinou:
+
+   - **Manipulador de rota é endereço público**, como Server Action (5.13): a
+     sessão é conferida dentro dele, e sem sessão sai **401**, não um
+     redirecionamento — quem chama é um `fetch`, que engoliria o 307 e receberia
+     a página de login como se fosse resposta. O `fumaca` confere os dois casos.
+   - **Com a aba escondida o intervalo para**, e a volta à aba dispara uma
+     consulta na hora. Era exatamente aí que a hora velha aparecia.
+   - **`agora` começa com o relógio do SERVIDOR**, passado como propriedade. Com
+     `Date.now()` do navegador, o primeiro desenho poderia divergir do que veio
+     pronto e o React reclamaria da hidratação — os dois relógios nunca batem ao
+     segundo.
+
+   O tipo do estado mora em `types/sincronizacao.ts`, e não em
+   `data/cachePedidos.ts`: o selo é componente de navegador, e importar de lá
+   traria o `node:fs` junto. Mesma armadilha do `TAMANHO_MINIMO_SENHA` (5.13.2).
+3. **Vermelho acima de meia hora** (`ATRASO_QUE_PREOCUPA_MS`), e igualmente com
    loja pendente ou erro na última busca. O servidor busca de 5 em 5 minutos e
    a página tenta a cada 25 (seção 14): meia hora não é demora, é o timer
    parado, a chave recusada ou a Nuvemshop fora do ar. O `title` diz qual dos
    casos é.
-3. **No celular sobra só a hora.** O rótulo "Nuvemshop" tomaria a linha do
+4. **No celular sobra só a hora.** O rótulo "Nuvemshop" tomaria a linha do
    botão de sair. O selo é mais estreito que o de demonstração, então a
    auditoria de 390px em modo demonstração continua sendo o teto — mas ela foi
    rodada nos dois modos.

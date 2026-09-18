@@ -238,6 +238,42 @@ if (!modoReal) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Enderecos que respondem a fetch, e nao a navegacao
+//
+// Um manipulador de rota e publico como uma Server Action: quem confere a
+// sessao e ele mesmo. Sem sessao tem que dar 401, e nao um redirecionamento --
+// quem chama e um `fetch`, que engoliria o 307 e receberia a pagina de login
+// como se fosse resposta.
+// ---------------------------------------------------------------------------
+
+console.log("");
+console.log("enderecos de dados");
+
+{
+  const semSessao = await fetch(`${base}/api/sincronizacao`, { redirect: "manual" });
+  if (semSessao.status === 401) {
+    console.log("  ok /api/sincronizacao  401 sem sessao (correto)");
+  } else {
+    console.log(`  x  /api/sincronizacao  ${semSessao.status} -- devia ser 401 sem sessao`);
+    falhas.push(`/api/sincronizacao: esperado 401 sem sessao, veio ${semSessao.status}`);
+  }
+
+  const comSessao = await fetch(`${base}/api/sincronizacao`, {
+    headers: { Cookie: `${NOME_COOKIE}=${tokenSessao(USUARIO_ID.dono, "dono")}` },
+    redirect: "manual",
+  });
+  const corpo = comSessao.status === 200 ? await comSessao.json() : null;
+  const formaCerta =
+    corpo === null || (typeof corpo === "object" && "atualizadoEm" in corpo);
+  if (comSessao.status === 200 && formaCerta) {
+    console.log("  ok /api/sincronizacao  200 com sessao (correto)");
+  } else {
+    console.log(`  x  /api/sincronizacao  ${comSessao.status} com sessao`);
+    falhas.push(`/api/sincronizacao: esperado 200 com sessao, veio ${comSessao.status}`);
+  }
+}
+
 console.log("");
 
 if (falhas.length) {
