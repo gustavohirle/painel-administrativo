@@ -248,7 +248,7 @@ function Resultado({
   const linhas: Array<{ rotulo: string; detalhe: string; valor: number; cor: string }> = [
     {
       rotulo: `Impostos (${ROTULO_REGIME[perfil.regime]})`,
-      detalhe: `Média de ${percentual(perfil.cargaImpostos)} da receita sem frete da marca`,
+      detalhe: `Média de ${percentual(perfil.cargaImpostos)} do valor pago, com frete, da marca`,
       valor: resultado.impostos,
       cor: "var(--color-imposto)",
     },

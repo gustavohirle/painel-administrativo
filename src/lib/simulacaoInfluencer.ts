@@ -254,7 +254,9 @@ export function estimarInfluencer(
   // O frete e cobrado do cliente POR FORA: soma no que ele paga, nao na receita.
   const frete = receitaReal * referencia.fracaoFrete;
   const recebido = receitaReal + frete;
-  const rbt12Projetado = receitaReal * 12;
+  // O imposto incide sobre o RECEBIDO, com frete (5.1.1): e essa a base do
+  // RBT12 e da guia, desde 18/09/2026.
+  const rbt12Projetado = recebido * 12;
 
   let impostos: number;
   let difal = 0;
@@ -262,12 +264,12 @@ export function estimarInfluencer(
 
   if (entrada.regime === "simples_nacional") {
     // Simples nao recolhe DIFAL como remetente (secao 5.10.1).
-    impostos = apurarSimples(rbt12Projetado, receitaReal).valorDAS;
+    impostos = apurarSimples(rbt12Projetado, recebido).valorDAS;
   } else if (referencia.presumido) {
-    impostos = receitaReal * referencia.presumido.cargaImpostos;
-    difal = receitaReal * referencia.presumido.cargaDifal;
+    impostos = recebido * referencia.presumido.cargaImpostos;
+    difal = recebido * referencia.presumido.cargaDifal;
   } else {
-    impostos = receitaReal * referencia.cargaGeral;
+    impostos = recebido * referencia.cargaGeral;
     semReferenciaDoRegime = true;
   }
 

@@ -141,9 +141,9 @@ describe("estimarInfluencer", () => {
     const pequena = estimarInfluencer(referencia, { percentual: 30, faturamento: 50_000, regime: "simples_nacional" });
     const media = estimarInfluencer(referencia, { percentual: 30, faturamento: 300_000, regime: "simples_nacional" });
 
-    // A guia sai da receita sem frete.
-    expect(pequena.impostos).toBeCloseTo(apurarSimples(pequena.receitaReal * 12, pequena.receitaReal).valorDAS, 6);
-    // O frete soma no que o cliente paga, nao na receita.
+    // A guia sai do RECEBIDO, com o frete dentro (5.1.1, 18/09/2026).
+    expect(pequena.impostos).toBeCloseTo(apurarSimples(pequena.recebido * 12, pequena.recebido).valorDAS, 6);
+    // O frete soma no que o cliente paga, e agora tambem na base do imposto.
     expect(pequena.recebido).toBeCloseTo(pequena.receitaReal + pequena.frete, 6);
     expect(pequena.difal).toBe(0);
     expect(pequena.aliquotaImpostos).toBeLessThan(media.aliquotaImpostos);

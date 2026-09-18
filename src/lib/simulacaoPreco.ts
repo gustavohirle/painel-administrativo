@@ -5,9 +5,9 @@
  *
  * Nenhuma aliquota e inventada aqui. Impostos, DIFAL e taxa sao a MEDIA do mes
  * da marca do influencer escolhido, medida com as mesmas funcoes do painel e
- * expressa como fracao da RECEITA SEM FRETE, a mesma base dos impostos. Assim o
- * simulador nao tem uma segunda versao das regras: se o painel mudar a conta, a
- * simulacao muda junto.
+ * expressa como fracao do VALOR PAGO, com frete -- a mesma base dos tributos
+ * desde 18/09/2026 (5.1.1). Assim o simulador nao tem uma segunda versao das
+ * regras: se o painel mudar a conta, a simulacao muda junto.
  *
  * A prova esta no teste: simular o preco e o custo MEDIOS de uma marca
  * reproduz o lucro operacional da DRE dela, a menos exatamente da comissao e
@@ -26,12 +26,14 @@
  *    contrato sobre o bruto, a simulacao sai mais otimista que a DRE na medida
  *    da comissao paga sobre pedido nao pago, e o teste mede essa diferenca.
  *
- * 2. O frete NAO e custo: e cobrado do cliente POR FORA (produto de R$ 100 +
- *    R$ 19 de frete = R$ 119 pagos) e repassado a transportadora. Nao entra em
- *    imposto nem comissao. So duas coisas incidem sobre o valor pago COM frete,
- *    porque sao cobradas sobre o que entra: a taxa do meio de pagamento e a
- *    participacao dos socios. O frete e por unidade (frete medio por pedido ÷
- *    unidades por pedido, ~2 na base).
+ * 2. O frete NAO e custo da loja: e cobrado do cliente POR FORA (produto de
+ *    R$ 100 + R$ 19 de frete = R$ 119 pagos) e repassado a transportadora.
+ *    Mas ele e BASE: imposto, DIFAL, taxa do meio de pagamento e participacao
+ *    dos socios incidem sobre o valor pago com frete, porque sao cobrados
+ *    sobre o que entra. Fora da base dele fica so a COMISSAO do influencer,
+ *    que segue sobre o que cai na conta sem frete (5.1.2). Cada real de frete,
+ *    portanto, tira um pedaco do lucro -- e sobe o preco minimo. O frete e por
+ *    unidade (frete medio por pedido ÷ unidades por pedido, ~2 na base).
  *
  * 3. O DIFAL e a media ponderada dos destinos da marca, incluindo as vendas
  *    dentro do proprio estado (que nao pagam). Marca no Simples nao recolhe
@@ -62,9 +64,15 @@ export interface PerfilDeCusto {
   pedidosPagos: number;
   unidadesPagas: number;
 
-  /** Impostos do regime SEM o DIFAL, como fracao da receita sem frete. */
+  /** Impostos do regime SEM o DIFAL, como fracao do valor PAGO (com frete). */
   cargaImpostos: number;
-  /** DIFAL medio, como fracao da receita sem frete. Zero no Simples. */
+  /**
+   * DIFAL medio, como fracao do valor PAGO (com frete). Zero no Simples.
+   *
+   * Mesma forma da taxa, e pelo mesmo motivo: desde 18/09/2026 a base do DIFAL
+   * inclui o frete cobrado do cliente (5.10.1), entao cada real de frete
+   * tambem carrega DIFAL -- e isso sobe um pouco o preco minimo.
+   */
   cargaDifal: number;
   /** `false` no Simples: nao recolhe DIFAL como remetente. */
   recolheDifal: boolean;
@@ -157,13 +165,13 @@ export function montarPerfisDeCusto(entrada: EntradaPerfis): PerfilDeCusto[] {
       baseComissao: influencer.baseComissao,
       pedidosPagos: pagos.length,
       unidadesPagas: unidades,
-      cargaImpostos: razaoSegura(totalImpostos - (difal?.total ?? 0), reconciliacao.receitaReal),
-      cargaDifal: razaoSegura(difal?.total ?? 0, reconciliacao.receitaReal),
+      cargaImpostos: razaoSegura(totalImpostos - (difal?.total ?? 0), recebido),
+      cargaDifal: razaoSegura(difal?.total ?? 0, recebido),
       recolheDifal: regime !== "simples_nacional",
       fracaoInterestadual: difal
         ? razaoSegura(
             difal.baseInterestadual,
-            difal.baseInterestadual + difal.baseInterna + difal.receitaSemEstado,
+            difal.baseInterestadual + difal.baseInterna + difal.baseSemEstado,
           )
         : 0,
       cargaTaxas: razaoSegura(taxasDaMarca.total, recebido),
@@ -220,10 +228,11 @@ export function simularPreco(
   custoFabricacao: number,
   preco: number,
 ): ResultadoSimulacao {
-  const impostos = preco * perfil.cargaImpostos;
-  const difal = preco * perfil.cargaDifal;
-  // Taxa e socios incidem sobre o que o cliente paga, frete incluido.
+  // Imposto, DIFAL, taxa e socios incidem sobre o que o cliente paga, frete
+  // incluido: desde 18/09/2026 o frete entra na base de todo tributo (5.1.1).
   const pago = preco + perfil.fretePorUnidade;
+  const impostos = pago * perfil.cargaImpostos;
+  const difal = pago * perfil.cargaDifal;
   const taxas = pago * perfil.cargaTaxas;
   const comissao = (preco - pago * perfil.taxaForaDaComissao) * perfil.cargaComissao;
   const despesas = preco * perfil.cargaDespesas;
@@ -267,11 +276,18 @@ export function cargaProporcionalDo(perfil: PerfilDeCusto): number {
 }
 
 /**
- * Quanto cada real de frete tira do lucro: taxa e socios incidem sobre ele, e
- * a comissao sobre o que cai na conta devolve a parte da taxa que ela nao ve.
+ * Quanto cada real de frete tira do lucro: imposto, DIFAL, taxa e socios
+ * incidem sobre ele, e a comissao sobre o que cai na conta devolve a parte da
+ * taxa que ela nao ve.
  */
 function cargaSobreFrete(perfil: PerfilDeCusto): number {
-  return perfil.cargaTaxas + perfil.cargaSocios - perfil.cargaComissao * perfil.taxaForaDaComissao;
+  return (
+    perfil.cargaImpostos +
+    perfil.cargaTaxas +
+    perfil.cargaDifal +
+    perfil.cargaSocios -
+    perfil.cargaComissao * perfil.taxaForaDaComissao
+  );
 }
 
 // ---------------------------------------------------------------------------

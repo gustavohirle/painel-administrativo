@@ -191,7 +191,7 @@ describe("apurarDifal", () => {
 
     expect(r.total).toBe(0);
     expect(r.porEstado).toHaveLength(1);
-    expect(r.porEstado[0]!.receita).toBe(1000);
+    expect(r.porEstado[0]!.base).toBe(1000);
   });
 
   it("estado sem cadastro nao inventa aliquota", () => {
@@ -208,6 +208,23 @@ describe("apurarDifal", () => {
     expect(r.porEstado[0]!.diferenca).toBe(0);
   });
 
+  it("poe o frete cobrado do cliente DENTRO da base", () => {
+    // Decisao do dono em 18/09/2026: na legislacao o frete cobrado do
+    // destinatario integra a base do ICMS. E a unica conta do painel em que o
+    // frete entra na base de um tributo -- os demais impostos seguem sobre a
+    // receita real, sem frete (5.1.1).
+    const r = apurarDifal(
+      [pedido("SP", { total: "1100.00", shipping_cost_customer: "100.00" })],
+      TODAS,
+      "GO",
+    );
+
+    expect(r.baseInterestadual).toBe(1100);
+    expect(r.porEstado[0]!.base).toBe(1100);
+    // SP interna 18%, interestadual de GO 12% -> 6% de R$ 1.100 = R$ 66.
+    expect(r.total).toBeCloseTo(66, 6);
+  });
+
   it("conta so pedidos recebidos", () => {
     const pedidos = [
       pedido("SP"),
@@ -221,7 +238,7 @@ describe("apurarDifal", () => {
     const r = apurarDifal([pedido("SP"), pedido(null)], TODAS, "GO");
 
     expect(r.pedidosSemEstado).toBe(1);
-    expect(r.receitaSemEstado).toBe(1000);
+    expect(r.baseSemEstado).toBe(1000);
     // O que nao foi identificado nao entra na base.
     expect(r.baseInterestadual).toBe(1000);
   });
@@ -267,7 +284,7 @@ describe("apurarDifal", () => {
   it("nao produz NaN sem nenhum pedido", () => {
     const r = apurarDifal([], TODAS, "GO");
     expect(r.total).toBe(0);
-    expect(r.cargaSobreReceita).toBe(0);
+    expect(r.cargaSobreBase).toBe(0);
     expect(r.porEstado).toEqual([]);
   });
 });
@@ -306,6 +323,6 @@ describe("somarDifal", () => {
   it("lista vazia devolve zerado, sem NaN", () => {
     const r = somarDifal([], "GO");
     expect(r.total).toBe(0);
-    expect(r.cargaSobreReceita).toBe(0);
+    expect(r.cargaSobreBase).toBe(0);
   });
 });

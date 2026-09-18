@@ -135,16 +135,16 @@ export default async function PaginaCalculo({
             }
           />
           <NumeroDestaque
-            rotulo={item === "difal" ? "Base interestadual" : "Receita real das marcas"}
+            rotulo={item === "difal" ? "Base interestadual" : "Base do imposto"}
             valor={moedaRedonda(
               item === "difal"
                 ? resultado.difal.baseInterestadual
-                : memoria.marcas.reduce((s, m) => s + m.receitaReal, 0),
+                : memoria.marcas.reduce((s, m) => s + m.baseDoImposto, 0),
             )}
             apoio={
               item === "difal"
-                ? `Venda para fora de ${resultado.difal.ufOrigem}, sem o frete`
-                : "Recebido menos o frete cobrado do cliente"
+                ? `Venda para fora de ${resultado.difal.ufOrigem}, com o frete`
+                : "O recebido das marcas, com o frete cobrado do cliente"
             }
           />
         </div>
@@ -180,12 +180,12 @@ function MarcaImpostos({ marca }: { marca: MemoriaDaMarca }) {
       titulo={`${marca.marca} — ${moeda(marca.total)}`}
       descricao={`${marca.semInfluencer ? "Sem influencer cadastrado" : marca.nome} · ${ROTULO_REGIME[marca.regime]}`}
     >
-      {/* De onde vem a receita real, que e a base de quase tudo abaixo. */}
+      {/* De onde vem a base do imposto: o recebido, com o frete dentro. */}
       <dl className="grid gap-x-6 gap-y-3 text-sm sm:grid-cols-4">
         <Par rotulo="Faturamento bruto" valor={moeda(marca.bruto)} />
-        <Par rotulo="Recebido" valor={moeda(marca.recebido)} />
-        <Par rotulo="− Frete cobrado do cliente" valor={moeda(marca.frete)} />
-        <Par rotulo="= Receita real" valor={moeda(marca.receitaReal)} forte />
+        <Par rotulo="− Não pago, cancelado e reembolsado" valor={moeda(marca.bruto - marca.recebido)} />
+        <Par rotulo="= Base do imposto (com frete)" valor={moeda(marca.baseDoImposto)} forte />
+        <Par rotulo="dos quais, frete" valor={moeda(marca.frete)} />
       </dl>
 
       {marca.passos.length === 0 ? (
@@ -248,7 +248,7 @@ function ComoABase({ passo }: { passo: PassoDoImposto }) {
   if (o.tipo === "das") {
     return (
       <>
-        Guia única do Simples sobre a receita real do mês. Alíquota efetiva pela receita de 12
+        Guia única do Simples sobre o recebido do mês, com frete. Alíquota efetiva pela receita de 12
         meses ({moeda(o.rbt12)}
         {o.rbt12Projetado ? ", projetada" : ""}): faixa {o.faixa}, nominal {aliquota(o.aliquotaNominal)}.
       </>
@@ -257,7 +257,7 @@ function ComoABase({ passo }: { passo: PassoDoImposto }) {
   if (o.tipo === "lucro") {
     return (
       <>
-        Lucro presumido: {aliquota(o.presuncao)} × receita real {moeda(o.receitaReal)}
+        Lucro presumido: {aliquota(o.presuncao)} × recebido {moeda(o.baseDoImposto)}
         {o.deducao > 0 ? ` − dedução de ${moeda(o.deducao)} por mês` : ""}. Vale para a marca
         inteira, não por produto.
       </>
@@ -267,7 +267,7 @@ function ComoABase({ passo }: { passo: PassoDoImposto }) {
     <>
       Receita dos produtos com {passo.sigla} marcado ({inteiro(o.produtosMarcados)} de{" "}
       {inteiro(o.produtosDaMarca)} produtos da marca)
-      {o.receitaReal > 0 ? `: ${percentual(passo.base / o.receitaReal)} da receita real` : ""}.
+      {o.baseDoImposto > 0 ? `: ${percentual(passo.base / o.baseDoImposto)} do recebido` : ""}.
     </>
   );
 }
@@ -280,7 +280,7 @@ function DifalPorMarca({ marcas, ufOrigem }: { marcas: MemoriaDaMarca[]; ufOrige
         descricao="Por pedido recebido, pelo estado de entrega."
       >
         <p className="numerico rounded-lg bg-fundo px-4 py-3 text-sm text-tinta">
-          DIFAL = (valor do pedido − frete) × (alíquota interna do destino − alíquota interestadual)
+          DIFAL = valor do pedido (com o frete) × (alíquota interna do destino − alíquota interestadual)
         </p>
         <ul className="mt-3 space-y-1 text-sm leading-relaxed text-tinta-media">
           <li>Venda dentro de {ufOrigem} não tem DIFAL.</li>
@@ -323,7 +323,7 @@ function DifalPorMarca({ marcas, ufOrigem }: { marcas: MemoriaDaMarca[]; ufOrige
                       <tr className="border-b border-borda-forte text-left text-xs uppercase tracking-wider text-tinta-fraca">
                         <th className="py-2.5 pr-4 font-semibold">Estado</th>
                         <th className="py-2.5 pr-4 text-right font-semibold">Pedidos</th>
-                        <th className="py-2.5 pr-4 text-right font-semibold">Base (sem frete)</th>
+                        <th className="py-2.5 pr-4 text-right font-semibold">Base (com frete)</th>
                         <th className="py-2.5 pr-4 text-right font-semibold">Interna</th>
                         <th className="py-2.5 pr-4 text-right font-semibold">− Interestadual</th>
                         <th className="py-2.5 pr-4 text-right font-semibold">= Diferença</th>
@@ -344,7 +344,7 @@ function DifalPorMarca({ marcas, ufOrigem }: { marcas: MemoriaDaMarca[]; ufOrige
                           <td className="numerico py-2.5 pr-4 text-right text-tinta-media">
                             {inteiro(linha.pedidos)}
                           </td>
-                          <td className="numerico py-2.5 pr-4 text-right text-tinta">{moeda(linha.receita)}</td>
+                          <td className="numerico py-2.5 pr-4 text-right text-tinta">{moeda(linha.base)}</td>
                           <td className="numerico py-2.5 pr-4 text-right text-tinta-media">
                             {aliquota(linha.aliquotaInterna)}
                           </td>
@@ -373,7 +373,7 @@ function DifalPorMarca({ marcas, ufOrigem }: { marcas: MemoriaDaMarca[]; ufOrige
                 {d.pedidosSemEstado > 0 && (
                   <p className="mt-2 text-xs text-naopago">
                     {inteiro(d.pedidosSemEstado)} pedido(s) sem estado de entrega (
-                    {moeda(d.receitaSemEstado)}) ficaram fora da conta.
+                    {moeda(d.baseSemEstado)}) ficaram fora da conta.
                   </p>
                 )}
               </details>

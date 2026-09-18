@@ -16,12 +16,21 @@
  *    o STF suspendeu a exigencia na ADI 5464. Como o regime aqui e por
  *    influencer, isso sai de graca: marca no Simples fica fora da conta.
  *
- * 3. A base e o valor da operacao SEM O FRETE cobrado do cliente, que fica
- *    fora de todo imposto por decisao do cliente. A apuracao real usa base
- *    dupla (o imposto
- *    entra na propria base), o que aumenta um pouco o valor devido -- este
- *    painel NAO faz o gross-up, e por isso o numero e conservador para menos.
- *    Esta dito na tela.
+ * 3. A base e o valor da operacao COM O FRETE cobrado do cliente -- o
+ *    faturamento do pedido pago, inteiro. Mudou em 18/09/2026, a pedido do
+ *    dono: na legislacao o frete cobrado do destinatario integra a base do
+ *    ICMS, e tira-lo deixava o DIFAL do painel ~15% abaixo do devido.
+ *
+ *    Vale para TODO tributo desde a mesma data (5.1.1): DAS, PIS, COFINS,
+ *    ICMS, IRPJ e CSLL usam a mesma base. Fora dela fica so a COMISSAO do
+ *    influencer, que segue sobre o que cai na conta sem frete (5.1.2).
+ *
+ *    Continua de fora o que nao virou dinheiro: boleto nunca pago, cancelado e
+ *    reembolsado, que normalmente nao geram nota nem saida de mercadoria.
+ *
+ *    A apuracao real ainda usa base dupla (o imposto entra na propria base),
+ *    o que aumenta um pouco o valor devido -- este painel NAO faz o gross-up,
+ *    e por isso o numero segue conservador para menos. Esta dito na tela.
  */
 
 import { paraNumero, type Pedido } from "@/types/nuvemshop";
@@ -35,8 +44,8 @@ export interface LinhaEstado {
   nome: string;
   /** Quantos pedidos recebidos foram para este estado. */
   pedidos: number;
-  /** Valor recebido de vendas para este estado. */
-  receita: number;
+  /** Base do DIFAL deste estado: o total dos pedidos pagos, COM o frete. */
+  base: number;
   /** Aliquota interna cadastrada, em percentual. */
   aliquotaInterna: number;
   /** Aliquota interestadual aplicada, em percentual. */
@@ -61,11 +70,11 @@ export interface ResultadoDifal {
   /** Receita de vendas dentro do proprio estado, que nao geram DIFAL. */
   baseInterna: number;
   /** Fracao da receita total que virou DIFAL. */
-  cargaSobreReceita: number;
+  cargaSobreBase: number;
   /** Uma linha por estado de destino, maior primeiro. */
   porEstado: LinhaEstado[];
   /** Receita de pedidos sem estado identificado -- lacuna declarada. */
-  receitaSemEstado: number;
+  baseSemEstado: number;
   pedidosSemEstado: number;
   /** `true` se algum estado usado ainda nao foi confirmado pelo contador. */
   temEstadoNaoConfirmado: boolean;
@@ -76,9 +85,9 @@ const VAZIO = (ufOrigem: string): ResultadoDifal => ({
   total: 0,
   baseInterestadual: 0,
   baseInterna: 0,
-  cargaSobreReceita: 0,
+  cargaSobreBase: 0,
   porEstado: [],
-  receitaSemEstado: 0,
+  baseSemEstado: 0,
   pedidosSemEstado: 0,
   temEstadoNaoConfirmado: false,
 });
@@ -104,19 +113,21 @@ export function apurarDifal(
 
   interface Acumulado {
     pedidos: number;
-    receita: number;
+    base: number;
   }
   const grupos = new Map<string, Acumulado>();
 
-  let receitaSemEstado = 0;
+  let baseSemEstado = 0;
   let pedidosSemEstado = 0;
 
   for (const pedido of recebidos) {
-    const valor = paraNumero(pedido.total) - paraNumero(pedido.shipping_cost_customer);
+    // O total do pedido, COM o frete: o frete cobrado do cliente integra a
+    // base do ICMS (regra 3 no topo). E o unico tributo do painel assim.
+    const valor = paraNumero(pedido.total);
     const uf = normalizarUF(pedido.shipping_address?.province);
 
     if (!uf) {
-      receitaSemEstado += valor;
+      baseSemEstado += valor;
       pedidosSemEstado += 1;
       continue;
     }
@@ -124,9 +135,9 @@ export function apurarDifal(
     const atual = grupos.get(uf);
     if (atual) {
       atual.pedidos += 1;
-      atual.receita += valor;
+      atual.base += valor;
     } else {
-      grupos.set(uf, { pedidos: 1, receita: valor });
+      grupos.set(uf, { pedidos: 1, base: valor });
     }
   }
 
@@ -150,10 +161,10 @@ export function apurarDifal(
     const diferenca =
       interna || !ativo ? 0 : Math.max(0, aliquotaInterna - interestadual);
 
-    const valorDifal = recolheDifal ? (acumulado.receita * diferenca) / 100 : 0;
+    const valorDifal = recolheDifal ? (acumulado.base * diferenca) / 100 : 0;
 
-    if (interna) baseInterna += acumulado.receita;
-    else baseInterestadual += acumulado.receita;
+    if (interna) baseInterna += acumulado.base;
+    else baseInterestadual += acumulado.base;
 
     total += valorDifal;
     if (!interna && ativo && !(cadastro?.confirmadoPeloContador ?? false)) {
@@ -164,7 +175,7 @@ export function apurarDifal(
       uf,
       nome: cadastro?.nome ?? nomeDoEstado(uf),
       pedidos: acumulado.pedidos,
-      receita: acumulado.receita,
+      base: acumulado.base,
       aliquotaInterna,
       aliquotaInterestadual: interestadual,
       diferenca,
@@ -174,14 +185,14 @@ export function apurarDifal(
     });
   }
 
-  const receitaTotal = baseInterestadual + baseInterna + receitaSemEstado;
+  const baseTotal = baseInterestadual + baseInterna + baseSemEstado;
 
   return {
     ufOrigem: origem,
     total,
     baseInterestadual,
     baseInterna,
-    cargaSobreReceita: razaoSegura(total, receitaTotal),
+    cargaSobreBase: razaoSegura(total, baseTotal),
     // Alfabetica por UF, e nao pelo valor.
     //
     // Esta lista e DISCRIMINACAO, nao ranking: quem a le esta conferindo um
@@ -194,7 +205,7 @@ export function apurarDifal(
     // estados vai o DIFAL", que mostra os 12 maiores -- a componente ordena
     // por conta propria.
     porEstado: porEstado.sort((a, b) => a.uf.localeCompare(b.uf)),
-    receitaSemEstado,
+    baseSemEstado,
     pedidosSemEstado,
     temEstadoNaoConfirmado,
   };
@@ -214,7 +225,7 @@ export function somarDifal(
       const atual = porUF.get(linha.uf);
       if (atual) {
         atual.pedidos += linha.pedidos;
-        atual.receita += linha.receita;
+        atual.base += linha.base;
         atual.difal += linha.difal;
         atual.confirmado = atual.confirmado && linha.confirmado;
       } else {
@@ -226,22 +237,22 @@ export function somarDifal(
   const total = resultados.reduce((s, r) => s + r.total, 0);
   const baseInterestadual = resultados.reduce((s, r) => s + r.baseInterestadual, 0);
   const baseInterna = resultados.reduce((s, r) => s + r.baseInterna, 0);
-  const receitaSemEstado = resultados.reduce((s, r) => s + r.receitaSemEstado, 0);
+  const baseSemEstado = resultados.reduce((s, r) => s + r.baseSemEstado, 0);
 
   return {
     ufOrigem,
     total,
     baseInterestadual,
     baseInterna,
-    cargaSobreReceita: razaoSegura(
+    cargaSobreBase: razaoSegura(
       total,
-      baseInterestadual + baseInterna + receitaSemEstado,
+      baseInterestadual + baseInterna + baseSemEstado,
     ),
     // Mesma ordem alfabetica da apuracao de uma marca: o consolidado e lido
     // do lado da lista de cada marca, e duas ordens diferentes na mesma tela
     // fariam procurar o estado duas vezes.
     porEstado: [...porUF.values()].sort((a, b) => a.uf.localeCompare(b.uf)),
-    receitaSemEstado,
+    baseSemEstado,
     pedidosSemEstado: resultados.reduce((s, r) => s + r.pedidosSemEstado, 0),
     temEstadoNaoConfirmado: resultados.some((r) => r.temEstadoNaoConfirmado),
   };

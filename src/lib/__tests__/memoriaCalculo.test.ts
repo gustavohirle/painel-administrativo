@@ -45,7 +45,7 @@ describe("memoriaDosImpostos", () => {
   it("o DIFAL de cada estado é base × diferença", () => {
     for (const marca of memoria.marcas) {
       for (const linha of marca.difal.porEstado) {
-        const esperado = marca.regime === "simples_nacional" ? 0 : (linha.receita * linha.diferenca) / 100;
+        const esperado = marca.regime === "simples_nacional" ? 0 : (linha.base * linha.diferenca) / 100;
         expect(linha.difal).toBeCloseTo(esperado, 6);
       }
     }
@@ -56,7 +56,7 @@ describe("memoriaDosImpostos", () => {
     const irpj = presumido.passos.find((p) => p.sigla === "IRPJ");
     expect(irpj?.origem.tipo).toBe("lucro");
     if (irpj?.origem.tipo === "lucro") {
-      const esperado = (irpj.origem.receitaReal * irpj.origem.presuncao) / 100 - irpj.origem.deducao;
+      const esperado = (irpj.origem.baseDoImposto * irpj.origem.presuncao) / 100 - irpj.origem.deducao;
       expect(irpj.base).toBeCloseTo(Math.max(0, esperado), 6);
     }
     const porProduto = presumido.passos.find((p) => p.origem.tipo === "produtos");

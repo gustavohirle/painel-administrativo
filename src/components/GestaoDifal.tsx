@@ -94,7 +94,7 @@ export function GestaoDifal({ aliquotas, porEstado, ufOrigem }: GestaoDifalProps
               <th className="py-2.5 pr-4 text-right font-semibold">Interestadual</th>
               <th className="py-2.5 pr-4 text-right font-semibold">DIFAL</th>
               <th className="py-2.5 pr-4 text-right font-semibold">Pedidos</th>
-              <th className="py-2.5 pr-4 text-right font-semibold">Receita</th>
+              <th className="py-2.5 pr-4 text-right font-semibold">Base</th>
               <th className="py-2.5 pr-4 text-right font-semibold">
                 DIFAL no mês
               </th>
@@ -148,7 +148,7 @@ export function GestaoDifal({ aliquotas, porEstado, ufOrigem }: GestaoDifalProps
                       {venda ? inteiro(venda.pedidos) : "—"}
                     </td>
                     <td className="numerico py-3 pr-4 text-right text-tinta-media">
-                      {venda ? moeda(venda.receita) : "—"}
+                      {venda ? moeda(venda.base) : "—"}
                     </td>
                     <td className="numerico py-3 pr-4 text-right font-semibold text-tinta">
                       {venda && venda.difal > 0 ? moeda(venda.difal) : "—"}
@@ -373,7 +373,7 @@ export function DifalPorEstado({
    */
   const comDifal = porEstado
     .filter((l) => l.difal > 0)
-    .sort((a, b) => b.difal - a.difal || b.receita - a.receita);
+    .sort((a, b) => b.difal - a.difal || b.base - a.base);
   if (comDifal.length === 0) {
     return (
       <p className="text-sm text-tinta-media">

@@ -302,6 +302,27 @@ describe("apurarImpostos", () => {
     expect(marca.simples?.valorDAS).toBeCloseTo(89.5, 6); // 8,95% de 1000
   });
 
+  it("o frete cobrado do cliente entra na base de TODO tributo", () => {
+    // Decisao do dono em 18/09/2026: na legislacao o frete cobrado do
+    // destinatario integra a base do ICMS, do PIS/COFINS e a receita bruta do
+    // Simples. A comissao do influencer NAO acompanhou (5.1.2).
+    const pedidos = [
+      pedido({ total: "1100.00", shipping_cost_customer: "100.00" }),
+    ];
+
+    const r = apurarImpostos(
+      pedidos,
+      pedidos,
+      [],
+      [],
+      [influencer({ rbt12Manual: 1_000_000 })],
+    );
+
+    const marca = r.porInfluencer[0]!;
+    expect(marca.baseReceita).toBe(1100);
+    expect(marca.simples?.valorDAS).toBeCloseTo(98.45, 6); // 8,95% de 1100
+  });
+
   it("apura cada marca no SEU regime, nao num regime consolidado", () => {
     // E o ponto central: uma marca no Simples e outra no Presumido convivem,
     // e apurar as duas juntas daria um numero que nao serve para nenhuma.

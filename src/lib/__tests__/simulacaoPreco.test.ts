@@ -80,30 +80,33 @@ describe("simularPreco", () => {
   it("desconta cada carga do preço e a fabricação; o frete é do cliente", () => {
     const r = simularPreco(perfil(), 30, 100);
 
-    expect(r.impostos).toBeCloseTo(10);
-    expect(r.difal).toBeCloseTo(2);
-    // A taxa incide sobre o que o cliente paga: 100 + 10 de frete.
+    // Imposto, DIFAL e taxa incidem sobre o que o cliente paga: 100 + 10 de
+    // frete. O frete entrou na base de todo tributo em 18/09/2026 (5.1.1);
+    // antes so a taxa o via.
+    expect(r.impostos).toBeCloseTo(11);
+    expect(r.difal).toBeCloseTo(2.2);
     expect(r.taxas).toBeCloseTo(3.3);
     expect(r.comissao).toBeCloseTo(35);
     expect(r.frete).toBeCloseTo(10);
-    expect(r.totalCustos).toBeCloseTo(80.3);
-    expect(r.lucro).toBeCloseTo(19.7);
-    expect(r.margem).toBeCloseTo(0.197);
+    expect(r.totalCustos).toBeCloseTo(81.5);
+    expect(r.lucro).toBeCloseTo(18.5);
+    expect(r.margem).toBeCloseTo(0.185);
   });
 
   it("dá prejuízo quando os custos passam do preço", () => {
     const r = simularPreco(perfil(), 60, 100);
-    expect(r.lucro).toBeCloseTo(-10.3);
-    expect(r.margem).toBeCloseTo(-0.103);
+    expect(r.lucro).toBeCloseTo(-11.5);
+    expect(r.margem).toBeCloseTo(-0.115);
   });
 
-  it("o frete não é custo: mudar o frete só mexe na taxa e nos sócios", () => {
+  it("o frete não é custo, mas é base: só a comissão não o vê", () => {
     const sem = simularPreco(perfil({ fretePorUnidade: 0, cargaSocios: 0.06 }), 30, 100);
     const com = simularPreco(perfil({ fretePorUnidade: 19, cargaSocios: 0.06 }), 30, 100);
 
-    expect(com.impostos).toBeCloseTo(sem.impostos, 10);
+    // A comissao e a unica carga que nao segue o frete (5.1.2).
     expect(com.comissao).toBeCloseTo(sem.comissao, 10);
-    expect(sem.lucro - com.lucro).toBeCloseTo(19 * (0.03 + 0.06), 10);
+    // Imposto, DIFAL, taxa e socios seguem.
+    expect(sem.lucro - com.lucro).toBeCloseTo(19 * (0.1 + 0.02 + 0.03 + 0.06), 10);
   });
 
   it("o preço mínimo é exatamente o que zera o resultado", () => {
@@ -132,7 +135,7 @@ describe("simularPreco", () => {
     const base = { baseComissao: "liquido" as const, taxaForaDaComissao: 0.03, cargaSocios: 0.06 };
     const sem = simularPreco(perfil({ ...base, fretePorUnidade: 0 }), 30, 100);
     const com = simularPreco(perfil({ ...base, fretePorUnidade: 19 }), 30, 100);
-    expect(sem.lucro - com.lucro).toBeCloseTo(19 * (0.03 + 0.06 - 0.35 * 0.03), 10);
+    expect(sem.lucro - com.lucro).toBeCloseTo(19 * (0.1 + 0.02 + 0.03 + 0.06 - 0.35 * 0.03), 10);
   });
 
   it("sem preço mínimo quando as cargas proporcionais chegam a 100%", () => {

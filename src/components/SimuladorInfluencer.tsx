@@ -210,16 +210,16 @@ function ResultadoInfluencer({
   const simples = e.regime === "simples_nacional";
 
   const detalheImpostos = simples
-    ? `Guia do Simples: alíquota efetiva de ${percentual(e.aliquotaImpostos, 2)} para ${moedaCompacta(e.rbt12Projetado)} de receita por ano, sem frete`
+    ? `Guia do Simples: alíquota efetiva de ${percentual(e.aliquotaImpostos, 2)} para ${moedaCompacta(e.rbt12Projetado)} de receita por ano, com frete`
     : e.semReferenciaDoRegime
       ? `Nenhuma marca atual no Lucro Presumido: usada a carga média da empresa, ${percentual(referencia.cargaGeral)}`
-      : `Média de ${percentual(referencia.presumido!.cargaImpostos)} da receita sem frete nas ${referencia.presumido!.marcas} marcas do Lucro Presumido`;
+      : `Média de ${percentual(referencia.presumido!.cargaImpostos)} do que entra, com frete, nas ${referencia.presumido!.marcas} marcas do Lucro Presumido`;
 
   const detalheDifal = simples
     ? "Marca no Simples Nacional não recolhe DIFAL como remetente"
     : e.semReferenciaDoRegime
       ? "Já dentro da carga média da empresa"
-      : `Média de ${percentual(referencia.presumido!.cargaDifal, 2)} da receita sem frete nas marcas do Lucro Presumido`;
+      : `Média de ${percentual(referencia.presumido!.cargaDifal, 2)} do que entra, com frete, nas marcas do Lucro Presumido`;
 
   return (
     <div className={`space-y-4 ${desatualizada ? "opacity-60" : ""}`}>

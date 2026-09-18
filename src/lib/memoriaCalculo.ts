@@ -25,11 +25,11 @@ export type OrigemDaBase =
       /** Produtos da marca no cadastro. */
       produtosDaMarca: number;
       /** Receita real da marca, para comparar com a base. */
-      receitaReal: number;
+      baseDoImposto: number;
     }
   | {
       tipo: "lucro";
-      receitaReal: number;
+      baseDoImposto: number;
       /** Percentual de presuncao, ex.: 8 para 8%. */
       presuncao: number;
       /** Deducao mensal em reais (adicional de IRPJ). */
@@ -62,7 +62,8 @@ export interface MemoriaDaMarca {
   bruto: number;
   recebido: number;
   frete: number;
-  receitaReal: number;
+  /** Base de todo tributo: o recebido, COM o frete (5.1.1). */
+  baseDoImposto: number;
   passos: PassoDoImposto[];
   /** Tributos do regime fora da conta (inativos ou com aliquota zero). */
   foraDaConta: string[];
@@ -115,7 +116,7 @@ export function memoriaDosImpostos(
         } else if (cadastro?.baseIncidencia === "lucro") {
           origem = {
             tipo: "lucro",
-            receitaReal: apuracao.baseReceita,
+            baseDoImposto: apuracao.baseReceita,
             presuncao: cadastro.percentualPresuncao ?? 100,
             deducao: cadastro.deducaoMensal ?? 0,
           };
@@ -124,7 +125,7 @@ export function memoriaDosImpostos(
             tipo: "produtos",
             produtosMarcados: daMarca.filter((p) => p.impostosIds.includes(linha.impostoId)).length,
             produtosDaMarca: daMarca.length,
-            receitaReal: apuracao.baseReceita,
+            baseDoImposto: apuracao.baseReceita,
           };
         }
         return {
@@ -146,7 +147,7 @@ export function memoriaDosImpostos(
       bruto: r.bruto,
       recebido: r.recebido,
       frete: r.frete,
-      receitaReal: apuracao.baseReceita,
+      baseDoImposto: apuracao.baseReceita,
       passos,
       foraDaConta: apuracao.inativosDoRegime.map((i) => i.sigla),
       total: passos.reduce((s, p) => s + p.valor, 0),

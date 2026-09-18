@@ -155,7 +155,7 @@ export default async function PaginaPainel({
             apoio={
               fechado.informado.impostos !== null || fechado.informado.difal !== null
                 ? `Informado no fechamento · calculado ${moedaRedonda(dre.totalImpostos)}`
-                : `${percentual(impostos.cargaSobreReceita)} da receita sem frete`
+                : `${percentual(impostos.cargaSobreReceita)} do que entrou, com o frete`
             }
             cor="var(--color-naopago)"
           />

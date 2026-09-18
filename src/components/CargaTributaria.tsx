@@ -45,7 +45,7 @@ export function CargaTributaria({
             {moedaRedonda(resultado.totalSobreVenda)}
           </p>
           <p className="mt-1 text-sm text-tinta-media">
-            {percentual(resultado.cargaSobreReceita)} da receita sem frete
+            {percentual(resultado.cargaSobreReceita)} do que entrou, com o frete
           </p>
         </div>
 
@@ -63,13 +63,13 @@ export function CargaTributaria({
 
         <div className="rounded-lg border border-borda bg-fundo px-5 py-4">
           <p className="text-xs font-semibold uppercase tracking-wider text-tinta-fraca">
-            Receita tributada
+            Base tributada
           </p>
           <p className="numerico mt-1 text-3xl font-semibold text-tinta">
             {moedaRedonda(resultado.baseReceita)}
           </p>
           <p className="mt-1 text-sm text-tinta-media">
-            O que entrou em caixa, sem o frete cobrado do cliente
+            O que entrou em caixa, com o frete cobrado do cliente
           </p>
         </div>
       </div>

@@ -9,10 +9,20 @@
  *
  * Tres decisoes que valem ser lidas antes de mexer aqui:
  *
- * 1. A base e a RECEITA REAL: o recebido, sem o frete. Pedido cancelado nao
+ * 1. A base e o RECEBIDO, COM o frete cobrado do cliente. Pedido cancelado nao
  *    gera receita tributavel, e boleto nunca pago tambem nao, no regime de
- *    caixa. O frete fica de fora por decisao do cliente: ele e cobrado por fora
- *    (produto de R$ 100 + R$ 19 de frete) e vai para a transportadora.
+ *    caixa -- mas o frete entra.
+ *
+ *    Mudou em 18/09/2026, a pedido do dono, e vale para TODO tributo: DAS,
+ *    PIS, COFINS, ICMS, IRPJ, CSLL e DIFAL. Na legislacao o frete cobrado do
+ *    destinatario integra a base do ICMS, do PIS/COFINS e a receita bruta do
+ *    Simples; ate aqui o painel o deixava de fora, e o imposto saia ~15%
+ *    abaixo do que pode ser devido. O RBT12 acompanha, entao a faixa do
+ *    Simples tambem sobe.
+ *
+ *    A COMISSAO do influencer NAO acompanhou: ela continua sobre o que cai na
+ *    conta, sem frete (5.1.2). Sao duas decisoes separadas do dono, e mexer
+ *    numa nao autoriza mexer na outra.
  *
  * 2. O que esta DENTRO do DAS nunca soma no total. A guia unica ja e um valor
  *    fechado; a quebra por tributo existe so para leitura.
@@ -172,8 +182,8 @@ export function calcularRBT12(
 
   const meses = [...porMes.keys()].sort((a, b) => b.localeCompare(a)).slice(0, 12);
   const soma = meses.reduce(
-    // Receita sem frete, a mesma base do imposto do mes.
-    (total, mes) => total + reconciliar(porMes.get(mes)!).receitaReal,
+    // Recebido COM frete, a mesma base do imposto do mes (decisao 1).
+    (total, mes) => total + reconciliar(porMes.get(mes)!).recebido,
     0,
   );
 
@@ -279,6 +289,36 @@ export interface ResultadoImpostos {
 }
 
 /** Receita por imposto marcado, dentro de um conjunto de pedidos. */
+/**
+ * Base de cada item do pedido: preco x quantidade MAIS a parte do frete.
+ *
+ * O frete e cobrado do PEDIDO e o tributo por produto incide sobre o ITEM,
+ * entao ele precisa ser rateado. O criterio e o valor, que e o mesmo da taxa
+ * de plataforma na margem por produto (5.13.1) e nao exige arbitragem: um item
+ * que vale metade do pedido carrega metade do frete.
+ *
+ * Pedido so de brinde (itens a R$ 0) nao tem por onde ratear -- ali o frete
+ * fica fora da base, em vez de virar uma divisao por zero ou uma parte igual
+ * que cobraria imposto de quem nao faturou nada.
+ */
+function basesDosItens(pedido: Pedido): Array<{
+  item: Pedido["products"][number];
+  base: number;
+}> {
+  const itens = pedido.products.map((item) => ({
+    item,
+    receita: paraNumero(item.price) * item.quantity,
+  }));
+  const soma = itens.reduce((s, i) => s + i.receita, 0);
+  const frete = paraNumero(pedido.shipping_cost_customer);
+
+  if (soma <= 0 || frete <= 0) return itens.map(({ item, receita }) => ({ item, base: receita }));
+  return itens.map(({ item, receita }) => ({
+    item,
+    base: receita + (frete * receita) / soma,
+  }));
+}
+
 function receitaPorImposto(
   pedidos: Pedido[],
   indice: IndiceProdutos,
@@ -286,13 +326,12 @@ function receitaPorImposto(
   const mapa = new Map<string, number>();
 
   for (const pedido of pedidosRecebidos(pedidos)) {
-    for (const item of pedido.products) {
+    for (const { item, base } of basesDosItens(pedido)) {
       const produto = produtoDoItem(indice, item.product_id, item.variant_id);
       if (!produto) continue;
 
-      const receitaItem = paraNumero(item.price) * item.quantity;
       for (const impostoId of produto.impostosIds) {
-        mapa.set(impostoId, (mapa.get(impostoId) ?? 0) + receitaItem);
+        mapa.set(impostoId, (mapa.get(impostoId) ?? 0) + base);
       }
     }
   }
@@ -314,8 +353,8 @@ function apurarGrupo(
   impostos: Imposto[],
   aliquotasEstaduais: AliquotaEstado[],
 ): ApuracaoDeUmInfluencer {
-  // Receita real: recebido sem o frete cobrado do cliente (decisao 1 no topo).
-  const baseReceita = reconciliar(pedidosDoMes).receitaReal;
+  // Recebido COM o frete cobrado do cliente (decisao 1 no topo).
+  const baseReceita = reconciliar(pedidosDoMes).recebido;
   const doRegime = impostosDoRegime(impostos, fiscal.regime);
   const porImposto = receitaPorImposto(pedidosDoMes, indice);
 
@@ -500,14 +539,15 @@ export function apurarImpostos(
   let receitaComCadastro = 0;
   const semCadastro = new Set<number>();
 
+  // Mesma base do tributo por produto, frete rateado incluido: senao a
+  // "receita sem cadastro fiscal" declararia uma lacuna menor do que a real.
   for (const pedido of pedidosRecebidos(pedidosDoMes)) {
-    for (const item of pedido.products) {
-      const receitaItem = paraNumero(item.price) * item.quantity;
+    for (const { item, base } of basesDosItens(pedido)) {
       const produto = produtoDoItem(indice, item.product_id, item.variant_id);
 
-      if (produto) receitaComCadastro += receitaItem;
+      if (produto) receitaComCadastro += base;
       else {
-        receitaSemCadastro += receitaItem;
+        receitaSemCadastro += base;
         semCadastro.add(item.product_id);
       }
     }
