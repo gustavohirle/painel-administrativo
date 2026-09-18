@@ -2281,6 +2281,29 @@ isso a configuração do painel é `00-painel.conf`, e não `99-`.
 **Ainda não feito, e vale um dia:** segundo fator no login, backup copiado para
 fora do servidor, e alerta quando a sincronização com a Nuvemshop falhar.
 
+### Quem atualiza os pedidos em produção
+
+`painel-sincroniza.timer`, **de 5 em 5 minutos**, rodando
+`nuvemshop.ts sincronizar` como o usuário `painel`.
+
+Antes dele a atualização era **sob demanda**: só acontecia quando alguém abria
+uma página e a cópia tinha passado de `NUVEMSHOP_ATUALIZAR_MINUTOS` (seção 12).
+Num servidor que fica horas sem visita, isso significa que a primeira tela do
+dia mostra os números de ontem — a busca começa em segundo plano e só a próxima
+recarga vê o resultado. Medido: o cache estava com 74 minutos, exatamente o
+tempo desde a última vez que uma página fora aberta.
+
+Com o timer, o caminho da página virou plano B, e `NUVEMSHOP_ATUALIZAR_MINUTOS`
+foi para **25** no servidor: se os dois buscassem ao mesmo tempo, um gravaria
+por cima do outro (a trava de uma busca por vez é por processo, e são dois
+processos).
+
+Custo medido na loja real: **3 a 4 segundos** por atualização em regime, e
+5min38s quando havia 74 minutos de atraso para recuperar. Uma vez por hora a
+rodada é mais cara, porque a lista inteira de carrinhos abandonados é refeita
+(seção 12). `Persistent=true`: servidor desligado na hora marcada busca assim
+que volta.
+
 ### Backup e avisos (17/09/2026)
 
 **Backup** (`painel-backup.timer`, 03h20): `pg_dump -Fc` para
