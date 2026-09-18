@@ -654,6 +654,10 @@ export class RepositorioPostgres implements RepositorioCadastros {
     return mapearOrdem(linha, null);
   }
 
+  async removerOrdem(id: string): Promise<void> {
+    await prisma.ordemFabricacao.delete({ where: { id } });
+  }
+
   async gravarOrdem(ordem: OrdemFabricacao): Promise<OrdemFabricacao> {
     const documento = ordem.documento
       ? Buffer.from(ordem.documento.base64, "base64")

@@ -99,6 +99,15 @@ export interface RepositorioCadastros {
    * de para onde ela pode andar ficam em `lib/processoOrdem.ts`.
    */
   gravarOrdem(ordem: OrdemFabricacao): Promise<OrdemFabricacao>;
+  /**
+   * APAGA a ordem, de vez.
+   *
+   * Existe para a fase de TESTE do processo: experimentar de ponta a ponta
+   * gera ordens de mentira, e cancelar deixa todas elas na lista para sempre.
+   * O caminho normal e cancelar, que preserva a evidencia de que o pedido
+   * chegou a ser feito.
+   */
+  removerOrdem(id: string): Promise<void>;
 
   // --- Fechamento do mes -------------------------------------------------
   /** Valores informados a mao no fim do mes. Chave: o mes. */

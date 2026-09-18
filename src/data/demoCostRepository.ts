@@ -563,6 +563,12 @@ export class RepositorioDemonstracao implements RepositorioCadastros {
     return registro;
   }
 
+  async removerOrdem(id: string): Promise<void> {
+    const estado = await carregar();
+    estado.ordens = (estado.ordens ?? []).filter((o) => o.id !== id);
+    await gravar(estado);
+  }
+
   async gravarOrdem(ordem: OrdemFabricacao): Promise<OrdemFabricacao> {
     const estado = await carregar();
     estado.ordens ??= [];
