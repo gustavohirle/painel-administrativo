@@ -2354,6 +2354,11 @@ horas do aviso engoliria o segundo deploy do dia):
 | `prisma/schema.prisma` mudou | `deploy parado em <commit>: o banco mudou` — o painel fica na versão anterior até alguém rodar `npm run deploy -- --banco` |
 | Build ou conferência falhou | `deploy FALHOU em <commit>` — o `atualizar.sh` já voltou para o build e o commit anteriores |
 
+**A exceção do git é do SISTEMA, não do root** (`git config --system --add
+safe.directory /opt/painel/app`). O systemd não carrega o perfil do usuário —
+`HOME` não é `/root` —, então a exceção que o `npm run deploy` usava pelo SSH
+não valia aqui: o primeiro deploy automático parou em "dubious ownership".
+
 **Consequência assumida: o que for para a `main` vai para o ar.** Trabalho pela
 metade fica em outro ramo. Para desligar por um tempo — mexer no servidor na
 mão, por exemplo:
