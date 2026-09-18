@@ -89,23 +89,25 @@ export interface RepositorioCadastros {
 
   listarOrdens(): Promise<OrdemFabricacao[]>;
   buscarOrdemPorId(id: string): Promise<OrdemFabricacao | null>;
-  /**
-   * Busca pelo token do link de assinatura.
-   *
-   * E um metodo separado de proposito, e nao um filtro sobre `listarOrdens`:
-   * a pagina publica de assinatura NAO pode carregar a lista inteira de ordens
-   * para achar uma. Aqui o repositorio devolve uma ou nenhuma.
-   */
-  buscarOrdemPorToken(token: string): Promise<OrdemFabricacao | null>;
   criarOrdem(entrada: EntradaOrdem): Promise<OrdemFabricacao>;
   /**
    * Grava a ordem inteira, por id.
    *
    * Nao ha `salvarOrdem(entrada)` como nos outros cadastros porque ordem nao
-   * se edita: o unico caminho e criar e depois fechar (aprovando, recusando ou
-   * cancelando). Quem chama monta o registro fechado e grava de uma vez.
+   * se edita: ela ANDA. Cada etapa assinada acrescenta um passo e move a etapa
+   * atual, e quem chama monta o registro novo e grava de uma vez -- as regras
+   * de para onde ela pode andar ficam em `lib/processoOrdem.ts`.
    */
   gravarOrdem(ordem: OrdemFabricacao): Promise<OrdemFabricacao>;
+  /**
+   * APAGA a ordem, de vez.
+   *
+   * Existe para a fase de TESTE do processo: experimentar de ponta a ponta
+   * gera ordens de mentira, e cancelar deixa todas elas na lista para sempre.
+   * O caminho normal e cancelar, que preserva a evidencia de que o pedido
+   * chegou a ser feito.
+   */
+  removerOrdem(id: string): Promise<void>;
 
   // --- Fechamento do mes -------------------------------------------------
   /** Valores informados a mao no fim do mes. Chave: o mes. */

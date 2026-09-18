@@ -1,5 +1,5 @@
 /**
- * Regera o PDF de ordens aprovadas cujo conteudo deixou de bater com o hash.
+ * Regera o PDF de ordens concluidas cujo conteudo deixou de bater com o hash.
  *
  * Documento assinado NAO deve mudar -- essa e a regra da secao 5.15. Este
  * script existe para o unico caso em que ela cede: a base de demonstracao,
@@ -28,7 +28,7 @@ async function principal() {
   let regeradas = 0;
 
   for (const ordem of estado.ordens ?? []) {
-    if (ordem.situacao !== "aprovada" || !ordem.documento) continue;
+    if (ordem.situacao !== "concluida" || !ordem.documento) continue;
       const forcar = process.argv.includes("--forcar");
     if (!forcar && ordem.documento.hashConteudo === hashDoConteudo(ordem)) continue;
 

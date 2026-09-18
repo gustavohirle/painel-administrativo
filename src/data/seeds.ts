@@ -29,7 +29,6 @@ import type {
   AssinaturaOrdem,
   ItemOrdem,
   OrdemFabricacao,
-  PapelAssinatura,
 } from "@/types/ordemFabricacao";
 
 const AGORA = () => new Date().toISOString();
@@ -744,20 +743,6 @@ export { novoId };
 // Ordens de fabricacao
 // ---------------------------------------------------------------------------
 
-/**
- * Token FIXO da ordem que nasce aguardando assinatura.
- *
- * Existe por dois motivos, os dois de demonstracao:
- *
- * 1. Na reuniao da para abrir o link de assinatura sem antes criar uma ordem.
- * 2. `npm run celular --rota /assinar/<token>` consegue auditar a tela publica,
- *    que de outro modo seria inalcancavel -- o token de verdade e aleatorio.
- *
- * Nao ha risco: isto so e semeado em modo demonstracao. Em `FONTE_DADOS=live`
- * as ordens comecam vazias e todo token vem de `randomBytes(32)`.
- */
-export const TOKEN_ORDEM_DEMO = "demonstracao-aguardando-assinatura-do-gerente";
-
 /** Dia relativo a hoje, em "aaaa-mm-dd". A demonstracao nunca parece velha. */
 function diaRelativo(dias: number): string {
   const d = new Date();
@@ -808,14 +793,12 @@ function rabisco(semente: number): number[][] {
 
 function assinaturaSemeada(
   nome: string,
-  papel: PapelAssinatura,
   assinadoEm: string,
   semente: number,
   ip: string,
 ): AssinaturaOrdem {
   return {
     nome,
-    papel,
     tracos: rabisco(semente),
     assinadoEm,
     ip,
@@ -824,91 +807,220 @@ function assinaturaSemeada(
 }
 
 /**
- * Duas ordens semeadas: uma esperando assinatura, uma ja assinada.
+ * Tres ordens semeadas, uma em cada trecho do processo.
  *
- * A tela precisa das duas para se explicar sozinha. So com a primeira, o
- * arquivo de documentos fica vazio e ninguem ve o PDF; so com a segunda, nao
- * ha o que assinar na demonstracao.
+ * A tela precisa das tres para se explicar sozinha: uma esperando a
+ * conferencia (a linha do tempo quase vazia), uma no meio do caminho, e uma
+ * concluida -- que e a unica com PDF para baixar. Com uma so, metade da tela
+ * nao teria o que mostrar.
  */
 export function ordensIniciais(produtos: Produto[]): OrdemFabricacao[] {
   const disponiveis = produtos.filter((p) => !p.ehKit && p.ativo);
   const item = (indice: number, quantidade: number): ItemOrdem | null => {
     const produto = disponiveis[indice];
     if (!produto) return null;
-    return {
-      chave: produto.chave,
-      nome: produto.nome,
-      sku: produto.sku,
-      quantidade,
-    };
+    return { chave: produto.chave, nome: produto.nome, sku: produto.sku, quantidade };
   };
 
   const naFila = [item(0, 2400), item(1, 1200)].filter((i): i is ItemOrdem => i !== null);
-  const assinada = [item(2, 5000)].filter((i): i is ItemOrdem => i !== null);
+  const noMeio = [item(2, 5000)].filter((i): i is ItemOrdem => i !== null);
+  const pronta = [item(3, 800), item(4, 1500)].filter((i): i is ItemOrdem => i !== null);
 
   // Sem produto cadastrado nao ha ordem que faca sentido.
-  if (naFila.length === 0 || assinada.length === 0) return [];
+  if (naFila.length === 0 || noMeio.length === 0 || pronta.length === 0) return [];
 
-  const aguardando: OrdemFabricacao = {
-    id: "ordem-demo-aguardando",
-    numero: `OF-${new Date().getFullYear()}-0001`,
+  const ano = new Date().getFullYear();
+  const quantidades = (itens: ItemOrdem[], fator = 1): Record<string, number> =>
+    Object.fromEntries(itens.map((i) => [i.chave, Math.round(i.quantidade * fator)]));
+
+  const TODAS_SIM = {
+    embalagem: true,
+    tampa: true,
+    tampaCorreta: true,
+    caixa: true,
+    materiaPrima: true,
+  };
+
+  const esperando: OrdemFabricacao = {
+    id: "ordem-demo-conferencia",
+    numero: `OF-${ano}-0001`,
     itens: naFila,
     dataLancamento: diaRelativo(26),
     observacao:
-      "Lançamento da campanha de primavera. O influencer grava no dia 20, precisa do produto na mao antes.",
-    situacao: "aguardando",
-    solicitante: assinaturaSemeada(
-      "Marina Alves",
-      "solicitante",
-      instanteRelativo(-3, 14, 22),
-      0.7,
-      "189.4.22.7",
-    ),
-    aprovador: null,
-    motivoRecusa: null,
-    token: TOKEN_ORDEM_DEMO,
+      "Lançamento da campanha de primavera. O influencer grava no dia 20, precisa do produto na mão antes.",
+    situacao: "andamento",
+    etapaAtual: "conferencia",
+    passos: [
+      {
+        etapa: "abertura",
+        usuarioId: "usuario-dono",
+        assinatura: assinaturaSemeada(
+          "Marina Alves",
+          instanteRelativo(-3, 14, 22),
+          0.7,
+          "189.4.22.7",
+        ),
+        observacao: null,
+      },
+    ],
+    abertaPor: "usuario-dono",
+    motivoCancelamento: null,
     criadoEm: instanteRelativo(-3, 14, 22),
     fechadoEm: null,
     documento: null,
   };
 
-  const aprovada: OrdemFabricacao = {
-    id: "ordem-demo-aprovada",
-    numero: `OF-${new Date().getFullYear()}-0002`,
-    itens: assinada,
-    dataLancamento: diaRelativo(11),
+  /*
+   * A do meio parou na contagem, e com a fabricacao ABAIXO do pedido.
+   *
+   * 4.850 de 5.000 nao e descuido de semeadura: e o caso que a tela precisa
+   * saber mostrar, porque e onde a confianca no processo se decide. Pediu
+   * 5.000, saiu 4.850, e isso tem que aparecer sem ninguem procurar.
+   */
+  const andando: OrdemFabricacao = {
+    id: "ordem-demo-andamento",
+    numero: `OF-${ano}-0002`,
+    itens: noMeio,
+    dataLancamento: diaRelativo(9),
     observacao: "Reposição para o combo de lançamento.",
-    situacao: "aprovada",
-    solicitante: assinaturaSemeada(
-      "Marina Alves",
-      "solicitante",
-      instanteRelativo(-19, 9, 5),
-      0.7,
-      "189.4.22.7",
-    ),
-    aprovador: assinaturaSemeada(
-      "Carlos Mendes",
-      "aprovador",
-      instanteRelativo(-19, 16, 40),
-      2.1,
-      "177.223.44.178",
-    ),
-    motivoRecusa: null,
-    token: "demonstracao-ordem-ja-assinada-somente-leitura",
+    situacao: "andamento",
+    etapaAtual: "contagem",
+    passos: [
+      {
+        etapa: "abertura",
+        usuarioId: "usuario-dono",
+        assinatura: assinaturaSemeada("Marina Alves", instanteRelativo(-19, 9, 5), 0.7, "189.4.22.7"),
+        observacao: null,
+      },
+      {
+        etapa: "conferencia",
+        usuarioId: "usuario-estoque",
+        assinatura: assinaturaSemeada(
+          "Carlos Mendes",
+          instanteRelativo(-18, 8, 12),
+          2.1,
+          "177.223.44.178",
+        ),
+        observacao: null,
+        conferencia: { respostas: { ...TODAS_SIM }, cumpreAData: true, dataPossivel: null },
+      },
+      {
+        etapa: "fabricacao",
+        usuarioId: "usuario-estoque",
+        assinatura: assinaturaSemeada(
+          "Carlos Mendes",
+          instanteRelativo(-4, 17, 30),
+          3.4,
+          "177.223.44.178",
+        ),
+        observacao: "Sobrou pouca matéria-prima no fim do lote.",
+        fabricacao: { dataFabricacao: diaRelativo(-4), quantidades: quantidades(noMeio, 0.97) },
+      },
+    ],
+    abertaPor: "usuario-dono",
+    motivoCancelamento: null,
     criadoEm: instanteRelativo(-19, 9, 5),
-    fechadoEm: instanteRelativo(-19, 16, 40),
+    fechadoEm: null,
+    documento: null,
+  };
+
+  const concluida: OrdemFabricacao = {
+    id: "ordem-demo-concluida",
+    numero: `OF-${ano}-0003`,
+    itens: pronta,
+    dataLancamento: diaRelativo(-6),
+    observacao: "Kit de inverno, entregue no prazo.",
+    situacao: "concluida",
+    etapaAtual: null,
+    passos: [
+      {
+        etapa: "abertura",
+        usuarioId: "usuario-dono",
+        assinatura: assinaturaSemeada(
+          "Marina Alves",
+          instanteRelativo(-40, 10, 15),
+          0.7,
+          "189.4.22.7",
+        ),
+        observacao: null,
+      },
+      {
+        etapa: "conferencia",
+        usuarioId: "usuario-estoque",
+        assinatura: assinaturaSemeada(
+          "Carlos Mendes",
+          instanteRelativo(-39, 9, 0),
+          2.1,
+          "177.223.44.178",
+        ),
+        observacao: null,
+        conferencia: { respostas: { ...TODAS_SIM }, cumpreAData: true, dataPossivel: null },
+      },
+      {
+        etapa: "fabricacao",
+        usuarioId: "usuario-estoque",
+        assinatura: assinaturaSemeada(
+          "Rubens Dias",
+          instanteRelativo(-22, 16, 5),
+          4.8,
+          "177.223.44.178",
+        ),
+        observacao: null,
+        fabricacao: { dataFabricacao: diaRelativo(-22), quantidades: quantidades(pronta) },
+      },
+      {
+        etapa: "contagem",
+        usuarioId: "usuario-estoque",
+        assinatura: assinaturaSemeada(
+          "Rubens Dias",
+          instanteRelativo(-21, 8, 40),
+          5.2,
+          "177.223.44.178",
+        ),
+        observacao: null,
+        contagem: { dataContagem: diaRelativo(-21), quantidades: quantidades(pronta) },
+      },
+      {
+        etapa: "envio",
+        usuarioId: "usuario-estoque",
+        assinatura: assinaturaSemeada(
+          "Rubens Dias",
+          instanteRelativo(-20, 11, 10),
+          5.9,
+          "177.223.44.178",
+        ),
+        observacao: null,
+        envio: { dataEnvio: diaRelativo(-20), referencia: "Transportadora Sul -- NF 4471" },
+      },
+      {
+        etapa: "recebimento",
+        usuarioId: "usuario-estoque",
+        assinatura: assinaturaSemeada(
+          "Joana Prado",
+          instanteRelativo(-18, 14, 25),
+          6.6,
+          "189.4.22.7",
+        ),
+        observacao: null,
+        recebimento: { dataRecebimento: diaRelativo(-18), quantidades: quantidades(pronta) },
+      },
+    ],
+    abertaPor: "usuario-dono",
+    motivoCancelamento: null,
+    criadoEm: instanteRelativo(-40, 10, 15),
+    fechadoEm: instanteRelativo(-18, 14, 25),
     documento: null,
   };
 
   // O PDF e gerado agora, uma vez, e gravado com a ordem -- exatamente o que
-  // acontece quando alguem assina de verdade. Semear a ordem sem o documento
-  // deixaria o botao "Baixar PDF" sem arquivo na demonstracao.
-  aprovada.documento = gerarDocumento(aprovada, {
+  // acontece quando a ordem fecha de verdade. Semear sem o documento deixaria
+  // o botao "Baixar PDF" sem arquivo na demonstracao.
+  concluida.documento = gerarDocumento(concluida, {
     demonstracao: true,
-    geradoEm: new Date(aprovada.fechadoEm ?? Date.now()),
+    geradoEm: new Date(concluida.fechadoEm ?? Date.now()),
   });
 
-  return [aguardando, aprovada];
+  return [esperando, andando, concluida];
 }
 
 // ---------------------------------------------------------------------------

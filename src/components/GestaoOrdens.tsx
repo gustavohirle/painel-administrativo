@@ -2,20 +2,28 @@
 
 import { useActionState, useEffect, useMemo, useState } from "react";
 
-import { cancelarOrdem, criarOrdemDeFabricacao } from "@/app/ordens/actions";
-import { AssinaturaLida } from "@/components/AssinaturaLida";
-import { FiltrosDeOrdens, type OpcaoInfluencer } from "@/components/FiltrosDeOrdens";
+import {
+  assinarEtapa,
+  cancelarOrdem,
+  criarOrdemDeFabricacao,
+  removerOrdem,
+  retomarOrdem,
+} from "@/app/ordens/actions";
+import { LinhaDoTempoDaOrdem } from "@/components/LinhaDoTempoDaOrdem";
 import { QuadroAssinatura } from "@/components/QuadroAssinatura";
 import { dataCalendario, dataHora, inteiro } from "@/lib/format";
-import type { FiltrosOrdens } from "@/lib/ordens";
+import { conferenciaAprova, motivosDaConferencia, type OrdemNaFila } from "@/lib/processoOrdem";
 import { ESTADO_INICIAL } from "@/types/formulario";
 import {
+  ITENS_DE_CONFERENCIA,
   MAXIMO_DE_ITENS,
-  QUANTIDADE_MAXIMA,
+  PERGUNTA_DE_CONFERENCIA,
+  ROTULO_ETAPA,
   ROTULO_SITUACAO,
+  passoDaEtapa,
   unidadesDaOrdem,
+  type EtapaOrdem,
   type OrdemFabricacao,
-  type SituacaoOrdem,
 } from "@/types/ordemFabricacao";
 
 export interface OpcaoProduto {
@@ -24,92 +32,739 @@ export interface OpcaoProduto {
   sku: string | null;
   /** Saldo atual, para quem pede ja saber se falta mesmo. `null` sem contagem. */
   saldo: number | null;
+  /** Dias de cobertura no ritmo do mes. `null` quando nao da para medir. */
+  coberturaDias: number | null;
 }
 
 interface GestaoOrdensProps {
-  /** Ja filtradas e cortadas no teto pelo servidor. */
-  ordens: OrdemFabricacao[];
+  fila: OrdemNaFila[];
   produtos: OpcaoProduto[];
   /** Nome de quem esta logado, para pre-preencher a assinatura. */
   nomeDoUsuario: string;
-
-  filtros: FiltrosOrdens;
-  influencers: OpcaoInfluencer[];
-  /** Quantas casaram com o filtro, antes do corte. */
-  encontradas: number;
-  /** Quantas existem, sem filtro nenhum. */
-  total: number;
-  cortada: boolean;
+  ehAdministrador: boolean;
+  /** "aaaa-mm-dd" em Brasilia, vindo do servidor. */
+  hoje: string;
+  abertaPorPadrao: string | null;
+  totalNaBase: number;
 }
 
-interface LinhaDoFormulario {
-  /** Chave local da linha; nao vai para o servidor. */
-  id: number;
-  chave: string;
-  quantidade: string;
-}
+const CAMPO =
+  "w-full rounded-lg border border-borda-forte bg-superficie px-3 py-2 text-sm text-tinta";
 
 export function GestaoOrdens({
-  ordens,
+  fila,
   produtos,
   nomeDoUsuario,
-  filtros,
-  influencers,
-  encontradas,
-  total,
-  cortada,
+  ehAdministrador,
+  hoje,
+  abertaPorPadrao,
+  totalNaBase,
 }: GestaoOrdensProps) {
-  const [aberto, setAberto] = useState(false);
+  const [novaAberta, setNovaAberta] = useState(false);
+  /*
+   * A ordem que esta esperando VOCE ja abre expandida.
+   *
+   * Quem entra na tela normalmente tem uma coisa para fazer, e ela e a
+   * primeira da fila (`montarFila`). Obrigar um clique antes do formulario
+   * seria um clique para chegar no unico lugar em que a pessoa ia.
+   */
+  const [abertaId, setAbertaId] = useState<string | null>(
+    abertaPorPadrao ?? fila.find((f) => f.minha)?.ordem.id ?? null,
+  );
 
   return (
     <div>
       <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
         <p className="max-w-2xl text-sm text-tinta-media">
-          Cada ordem vira um link. Quem recebe o link confere, aprova e assina
-          pelo celular &mdash; e o PDF assinado pelos dois lados fica guardado
-          aqui, sem poder ser alterado depois.
+          Cada etapa é assinada por quem a cumpriu, e a assinatura fica no
+          documento. A ordem só anda quando alguém assina.
         </p>
-        <button
-          type="button"
-          onClick={() => setAberto((v) => !v)}
-          className="rounded-lg bg-tinta px-4 py-2 text-sm font-semibold text-white"
-        >
-          {aberto ? "Fechar" : "Nova ordem de fabricação"}
-        </button>
+        {ehAdministrador && (
+          <button
+            type="button"
+            onClick={() => setNovaAberta((v) => !v)}
+            className="rounded-lg bg-tinta px-4 py-2 text-sm font-semibold text-white"
+          >
+            {novaAberta ? "Fechar" : "Abrir ordem de fabricação"}
+          </button>
+        )}
       </div>
 
-      {aberto && (
+      {novaAberta && (
         <FormularioDeOrdem
           produtos={produtos}
           nomeDoUsuario={nomeDoUsuario}
-          aoConcluir={() => setAberto(false)}
+          hoje={hoje}
+          aoConcluir={() => setNovaAberta(false)}
         />
       )}
 
-      {/* A barra so aparece quando ha o que filtrar -- com tres ordens ela
-          seria ruido, e com trezentas e a unica forma de achar uma. */}
-      {total > 0 && (
-        <FiltrosDeOrdens
-          filtros={filtros}
-          influencers={influencers}
-          encontradas={encontradas}
-          total={total}
-          cortada={cortada}
-        />
-      )}
-
-      {ordens.length === 0 ? (
+      {fila.length === 0 ? (
         <p className="rounded-lg border border-dashed border-borda-forte px-4 py-8 text-center text-sm text-tinta-media">
-          {total === 0
+          {totalNaBase === 0
             ? "Nenhuma ordem de fabricação ainda."
-            : "Nenhuma ordem casa com este filtro."}
+            : "Nenhuma ordem para mostrar."}
         </p>
       ) : (
         <ul className="space-y-3">
-          {ordens.map((ordem) => (
-            <CartaoDeOrdem key={ordem.id} ordem={ordem} />
+          {fila.map((item) => (
+            <CartaoDeOrdem
+              key={item.ordem.id}
+              item={item}
+              aberta={abertaId === item.ordem.id}
+              aoAbrir={() =>
+                setAbertaId((atual) => (atual === item.ordem.id ? null : item.ordem.id))
+              }
+              nomeDoUsuario={nomeDoUsuario}
+              ehAdministrador={ehAdministrador}
+              hoje={hoje}
+            />
           ))}
         </ul>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Um cartao da fila
+// ---------------------------------------------------------------------------
+
+/** "faltam 9 dias", "hoje", "3 dias atrasada". */
+function prazoEmTexto(dias: number): string {
+  if (dias === 0) return "o lançamento é hoje";
+  if (dias > 0) return `faltam ${dias} dia(s)`;
+  return `${Math.abs(dias)} dia(s) atrasada`;
+}
+
+function CartaoDeOrdem({
+  item,
+  aberta,
+  aoAbrir,
+  nomeDoUsuario,
+  ehAdministrador,
+  hoje,
+}: {
+  item: OrdemNaFila;
+  aberta: boolean;
+  aoAbrir: () => void;
+  nomeDoUsuario: string;
+  ehAdministrador: boolean;
+  hoje: string;
+}) {
+  const { ordem, minha, dias } = item;
+  const emAberto = ordem.situacao === "andamento" || ordem.situacao === "revisao";
+  const atrasada = emAberto && dias < 0;
+
+  return (
+    <li
+      className={`overflow-hidden rounded-xl border bg-superficie shadow-[0_1px_2px_rgba(16,24,40,0.05)] ${
+        minha ? "border-tinta" : "border-borda"
+      }`}
+    >
+      <button
+        type="button"
+        onClick={aoAbrir}
+        className="flex w-full flex-wrap items-center gap-x-4 gap-y-2 px-4 py-4 text-left hover:bg-fundo sm:px-6"
+      >
+        <span className="min-w-0 flex-1">
+          <span className="flex flex-wrap items-center gap-2">
+            <span className="numerico text-sm font-semibold text-tinta">{ordem.numero}</span>
+            {minha && (
+              <span className="rounded-full bg-tinta px-2 py-0.5 text-xs font-semibold text-white">
+                com você
+              </span>
+            )}
+            {atrasada && (
+              <span className="rounded-full border border-alerta-borda bg-alerta-fundo px-2 py-0.5 text-xs font-semibold text-naopago">
+                atrasada
+              </span>
+            )}
+            {ordem.situacao === "revisao" && (
+              <span className="rounded-full border border-alerta-borda bg-alerta-fundo px-2 py-0.5 text-xs font-semibold text-naopago">
+                voltou para o administrador
+              </span>
+            )}
+          </span>
+          <span className="mt-1 block text-sm text-tinta-media">
+            {ordem.etapaAtual && emAberto
+              ? `Etapa: ${ROTULO_ETAPA[ordem.etapaAtual]}`
+              : ROTULO_SITUACAO[ordem.situacao]}
+            {" · "}
+            {inteiro(unidadesDaOrdem(ordem))} un em {ordem.itens.length} item(ns)
+          </span>
+        </span>
+
+        <span className="shrink-0 text-right">
+          <span className="block text-sm font-semibold text-tinta">
+            {dataCalendario(ordem.dataLancamento)}
+          </span>
+          <span className={`block text-xs ${atrasada ? "text-naopago" : "text-tinta-media"}`}>
+            {emAberto ? prazoEmTexto(dias) : "encerrada"}
+          </span>
+        </span>
+
+        <span className="shrink-0 text-sm font-medium text-tinta-media">
+          {aberta ? "fechar" : "abrir"}
+        </span>
+      </button>
+
+      {aberta && (
+        <DetalheDaOrdem
+          ordem={ordem}
+          minha={minha}
+          nomeDoUsuario={nomeDoUsuario}
+          ehAdministrador={ehAdministrador}
+          hoje={hoje}
+        />
+      )}
+    </li>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// A ordem aberta
+// ---------------------------------------------------------------------------
+
+function DetalheDaOrdem({
+  ordem,
+  minha,
+  nomeDoUsuario,
+  ehAdministrador,
+  hoje,
+}: {
+  ordem: OrdemFabricacao;
+  minha: boolean;
+  nomeDoUsuario: string;
+  ehAdministrador: boolean;
+  hoje: string;
+}) {
+  const conferencia = passoDaEtapa(ordem, "conferencia");
+  const reprovou =
+    ordem.situacao === "revisao" && conferencia?.conferencia
+      ? motivosDaConferencia(conferencia.conferencia)
+      : [];
+
+  return (
+    <div className="space-y-5 border-t border-borda bg-fundo px-4 py-5 sm:px-6">
+      <LinhaDoTempoDaOrdem ordem={ordem} />
+
+      {ordem.observacao && (
+        <p className="text-sm text-tinta-media">
+          <span className="font-semibold text-tinta">Observação do pedido: </span>
+          {ordem.observacao}
+        </p>
+      )}
+
+      <TabelaDeItens ordem={ordem} />
+
+      {reprovou.length > 0 && (
+        <div className="rounded-lg border border-alerta-borda bg-alerta-fundo px-4 py-3">
+          <p className="text-sm font-semibold text-naopago">
+            A conferência não passou. A ordem voltou para quem abriu.
+          </p>
+          <ul className="mt-1 list-disc space-y-0.5 pl-5 text-sm text-tinta-media">
+            {reprovou.map((motivo) => (
+              <li key={motivo}>{motivo}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* O formulario da etapa vem ABERTO: quem entrou aqui tem uma coisa para
+          fazer, e esconder atras de um botao seria um clique para nada. */}
+      {ordem.situacao === "andamento" && ordem.etapaAtual && minha && (
+        <FormularioDaEtapa
+          ordem={ordem}
+          etapa={ordem.etapaAtual}
+          nomeDoUsuario={nomeDoUsuario}
+          hoje={hoje}
+        />
+      )}
+
+      {ordem.situacao === "revisao" && ehAdministrador && (
+        <FormularioDeRevisao ordem={ordem} nomeDoUsuario={nomeDoUsuario} hoje={hoje} />
+      )}
+
+      <HistoricoDosPassos ordem={ordem} />
+
+      <AcoesDaOrdem ordem={ordem} ehAdministrador={ehAdministrador} />
+    </div>
+  );
+}
+
+function TabelaDeItens({ ordem }: { ordem: OrdemFabricacao }) {
+  const fabricacao = passoDaEtapa(ordem, "fabricacao")?.fabricacao;
+  const recebimento = passoDaEtapa(ordem, "recebimento")?.recebimento;
+
+  return (
+    <div className="overflow-x-auto">
+      <table className="tabela-ancorada w-full min-w-[520px] border-collapse text-sm">
+        <thead>
+          <tr className="border-b border-borda-forte text-left text-xs uppercase tracking-wider text-tinta-fraca">
+            <th className="py-2 pr-4 font-semibold">Produto</th>
+            <th className="py-2 pr-4 text-right font-semibold">Pedido</th>
+            <th className="py-2 pr-4 text-right font-semibold">Fabricado</th>
+            <th className="py-2 text-right font-semibold">Recebido</th>
+          </tr>
+        </thead>
+        <tbody>
+          {ordem.itens.map((item) => {
+            const fab = fabricacao?.quantidades[item.chave];
+            const rec = recebimento?.quantidades[item.chave];
+            // Fabricou menos do que foi pedido: e onde a confianca se decide.
+            const faltou = fab !== undefined && fab < item.quantidade;
+
+            return (
+              <tr key={item.chave} className="border-b border-borda">
+                <td className="py-2 pr-4">
+                  <span className="font-medium text-tinta">{item.nome}</span>
+                  {item.sku && <span className="ml-2 text-xs text-tinta-fraca">{item.sku}</span>}
+                </td>
+                <td className="numerico py-2 pr-4 text-right text-tinta-media">
+                  {inteiro(item.quantidade)}
+                </td>
+                <td
+                  className={`numerico py-2 pr-4 text-right ${
+                    faltou ? "font-semibold text-naopago" : "text-tinta-media"
+                  }`}
+                >
+                  {fab === undefined ? "—" : inteiro(fab)}
+                </td>
+                <td className="numerico py-2 text-right font-semibold text-tinta">
+                  {rec === undefined ? "—" : inteiro(rec)}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function HistoricoDosPassos({ ordem }: { ordem: OrdemFabricacao }) {
+  if (ordem.passos.length === 0) return null;
+
+  return (
+    <details>
+      <summary className="cursor-pointer text-sm font-semibold text-tinta">
+        Histórico ({ordem.passos.length} assinatura(s))
+      </summary>
+      <ul className="mt-2 space-y-1.5 text-sm text-tinta-media">
+        {ordem.passos.map((passo, indice) => (
+          <li key={`${passo.etapa}-${indice}`} className="flex flex-wrap gap-x-2">
+            <span className="font-medium text-tinta">{ROTULO_ETAPA[passo.etapa]}</span>
+            <span>
+              {passo.assinatura.nome} · {dataHora(passo.assinatura.assinadoEm)}
+            </span>
+            {passo.observacao && <span className="w-full text-xs">“{passo.observacao}”</span>}
+          </li>
+        ))}
+      </ul>
+    </details>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// O formulario de cada etapa
+// ---------------------------------------------------------------------------
+
+/** O que a etapa anterior registrou, para o campo ja vir preenchido. */
+function quantidadePadrao(ordem: OrdemFabricacao, etapa: EtapaOrdem, chave: string): number {
+  const anterior =
+    etapa === "fabricacao"
+      ? undefined
+      : etapa === "contagem"
+        ? passoDaEtapa(ordem, "fabricacao")?.fabricacao?.quantidades
+        : passoDaEtapa(ordem, "contagem")?.contagem?.quantidades;
+
+  const item = ordem.itens.find((i) => i.chave === chave);
+  return anterior?.[chave] ?? item?.quantidade ?? 0;
+}
+
+function FormularioDaEtapa({
+  ordem,
+  etapa,
+  nomeDoUsuario,
+  hoje,
+}: {
+  ordem: OrdemFabricacao;
+  etapa: EtapaOrdem;
+  nomeDoUsuario: string;
+  hoje: string;
+}) {
+  const [estado, acao, pendente] = useActionState(assinarEtapa, ESTADO_INICIAL);
+  const [temAssinatura, setTemAssinatura] = useState(false);
+  const [respostas, setRespostas] = useState<Record<string, boolean>>({});
+  const [cumpre, setCumpre] = useState(true);
+
+  const conferindo = etapa === "conferencia";
+  const contando = etapa === "fabricacao" || etapa === "contagem" || etapa === "recebimento";
+
+  const vaiVoltar =
+    conferindo &&
+    !conferenciaAprova({
+      respostas: Object.fromEntries(
+        ITENS_DE_CONFERENCIA.map((i) => [i, respostas[i] === true]),
+      ) as never,
+      cumpreAData: cumpre,
+      dataPossivel: null,
+    });
+
+  return (
+    <form action={acao} className="rounded-xl border border-borda-forte bg-superficie px-4 py-5 sm:px-6">
+      <input type="hidden" name="id" value={ordem.id} />
+      <input type="hidden" name="etapa" value={etapa} />
+
+      <p className="text-sm font-semibold text-tinta">{ROTULO_ETAPA[etapa]}</p>
+
+      {conferindo && (
+        <div className="mt-3 space-y-2">
+          {ITENS_DE_CONFERENCIA.map((item) => (
+            <label key={item} className="flex items-start gap-2 text-sm text-tinta">
+              <input
+                type="checkbox"
+                name={`conferencia:${item}`}
+                value="sim"
+                checked={respostas[item] === true}
+                onChange={(e) =>
+                  setRespostas((atual) => ({ ...atual, [item]: e.target.checked }))
+                }
+                className="mt-0.5 h-4 w-4 shrink-0"
+              />
+              <span>{PERGUNTA_DE_CONFERENCIA[item]}</span>
+            </label>
+          ))}
+
+          <label className="flex items-start gap-2 border-t border-borda pt-3 text-sm font-medium text-tinta">
+            <input
+              type="checkbox"
+              name="cumpreAData"
+              value="sim"
+              checked={cumpre}
+              onChange={(e) => setCumpre(e.target.checked)}
+              className="mt-0.5 h-4 w-4 shrink-0"
+            />
+            <span>
+              Consigo fabricar até {dataCalendario(ordem.dataLancamento)}
+            </span>
+          </label>
+
+          {!cumpre && (
+            <label className="block">
+              <span className="mb-1 block text-xs font-medium text-tinta-media">
+                Para quando fica pronto?
+              </span>
+              <input type="date" name="dataPossivel" min={hoje} className={CAMPO} />
+            </label>
+          )}
+
+          {vaiVoltar && (
+            <p className="rounded-lg border border-alerta-borda bg-alerta-fundo px-3 py-2 text-sm text-naopago">
+              Com alguma resposta em falta, a ordem volta para quem abriu — é o
+              que o processo manda. Assine assim mesmo: o registro é o que
+              importa.
+            </p>
+          )}
+        </div>
+      )}
+
+      {contando && (
+        <div className="mt-3 space-y-3">
+          <label className="block sm:max-w-xs">
+            <span className="mb-1 block text-xs font-medium text-tinta-media">
+              {etapa === "fabricacao"
+                ? "Data em que a fabricação terminou"
+                : etapa === "contagem"
+                  ? "Data da contagem"
+                  : "Data do recebimento"}
+            </span>
+            <input
+              type="date"
+              name={
+                etapa === "fabricacao"
+                  ? "dataFabricacao"
+                  : etapa === "contagem"
+                    ? "dataContagem"
+                    : "dataRecebimento"
+              }
+              defaultValue={hoje}
+              className={CAMPO}
+            />
+          </label>
+
+          {ordem.itens.map((item) => (
+            <label key={item.chave} className="flex flex-wrap items-center gap-2">
+              <span className="min-w-0 flex-1 text-sm text-tinta">
+                {item.nome}
+                <span className="ml-2 text-xs text-tinta-fraca">
+                  pedido: {inteiro(item.quantidade)}
+                </span>
+              </span>
+              <input
+                type="number"
+                name={`quantidade:${item.chave}`}
+                defaultValue={quantidadePadrao(ordem, etapa, item.chave)}
+                min={0}
+                step={1}
+                className="w-32 rounded-lg border border-borda-forte bg-superficie px-3 py-2 text-right text-sm text-tinta"
+              />
+            </label>
+          ))}
+
+          {etapa === "recebimento" && (
+            <p className="text-xs text-tinta-media">
+              O que você contar aqui entra como contagem na aba Estoque, com
+              esta data. É o mesmo lançamento — não precisa fazer duas vezes.
+            </p>
+          )}
+        </div>
+      )}
+
+      {etapa === "envio" && (
+        <div className="mt-3 space-y-3 sm:flex sm:gap-3 sm:space-y-0">
+          <label className="block sm:w-48">
+            <span className="mb-1 block text-xs font-medium text-tinta-media">Data do envio</span>
+            <input type="date" name="dataEnvio" defaultValue={hoje} className={CAMPO} />
+          </label>
+          <label className="block flex-1">
+            <span className="mb-1 block text-xs font-medium text-tinta-media">
+              Transportadora, placa ou nota (opcional)
+            </span>
+            <input type="text" name="referencia" maxLength={120} className={CAMPO} />
+          </label>
+        </div>
+      )}
+
+      <label className="mt-3 block">
+        <span className="mb-1 block text-xs font-medium text-tinta-media">
+          Observação (opcional)
+        </span>
+        <input type="text" name="observacao" maxLength={300} className={CAMPO} />
+      </label>
+
+      <div className="mt-4 grid gap-3 sm:grid-cols-2">
+        <label className="block">
+          <span className="mb-1 block text-xs font-medium text-tinta-media">Seu nome</span>
+          <input
+            type="text"
+            name="nome"
+            defaultValue={nomeDoUsuario}
+            required
+            minLength={3}
+            className={CAMPO}
+          />
+        </label>
+        <QuadroAssinatura campo="tracos" rotulo="Assine para seguir" aoMudar={setTemAssinatura} />
+      </div>
+
+      {estado.mensagem && (
+        <p
+          className={`mt-3 rounded-lg px-4 py-3 text-sm ${
+            estado.ok
+              ? "border border-borda bg-real-claro text-real"
+              : "border border-alerta-borda bg-alerta-fundo text-naopago"
+          }`}
+        >
+          {estado.mensagem}
+        </p>
+      )}
+
+      <button
+        type="submit"
+        disabled={!temAssinatura || pendente}
+        className="mt-4 rounded-lg bg-tinta px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
+      >
+        {pendente ? "Enviando..." : "Assinar e seguir para a próxima etapa"}
+      </button>
+    </form>
+  );
+}
+
+function FormularioDeRevisao({
+  ordem,
+  nomeDoUsuario,
+  hoje,
+}: {
+  ordem: OrdemFabricacao;
+  nomeDoUsuario: string;
+  hoje: string;
+}) {
+  const [estado, acao, pendente] = useActionState(retomarOrdem, ESTADO_INICIAL);
+  const [temAssinatura, setTemAssinatura] = useState(false);
+  const sugerida = passoDaEtapa(ordem, "conferencia")?.conferencia?.dataPossivel;
+
+  return (
+    <form action={acao} className="rounded-xl border border-borda-forte bg-superficie px-4 py-5 sm:px-6">
+      <input type="hidden" name="id" value={ordem.id} />
+
+      <p className="text-sm font-semibold text-tinta">Aceitar a nova data e devolver</p>
+      <p className="mt-1 text-sm text-tinta-media">
+        A ordem volta para a conferência com a data que você aceitar. Se não
+        servir, cancele a ordem abaixo.
+      </p>
+
+      <div className="mt-3 grid gap-3 sm:grid-cols-2">
+        <label className="block">
+          <span className="mb-1 block text-xs font-medium text-tinta-media">
+            Nova data de lançamento
+          </span>
+          <input
+            type="date"
+            name="dataLancamento"
+            defaultValue={sugerida ?? ordem.dataLancamento}
+            min={hoje}
+            required
+            className={CAMPO}
+          />
+        </label>
+        <label className="block">
+          <span className="mb-1 block text-xs font-medium text-tinta-media">Seu nome</span>
+          <input
+            type="text"
+            name="nome"
+            defaultValue={nomeDoUsuario}
+            required
+            minLength={3}
+            className={CAMPO}
+          />
+        </label>
+      </div>
+
+      <div className="mt-3">
+        <QuadroAssinatura campo="tracos" rotulo="Assine para devolver" aoMudar={setTemAssinatura} />
+      </div>
+
+      {estado.mensagem && (
+        <p
+          className={`mt-3 rounded-lg px-4 py-3 text-sm ${
+            estado.ok
+              ? "border border-borda bg-real-claro text-real"
+              : "border border-alerta-borda bg-alerta-fundo text-naopago"
+          }`}
+        >
+          {estado.mensagem}
+        </p>
+      )}
+
+      <button
+        type="submit"
+        disabled={!temAssinatura || pendente}
+        className="mt-4 rounded-lg bg-tinta px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
+      >
+        {pendente ? "Enviando..." : "Aceitar a data e devolver para a conferência"}
+      </button>
+    </form>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Cancelar, apagar, baixar
+// ---------------------------------------------------------------------------
+
+function AcoesDaOrdem({
+  ordem,
+  ehAdministrador,
+}: {
+  ordem: OrdemFabricacao;
+  ehAdministrador: boolean;
+}) {
+  const [cancelamento, acaoCancelar, cancelando] = useActionState(cancelarOrdem, ESTADO_INICIAL);
+  const [remocao, acaoRemover, removendo] = useActionState(removerOrdem, ESTADO_INICIAL);
+  const [confirmando, setConfirmando] = useState(false);
+
+  const emAberto = ordem.situacao === "andamento" || ordem.situacao === "revisao";
+
+  return (
+    <div className="space-y-3 border-t border-borda pt-4">
+      <div className="flex flex-wrap items-center gap-3">
+        {ordem.documento && (
+          <a
+            href={`/ordens/${ordem.id}/pdf`}
+            className="rounded-lg border border-borda-forte bg-superficie px-3 py-2 text-sm font-medium text-tinta"
+          >
+            Baixar o PDF assinado
+          </a>
+        )}
+
+        {ehAdministrador && emAberto && (
+          <form action={acaoCancelar} className="flex flex-wrap items-center gap-2">
+            <input type="hidden" name="id" value={ordem.id} />
+            <input
+              type="text"
+              name="motivo"
+              placeholder="Motivo do cancelamento"
+              maxLength={200}
+              className="w-56 rounded-lg border border-borda-forte bg-superficie px-3 py-2 text-sm text-tinta"
+            />
+            <button
+              type="submit"
+              disabled={cancelando}
+              className="rounded-lg border border-borda-forte px-3 py-2 text-sm font-medium text-tinta-media disabled:opacity-60"
+            >
+              {cancelando ? "Cancelando..." : "Cancelar ordem"}
+            </button>
+          </form>
+        )}
+      </div>
+
+      {/*
+       * Apagar existe para a FASE DE TESTE, a pedido do dono.
+       *
+       * Dois passos na propria linha, sem `window.confirm` -- que some atras de
+       * abas no celular e trava a auditoria automatizada (5.16). O aviso diz
+       * que o caminho normal e cancelar, para o botao nao virar habito.
+       */}
+      {ehAdministrador && (
+        <div className="flex flex-wrap items-center gap-2 text-sm">
+          {confirmando ? (
+            <form action={acaoRemover} className="flex flex-wrap items-center gap-2">
+              <input type="hidden" name="id" value={ordem.id} />
+              <span className="text-naopago">
+                Apagar de vez? O registro some, não fica histórico.
+              </span>
+              <button
+                type="submit"
+                disabled={removendo}
+                className="rounded-lg bg-naopago px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-60"
+              >
+                {removendo ? "Apagando..." : "Sim, apagar"}
+              </button>
+              <button
+                type="button"
+                onClick={() => setConfirmando(false)}
+                className="rounded-lg border border-borda-forte px-3 py-1.5 text-sm text-tinta-media"
+              >
+                Não
+              </button>
+            </form>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setConfirmando(true)}
+              className="text-xs text-tinta-fraca underline"
+            >
+              apagar esta ordem (só para teste — o normal é cancelar)
+            </button>
+          )}
+        </div>
+      )}
+
+      {[cancelamento, remocao].map(
+        (estado, indice) =>
+          estado.mensagem && (
+            <p
+              key={indice}
+              className={`rounded-lg px-4 py-3 text-sm ${
+                estado.ok
+                  ? "border border-borda bg-real-claro text-real"
+                  : "border border-alerta-borda bg-alerta-fundo text-naopago"
+              }`}
+            >
+              {estado.mensagem}
+            </p>
+          ),
       )}
     </div>
   );
@@ -119,13 +774,22 @@ export function GestaoOrdens({
 // Nova ordem
 // ---------------------------------------------------------------------------
 
+interface LinhaDoFormulario {
+  /** Chave local da linha; nao vai para o servidor. */
+  id: number;
+  chave: string;
+  quantidade: string;
+}
+
 function FormularioDeOrdem({
   produtos,
   nomeDoUsuario,
+  hoje,
   aoConcluir,
 }: {
   produtos: OpcaoProduto[];
   nomeDoUsuario: string;
+  hoje: string;
   aoConcluir: () => void;
 }) {
   const [estado, acao, pendente] = useActionState(criarOrdemDeFabricacao, ESTADO_INICIAL);
@@ -138,10 +802,7 @@ function FormularioDeOrdem({
     if (estado.ok) aoConcluir();
   }, [estado.ok, aoConcluir]);
 
-  const porChave = useMemo(
-    () => new Map(produtos.map((p) => [p.chave, p])),
-    [produtos],
-  );
+  const porChave = useMemo(() => new Map(produtos.map((p) => [p.chave, p])), [produtos]);
 
   /*
    * O que vai para o servidor e so { chave, quantidade }.
@@ -164,6 +825,9 @@ function FormularioDeOrdem({
       <input type="hidden" name="itens" value={JSON.stringify(itens)} />
 
       <p className="text-sm font-semibold text-tinta">O que precisa ser fabricado</p>
+      <p className="mt-0.5 text-xs text-tinta-media">
+        A lista começa pelo que acaba antes, no ritmo de venda deste mês.
+      </p>
 
       <div className="mt-3 space-y-3">
         {linhas.map((linha, indice) => {
@@ -180,18 +844,19 @@ function FormularioDeOrdem({
                     value={linha.chave}
                     onChange={(e) =>
                       setLinhas((atual) =>
-                        atual.map((l) =>
-                          l.id === linha.id ? { ...l, chave: e.target.value } : l,
-                        ),
+                        atual.map((l) => (l.id === linha.id ? { ...l, chave: e.target.value } : l)),
                       )
                     }
-                    className="w-full rounded-lg border border-borda-forte bg-superficie px-3 py-2 text-sm text-tinta"
+                    className={CAMPO}
                   >
                     <option value="">Escolha um produto...</option>
                     {produtos.map((p) => (
                       <option key={p.chave} value={p.chave}>
                         {p.nome}
                         {p.sku ? ` (${p.sku})` : ""}
+                        {p.coberturaDias !== null && p.coberturaDias <= 21
+                          ? ` — acaba em ${Math.round(p.coberturaDias)} dia(s)`
+                          : ""}
                       </option>
                     ))}
                   </select>
@@ -202,20 +867,18 @@ function FormularioDeOrdem({
                     Quantidade
                   </span>
                   <input
+                    type="number"
+                    min={1}
+                    step={1}
                     value={linha.quantidade}
                     onChange={(e) =>
                       setLinhas((atual) =>
                         atual.map((l) =>
-                          l.id === linha.id
-                            ? { ...l, quantidade: e.target.value.replace(/\D/g, "") }
-                            : l,
+                          l.id === linha.id ? { ...l, quantidade: e.target.value } : l,
                         ),
                       )
                     }
-                    inputMode="numeric"
-                    placeholder="0"
-                    max={QUANTIDADE_MAXIMA}
-                    className="w-full rounded-lg border border-borda-forte px-3 py-2 text-right text-lg"
+                    className={CAMPO}
                   />
                 </label>
 
@@ -233,10 +896,12 @@ function FormularioDeOrdem({
               </div>
 
               {escolhido && (
-                <p className="mt-2 text-xs text-tinta-fraca">
-                  {escolhido.saldo === null
-                    ? "Sem contagem de estoque registrada para este item."
-                    : `Estoque atual: ${inteiro(escolhido.saldo)} unidade(s).`}
+                <p className="mt-2 text-xs text-tinta-media">
+                  Saldo hoje:{" "}
+                  {escolhido.saldo === null ? "sem contagem" : `${inteiro(escolhido.saldo)} un`}
+                  {escolhido.coberturaDias !== null
+                    ? ` · cobre ${Math.round(escolhido.coberturaDias)} dia(s)`
+                    : ""}
                 </p>
               )}
             </div>
@@ -253,335 +918,68 @@ function FormularioDeOrdem({
               { id: Math.max(0, ...atual.map((l) => l.id)) + 1, chave: "", quantidade: "" },
             ])
           }
-          className="mt-3 rounded-lg border border-borda-forte px-3 py-1.5 text-sm font-medium text-tinta"
+          className="mt-3 rounded-lg border border-borda-forte bg-superficie px-3 py-2 text-sm font-medium text-tinta"
         >
-          Adicionar outro produto
+          Adicionar produto
         </button>
       )}
 
-      <div className="mt-5 grid gap-4 sm:grid-cols-2">
+      <div className="mt-4 grid gap-3 sm:grid-cols-2">
         <label className="block">
-          <span className="mb-1 block text-sm font-medium text-tinta">
-            Precisa estar pronto em
+          <span className="mb-1 block text-xs font-medium text-tinta-media">
+            Data de lançamento
           </span>
-          <input
-            type="date"
-            name="dataLancamento"
-            defaultValue={new Date(Date.now() + 21 * 86400_000).toISOString().slice(0, 10)}
-            className="w-full rounded-lg border border-borda-forte px-3 py-2 text-sm"
-          />
+          <input type="date" name="dataLancamento" min={hoje} required className={CAMPO} />
         </label>
-
         <label className="block">
-          <span className="mb-1 block text-sm font-medium text-tinta">
-            Campanha ou observação
-          </span>
+          <span className="mb-1 block text-xs font-medium text-tinta-media">Seu nome</span>
           <input
-            name="observacao"
-            placeholder="Lançamento de primavera, gravação dia 20..."
-            className="w-full rounded-lg border border-borda-forte px-3 py-2 text-sm"
+            type="text"
+            name="nome"
+            defaultValue={nomeDoUsuario}
+            required
+            minLength={3}
+            className={CAMPO}
           />
         </label>
       </div>
 
-      <div className="mt-6 border-t border-borda pt-5">
-        <p className="text-sm font-semibold text-tinta">Sua assinatura</p>
-        <p className="mb-3 mt-0.5 text-xs text-tinta-media">
-          Fica no documento como quem pediu a fabricação, com a data e a hora.
-        </p>
-
-        <div className="grid gap-4 sm:grid-cols-2">
-          <label className="block">
-            <span className="mb-1 block text-sm font-medium text-tinta">Nome completo</span>
-            <input
-              name="nome"
-              defaultValue={nomeDoUsuario}
-              className="w-full rounded-lg border border-borda-forte px-3 py-2 text-sm"
-            />
-          </label>
-
-          <QuadroAssinatura campo="tracos" rotulo="Assine aqui" aoMudar={setTemAssinatura} />
-        </div>
-      </div>
-
-      <div className="mt-5 flex flex-wrap items-center gap-3">
-        <button
-          type="submit"
-          disabled={!podeEnviar}
-          className="rounded-lg bg-tinta px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
-        >
-          {pendente ? "Criando..." : "Criar ordem e gerar link"}
-        </button>
-
-        {total > 0 && (
-          <span className="text-sm text-tinta-media">
-            {inteiro(total)} unidade(s) em {itens.length} item(ns)
-          </span>
-        )}
-
-        {estado.mensagem && (
-          <span className={`text-sm ${estado.ok ? "text-real" : "text-naopago"}`}>
-            {estado.mensagem}
-          </span>
-        )}
-      </div>
-    </form>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Lista
-// ---------------------------------------------------------------------------
-
-const COR_DA_SITUACAO: Record<SituacaoOrdem, string> = {
-  aguardando: "border-alerta-borda bg-alerta-fundo text-naopago",
-  aprovada: "border-borda-forte bg-fundo text-real",
-  recusada: "border-borda-forte bg-fundo text-naopago",
-  cancelada: "border-borda bg-fundo text-tinta-fraca",
-};
-
-function CartaoDeOrdem({ ordem }: { ordem: OrdemFabricacao }) {
-  const [cancelar, acaoCancelar, cancelando] = useActionState(cancelarOrdem, ESTADO_INICIAL);
-  const atrasada =
-    ordem.situacao === "aguardando" &&
-    ordem.dataLancamento < new Date().toISOString().slice(0, 10);
-
-  return (
-    <li className="rounded-xl border border-borda bg-superficie px-4 py-4 sm:px-5">
-      <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
-        <div className="min-w-0">
-          <p className="numerico text-base font-semibold text-tinta">{ordem.numero}</p>
-          <p className="mt-0.5 text-xs text-tinta-fraca">
-            Pedida por {ordem.solicitante.nome} em {dataHora(ordem.criadoEm)}
-          </p>
-        </div>
-
-        <span
-          className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${COR_DA_SITUACAO[ordem.situacao]}`}
-        >
-          {ROTULO_SITUACAO[ordem.situacao]}
+      <label className="mt-3 block">
+        <span className="mb-1 block text-xs font-medium text-tinta-media">
+          Observação para a fábrica (opcional)
         </span>
+        <input type="text" name="observacao" maxLength={600} className={CAMPO} />
+      </label>
+
+      <div className="mt-3">
+        <QuadroAssinatura campo="tracos" rotulo="Assine o pedido" aoMudar={setTemAssinatura} />
       </div>
 
-      <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-sm sm:grid-cols-4">
-        <div>
-          <dt className="text-xs text-tinta-fraca">Pronto em</dt>
-          <dd className={`numerico font-semibold ${atrasada ? "text-naopago" : "text-tinta"}`}>
-            {dataCalendario(ordem.dataLancamento)}
-            {atrasada && <span className="ml-1 text-xs font-normal">(vencida)</span>}
-          </dd>
-        </div>
-        <div>
-          <dt className="text-xs text-tinta-fraca">Volume</dt>
-          <dd className="numerico font-semibold text-tinta">
-            {inteiro(unidadesDaOrdem(ordem))} un
-          </dd>
-        </div>
-        <div className="col-span-2">
-          <dt className="text-xs text-tinta-fraca">Itens</dt>
-          <dd className="text-tinta">
-            {ordem.itens.map((i) => `${inteiro(i.quantidade)}x ${i.nome}`).join(", ")}
-          </dd>
-        </div>
-      </dl>
-
-      {ordem.observacao && (
-        <p className="mt-3 rounded-lg bg-fundo px-3 py-2 text-sm text-tinta-media">
-          {ordem.observacao}
+      {total > 0 && (
+        <p className="mt-3 text-sm text-tinta-media">
+          Total do pedido: <strong className="text-tinta">{inteiro(total)} unidade(s)</strong>
         </p>
       )}
 
-      {ordem.situacao === "recusada" && ordem.motivoRecusa && (
-        <p className="mt-3 rounded-lg border border-alerta-borda bg-alerta-fundo px-3 py-2 text-sm text-naopago">
-          <strong className="font-semibold">Recusada:</strong> {ordem.motivoRecusa}
-        </p>
-      )}
-
-      {ordem.aprovador && (
-        <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-borda pt-3">
-          <span className="text-tinta">
-            <AssinaturaLida
-              tracos={ordem.aprovador.tracos}
-              altura={34}
-              rotulo={`Assinatura de ${ordem.aprovador.nome}`}
-            />
-          </span>
-          <span className="text-xs text-tinta-media">
-            Aprovada por <strong className="font-semibold text-tinta">{ordem.aprovador.nome}</strong>{" "}
-            em {dataHora(ordem.aprovador.assinadoEm)}
-          </span>
-        </div>
-      )}
-
-      <div className="mt-4 flex flex-wrap items-center gap-2">
-        {ordem.situacao === "aguardando" && <LinkDeAssinatura token={ordem.token} />}
-
-        {ordem.documento && (
-          <a
-            href={`/ordens/${ordem.id}/pdf`}
-            target="_blank"
-            rel="noreferrer"
-            className="rounded-lg border border-borda-forte px-3 py-1.5 text-sm font-medium text-tinta"
-          >
-            Abrir PDF assinado
-          </a>
-        )}
-
-        {ordem.situacao === "aguardando" && (
-          <form action={acaoCancelar}>
-            <input type="hidden" name="id" value={ordem.id} />
-            <button
-              type="submit"
-              disabled={cancelando}
-              className="rounded-lg border border-borda-forte px-3 py-1.5 text-sm font-medium text-tinta-media disabled:opacity-60"
-            >
-              {cancelando ? "Cancelando..." : "Cancelar"}
-            </button>
-          </form>
-        )}
-
-        {cancelar.mensagem && (
-          <span className={`text-sm ${cancelar.ok ? "text-real" : "text-naopago"}`}>
-            {cancelar.mensagem}
-          </span>
-        )}
-      </div>
-
-      {ordem.documento && (
-        <p className="numerico mt-2 text-[11px] text-tinta-fraca">
-          SHA-256 {ordem.documento.sha256.slice(0, 16)}...
-        </p>
-      )}
-    </li>
-  );
-}
-
-/** IPv4 puro, sem nome. E o caso que o WhatsApp nao transforma em link. */
-const EH_IPV4 = /^\d{1,3}(\.\d{1,3}){3}$/;
-
-/**
- * O link, num campo que da para selecionar, mais os atalhos de enviar.
- *
- * O campo de texto NAO e enfeite. `navigator.clipboard` so existe em contexto
- * seguro -- HTTPS ou localhost -- e o painel e acessado de fora por HTTP puro
- * no IP fixo. Ali o botao de copiar simplesmente nao funcionaria, e sem o
- * campo visivel nao haveria como pegar o link de jeito nenhum.
- *
- * ---------------------------------------------------------------------------
- * O QUE NAO FAZER AQUI. Ja foi tentado, num mesmo dia, e falhou.
- *
- * Colado no WhatsApp, `http://177.223.44.178:3000/assinar/...` chega como
- * texto morto: o WhatsApp so linkifica o que tem dominio com terminacao
- * valida, e pinta o IP com a cor de TELEFONE, porque e como telefone que ele
- * o classifica.
- *
- * A correcao obvia e dar um nome ao IP -- `<ip>.sslip.io`, que e DNS curinga e
- * resolve de volta para o mesmo IP. E funciona: o WhatsApp passa a linkificar.
- * E ai o link para de ABRIR, com ERR_SSL_PROTOCOL_ERROR, porque o Chrome forca
- * HTTPS em endereco com NOME e o painel so fala HTTP. Endereco de IP e isento
- * dessa conversao -- e e exatamente por isso que o IP abre e o nome nao.
- *
- * Os dois requisitos sao incompativeis enquanto for HTTP puro:
- *   - para ser tocavel no WhatsApp, precisa de nome;
- *   - tendo nome, o navegador exige HTTPS.
- *
- * Entao o link continua sendo o IP, que ao menos ABRE quando colado num
- * navegador, e a tela diz o passo que falta. Link tocavel exige HTTPS de
- * verdade; ver DEMONSTRACAO.md.
- * ---------------------------------------------------------------------------
- */
-function LinkDeAssinatura({ token }: { token: string }) {
-  const [copiado, setCopiado] = useState(false);
-  const [url, setUrl] = useState("");
-  const [precisaColar, setPrecisaColar] = useState(false);
-  const [soNestaMaquina, setSoNestaMaquina] = useState(false);
-
-  // Montado no navegador: so ele sabe por qual endereco a pagina foi aberta.
-  // No servidor, o host viria de um cabecalho que o cliente controla.
-  useEffect(() => {
-    const { origin, hostname } = window.location;
-    setUrl(`${origin}/assinar/${token}`);
-
-    const soLocal = hostname === "localhost" || hostname === "127.0.0.1";
-    setSoNestaMaquina(soLocal);
-    setPrecisaColar(EH_IPV4.test(hostname) && !soLocal);
-  }, [token]);
-
-  /*
-   * Quando o endereco e IP, a mensagem leva a instrucao junto.
-   *
-   * Sem ela, quem recebe ve um texto cinza que nao responde ao toque e conclui
-   * que o link esta quebrado -- foi o que aconteceu na primeira vez. Dizer
-   * "copie e cole" transforma um beco sem saida num passo a mais.
-   */
-  const mensagem = precisaColar
-    ? `Ordem de fabricacao para aprovar. Copie o endereco abaixo e cole no navegador (ele nao vira link aqui no WhatsApp):
-
-${url}`
-    : `Ordem de fabricacao para aprovar: ${url}`;
-
-  const copiar = async () => {
-    try {
-      await navigator.clipboard.writeText(url);
-      setCopiado(true);
-      setTimeout(() => setCopiado(false), 2000);
-    } catch {
-      // Sem area de transferencia (HTTP puro): seleciona para copiar a mao.
-      const campo = document.getElementById(`link-${token}`) as HTMLInputElement | null;
-      campo?.select();
-    }
-  };
-
-  return (
-    <div className="w-full">
-      <div className="flex w-full flex-wrap items-center gap-2">
-        {/*
-          * `basis-full` no celular: dividindo a linha com os dois botoes, o
-          * campo sobrava com uns 90px e mostrava "http://177.223" -- inutil
-          * justamente onde ele mais importa, que e quando a area de
-          * transferencia nao existe e a pessoa precisa selecionar a mao.
-          */}
-        <input
-          id={`link-${token}`}
-          readOnly
-          value={url}
-          onFocus={(e) => e.currentTarget.select()}
-          className="numerico w-full min-w-0 basis-full rounded-lg border border-borda bg-fundo px-2.5 py-1.5 text-xs text-tinta-media sm:w-auto sm:flex-1 sm:basis-auto"
-        />
-        <button
-          type="button"
-          onClick={copiar}
-          className="rounded-lg border border-borda-forte px-3 py-1.5 text-sm font-medium text-tinta"
+      {estado.mensagem && (
+        <p
+          className={`mt-3 rounded-lg px-4 py-3 text-sm ${
+            estado.ok
+              ? "border border-borda bg-real-claro text-real"
+              : "border border-alerta-borda bg-alerta-fundo text-naopago"
+          }`}
         >
-          {copiado ? "Copiado" : "Copiar"}
-        </button>
-        <a
-          href={`https://wa.me/?text=${encodeURIComponent(mensagem)}`}
-          target="_blank"
-          rel="noreferrer"
-          className="rounded-lg border border-borda-forte px-3 py-1.5 text-sm font-medium text-tinta"
-        >
-          WhatsApp
-        </a>
-      </div>
-
-      {soNestaMaquina && (
-        <p className="mt-1.5 rounded-lg border border-alerta-borda bg-alerta-fundo px-2.5 py-1.5 text-xs text-naopago">
-          Este link começa com <strong className="font-semibold">localhost</strong> e
-          só abre neste computador. Abra o painel pelo endereço de rede antes de
-          copiar o link para enviar.
+          {estado.mensagem}
         </p>
       )}
 
-      {precisaColar && (
-        <p className="mt-1.5 text-xs text-tinta-fraca">
-          Este endereço <strong className="font-semibold text-tinta-media">abre normalmente</strong>{" "}
-          colado em qualquer navegador, mas o WhatsApp não o transforma em link
-          tocável &mdash; ele lê endereço de IP como telefone. Quem receber
-          precisa copiar e colar. Para chegar clicável, o painel tem que estar
-          num endereço HTTPS.
-        </p>
-      )}
-    </div>
+      <button
+        type="submit"
+        disabled={!podeEnviar}
+        className="mt-4 rounded-lg bg-tinta px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
+      >
+        {pendente ? "Abrindo..." : "Abrir ordem e assinar"}
+      </button>
+    </form>
   );
 }
