@@ -33,10 +33,11 @@ import type {
   RegimeTributario,
 } from "@/types/fiscal";
 import type {
-  AssinaturaOrdem,
   EntradaOrdem,
+  EtapaOrdem,
   ItemOrdem,
   OrdemFabricacao,
+  PassoDaOrdem,
   SituacaoOrdem,
 } from "@/types/ordemFabricacao";
 import type {
@@ -54,7 +55,7 @@ import type {
 import type { EntradaFechamentoMes, FechamentoMes } from "@/types/fechamento";
 import type { PerfilUsuario, Usuario } from "@/types/usuario";
 import type { RepositorioCadastros } from "@/data/repositorio";
-import { novoToken, proximoNumero } from "@/lib/ordens";
+import { proximoNumero } from "@/lib/ordens";
 import { prisma } from "@/lib/prisma";
 
 /** Prisma devolve `Decimal` (decimal.js). Converte na borda. */
@@ -615,25 +616,25 @@ export class RepositorioPostgres implements RepositorioCadastros {
     return linha ? mapearOrdem(linha, linha.documento) : null;
   }
 
-  async buscarOrdemPorToken(token: string): Promise<OrdemFabricacao | null> {
-    if (!token) return null;
-    /*
-     * Busca pelo indice unico do token, nao varrendo a tabela.
-     *
-     * Aqui nao ha comparacao em tempo constante como no repositorio de
-     * demonstracao, e nem daria: quem compara e o indice do Postgres. O que
-     * protege e o tamanho do segredo -- 256 bits nao se adivinham por
-     * tentativa, com ou sem canal lateral de tempo.
-     */
-    const linha = await prisma.ordemFabricacao.findUnique({ where: { token } });
-    return linha ? mapearOrdem(linha, linha.documento) : null;
-  }
-
   async criarOrdem(entrada: EntradaOrdem): Promise<OrdemFabricacao> {
     const doAno = await prisma.ordemFabricacao.findMany({
       where: { numero: { startsWith: `OF-${new Date().getFullYear()}-` } },
       select: { numero: true },
     });
+
+    /*
+     * A abertura ja nasce como o PRIMEIRO PASSO, assinado.
+     *
+     * Nao existe ordem sem a assinatura de quem pediu: e ela que transforma
+     * "preciso de 500 unidades" em um documento. Por isso o passo entra aqui,
+     * na criacao, e nao numa etapa seguinte que alguem poderia pular.
+     */
+    const passo: PassoDaOrdem = {
+      etapa: "abertura",
+      usuarioId: entrada.abertaPor,
+      assinatura: entrada.assinatura,
+      observacao: null,
+    };
 
     const linha = await prisma.ordemFabricacao.create({
       data: {
@@ -643,9 +644,10 @@ export class RepositorioPostgres implements RepositorioCadastros {
         itens: entrada.itens as unknown as Prisma.InputJsonValue,
         dataLancamento: new Date(`${entrada.dataLancamento}T00:00:00Z`),
         observacao: entrada.observacao,
-        situacao: "aguardando",
-        solicitante: entrada.solicitante as unknown as Prisma.InputJsonValue,
-        token: novoToken(),
+        situacao: "andamento",
+        etapaAtual: "conferencia",
+        passos: [passo] as unknown as Prisma.InputJsonValue,
+        abertaPor: entrada.abertaPor,
       },
     });
 
@@ -661,11 +663,10 @@ export class RepositorioPostgres implements RepositorioCadastros {
       where: { id: ordem.id },
       data: {
         situacao: ordem.situacao,
-        // `DbNull` grava NULL de verdade na coluna Json; `null` puro seria o
-        // valor JSON `null`, que e outra coisa e faria `aprovador` deixar de
-        // ser "sem aprovador" para virar "aprovador nulo".
-        aprovador: (ordem.aprovador as unknown as Prisma.InputJsonValue) ?? Prisma.DbNull,
-        motivoRecusa: ordem.motivoRecusa,
+        etapaAtual: ordem.etapaAtual,
+        passos: ordem.passos as unknown as Prisma.InputJsonValue,
+        dataLancamento: new Date(`${ordem.dataLancamento}T00:00:00Z`),
+        motivoCancelamento: ordem.motivoCancelamento,
         fechadoEm: ordem.fechadoEm ? new Date(ordem.fechadoEm) : null,
         documento,
         documentoSha: ordem.documento?.sha256 ?? null,
@@ -694,10 +695,10 @@ function mapearOrdem(
     dataLancamento: Date;
     observacao: string | null;
     situacao: string;
-    token: string;
-    solicitante: Prisma.JsonValue;
-    aprovador: Prisma.JsonValue | null;
-    motivoRecusa: string | null;
+    etapaAtual: string | null;
+    passos: Prisma.JsonValue;
+    abertaPor: string;
+    motivoCancelamento: string | null;
     documentoSha: string | null;
     hashConteudo: string | null;
     documentoEm: Date | null;
@@ -707,7 +708,15 @@ function mapearOrdem(
   // Prisma devolve `Bytes` como Uint8Array, nao Buffer.
   bytes: Uint8Array | null,
 ): OrdemFabricacao {
-  const situacoes: SituacaoOrdem[] = ["aguardando", "aprovada", "recusada", "cancelada"];
+  const situacoes: SituacaoOrdem[] = ["andamento", "revisao", "concluida", "cancelada"];
+  const etapas: EtapaOrdem[] = [
+    "abertura",
+    "conferencia",
+    "fabricacao",
+    "contagem",
+    "envio",
+    "recebimento",
+  ];
 
   return {
     id: linha.id,
@@ -715,11 +724,11 @@ function mapearOrdem(
     itens: (linha.itens ?? []) as unknown as ItemOrdem[],
     dataLancamento: linha.dataLancamento.toISOString().slice(0, 10),
     observacao: linha.observacao,
-    situacao: situacoes.find((s) => s === linha.situacao) ?? "aguardando",
-    solicitante: linha.solicitante as unknown as AssinaturaOrdem,
-    aprovador: (linha.aprovador as unknown as AssinaturaOrdem | null) ?? null,
-    motivoRecusa: linha.motivoRecusa,
-    token: linha.token,
+    situacao: situacoes.find((s) => s === linha.situacao) ?? "andamento",
+    etapaAtual: etapas.find((e) => e === linha.etapaAtual) ?? null,
+    passos: (linha.passos ?? []) as unknown as PassoDaOrdem[],
+    abertaPor: linha.abertaPor,
+    motivoCancelamento: linha.motivoCancelamento,
     criadoEm: linha.criadoEm.toISOString(),
     fechadoEm: linha.fechadoEm?.toISOString() ?? null,
     documento: linha.documentoSha

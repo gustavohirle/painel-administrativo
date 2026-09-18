@@ -53,7 +53,7 @@ import type {
 import type { EntradaFechamentoMes, FechamentoMes } from "@/types/fechamento";
 import type { Usuario } from "@/types/usuario";
 import { novoId, type RepositorioCadastros } from "@/data/repositorio";
-import { novoToken, proximoNumero, tokenConfere } from "@/lib/ordens";
+import { proximoNumero } from "@/lib/ordens";
 import {
   aliquotasEstaduaisIniciais,
   despesasInfluencerIniciais,
@@ -525,14 +525,6 @@ export class RepositorioDemonstracao implements RepositorioCadastros {
     return (estado.ordens ?? []).find((o) => o.id === id) ?? null;
   }
 
-  async buscarOrdemPorToken(token: string): Promise<OrdemFabricacao | null> {
-    if (!token) return null;
-    const estado = await carregar();
-    // `tokenConfere` e nao `===`: a busca varre a lista, e uma comparacao
-    // curta-circuitada vaza pelo tempo quantos caracteres estavam certos.
-    return (estado.ordens ?? []).find((o) => tokenConfere(token, o.token)) ?? null;
-  }
-
   async criarOrdem(entrada: EntradaOrdem): Promise<OrdemFabricacao> {
     const estado = await carregar();
     estado.ordens ??= [];
@@ -543,11 +535,24 @@ export class RepositorioDemonstracao implements RepositorioCadastros {
       itens: entrada.itens,
       dataLancamento: entrada.dataLancamento,
       observacao: entrada.observacao,
-      situacao: "aguardando",
-      solicitante: entrada.solicitante,
-      aprovador: null,
-      motivoRecusa: null,
-      token: novoToken(),
+      situacao: "andamento",
+      etapaAtual: "conferencia",
+      /*
+       * A abertura ja nasce como o PRIMEIRO PASSO, assinado.
+       *
+       * Nao existe ordem sem a assinatura de quem pediu: e ela que transforma
+       * "preciso de 500 unidades" em um documento.
+       */
+      passos: [
+        {
+          etapa: "abertura",
+          usuarioId: entrada.abertaPor,
+          assinatura: entrada.assinatura,
+          observacao: null,
+        },
+      ],
+      abertaPor: entrada.abertaPor,
+      motivoCancelamento: null,
       criadoEm: new Date().toISOString(),
       fechadoEm: null,
       documento: null,

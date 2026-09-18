@@ -40,36 +40,50 @@ import type { PerfilUsuario, UsuarioPublico } from "@/types/usuario";
 // ---------------------------------------------------------------------------
 
 /**
- * O perfil que assina cada etapa.
+ * FASE DE TESTE: quem esta logado assina qualquer etapa.
  *
- * `contagem` e `envio` sao do mesmo perfil de proposito: e a mesma pessoa,
- * fazendo duas coisas diferentes -- contou o que saiu da fabrica, e depois
- * despachou. Juntar as duas num passo so perderia a data do despacho, que e o
- * que se procura quando a carga some no caminho.
+ * O desenho final e um responsavel por etapa -- a conferencia nao assina a
+ * fabricacao, e o administrador nao assina pela fabrica. Um documento em que
+ * uma pessoa so carimba todas as etapas nao prova nada, que e exatamente o
+ * processo por mensagem que isto veio substituir.
+ *
+ * Mas primeiro o processo precisa ser experimentado de ponta a ponta, e com a
+ * trava ligada isso exigiria criar cinco contas antes do primeiro teste.
+ * Decisao do dono em 18/09/2026: liberar agora, travar depois do teste.
+ *
+ * Quando for travar, e AQUI: ligue a constante e preencha
+ * `PERFIL_DA_ETAPA` com os perfis de verdade. O resto do painel nao muda --
+ * `podeAssinar` ja e a unica porta, e ela e conferida no servidor, dentro da
+ * action (5.13).
+ */
+export const TRAVAR_ETAPA_POR_PERFIL = false;
+
+/**
+ * Quem assina cada etapa quando a trava acima for ligada.
+ *
+ * `contagem` e `envio` sao da mesma pessoa de proposito: e o mesmo
+ * estoquista fazendo duas coisas diferentes -- contou o que saiu da fabrica, e
+ * depois despachou. Juntar as duas num passo so perderia a data do despacho,
+ * que e o que se procura quando a carga some no caminho.
  */
 export const PERFIL_DA_ETAPA: Record<EtapaOrdem, PerfilUsuario> = {
   abertura: "dono",
-  conferencia: "conferencia",
-  fabricacao: "fabricacao",
-  contagem: "estoque_demazon",
-  envio: "estoque_demazon",
-  recebimento: "estoque_criar",
+  conferencia: "estoque",
+  fabricacao: "estoque",
+  contagem: "estoque",
+  envio: "estoque",
+  recebimento: "estoque",
 };
-
-/** Etapas que este perfil assina. Vazio para quem nao entra no processo. */
-export function etapasDoPerfil(perfil: PerfilUsuario): EtapaOrdem[] {
-  return ETAPAS.filter((e) => PERFIL_DA_ETAPA[e] === perfil);
-}
 
 /**
  * Esta pessoa pode assinar a etapa em que a ordem esta agora?
  *
- * O administrador NAO e curinga. Ele abre a ordem e decide na revisao, e so.
- * Deixar o dono assinar qualquer etapa pareceria conveniente e destruiria a
- * unica coisa que o documento afirma: que cada parte conferiu a sua.
+ * E a unica porta, e ela e conferida no SERVIDOR: esconder o botao no
+ * navegador nao impede nada, porque a Server Action e endereco publico (5.13).
  */
 export function podeAssinar(ordem: OrdemFabricacao, usuario: UsuarioPublico): boolean {
   if (ordem.situacao !== "andamento" || ordem.etapaAtual === null) return false;
+  if (!TRAVAR_ETAPA_POR_PERFIL) return true;
   return PERFIL_DA_ETAPA[ordem.etapaAtual] === usuario.perfil;
 }
 

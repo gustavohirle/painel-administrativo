@@ -257,11 +257,13 @@ model Usuario {
   @@index([ativo])
 }
 
-/// Ordem de fabricacao pedida pelo marketing e assinada pela fabrica.
+/// Ordem de fabricacao: o processo do pedido ate o estoque da Criar.
 ///
 /// Diferente de todo o resto deste schema, este registro NAO e um cadastro
-/// editavel: uma vez aprovada, a ordem congela e o PDF assinado fica gravado
-/// em bytes. Um documento que muda depois de assinado nao prova nada.
+/// editavel: cada etapa vira um passo assinado que nao se altera, e no fim o
+/// PDF fica gravado em bytes. Um documento que muda depois de assinado nao
+/// prova nada -- por isso nao existe "corrigir o passo anterior": o caminho de
+/// volta e o administrador retomar a ordem, e isso entra como mais um passo.
 model OrdemFabricacao {
   id String @id @default(cuid())
 
@@ -277,19 +279,23 @@ model OrdemFabricacao {
 
   observacao String?
 
-  /// "aguardando" | "aprovada" | "recusada" | "cancelada"
-  situacao String @default("aguardando")
+  /// "andamento" | "revisao" | "concluida" | "cancelada"
+  situacao String @default("andamento")
 
-  /// Token do link de assinatura: 32 bytes aleatorios em base64url.
-  /// O link E a credencial -- o responsavel pela fabricacao nao tem conta.
-  token String @unique
+  /// A etapa que espera alguem: "abertura" | "conferencia" | "fabricacao" |
+  /// "contagem" | "envio" | "recebimento". NULL quando a ordem acabou.
+  etapaAtual String?
 
-  /// { nome, papel, tracos, assinadoEm, ip, agente }. Os tracos da assinatura
-  /// sao vetor normalizado de 0 a 1, nao imagem.
-  solicitante Json
-  aprovador   Json?
+  /// Array dos passos cumpridos, em ordem. Cada passo traz a etapa, quem
+  /// assinou, os tracos da assinatura (vetor normalizado de 0 a 1, nao
+  /// imagem) e os dados da propria etapa -- o checklist, as datas, as
+  /// quantidades fabricadas, contadas e recebidas.
+  passos Json @default("[]")
 
-  motivoRecusa String?
+  /// Id do usuario que abriu. E quem o processo avisa quando a ordem fecha.
+  abertaPor String
+
+  motivoCancelamento String?
 
   /// O PDF congelado, em bytes. So existe depois da aprovacao.
   documento    Bytes?
