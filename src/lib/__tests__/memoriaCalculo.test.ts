@@ -42,10 +42,12 @@ describe("memoriaDosImpostos", () => {
     }
   });
 
-  it("o DIFAL de cada estado é base × diferença", () => {
+  it("o DIFAL de cada estado é base DUPLA × diferença", () => {
     for (const marca of memoria.marcas) {
       for (const linha of marca.difal.porEstado) {
-        const esperado = marca.regime === "simples_nacional" ? 0 : (linha.base * linha.diferenca) / 100;
+        // Base dupla: o ICMS entra na propria base (5.10.1).
+        const esperado =
+          marca.regime === "simples_nacional" ? 0 : (linha.baseDupla * linha.diferenca) / 100;
         expect(linha.difal).toBeCloseTo(esperado, 6);
       }
     }

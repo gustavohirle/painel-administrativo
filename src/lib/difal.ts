@@ -26,9 +26,31 @@
  *    geram nota nem saida de mercadoria: o numero fica acima do devido nessa
  *    medida. A ressalva foi dita ao dono, que manteve a decisao.
  *
- *    A apuracao real ainda usa base dupla (o imposto entra na propria base),
- *    o que aumenta um pouco o valor devido -- este painel NAO faz o gross-up,
- *    e por isso o numero segue conservador para menos. Esta dito na tela.
+ * 4. A base e DUPLA: o imposto entra na propria base de calculo ("por
+ *    dentro"). O painel nao fazia esse gross-up e por isso saia abaixo do
+ *    devido; passou a fazer em 18/09/2026, quando o contador mandou o
+ *    demonstrativo de agosto para AL e ele trouxe a conta inteira:
+ *
+ *      valor contabil  R$ 9.681,52
+ *      base de calculo R$ 10.315,01   <- maior que o contabil: e o gross-up
+ *      aliquota        19% (a nossa dizia 20%)
+ *      DIFAL           R$ 722,05 = base x (19% - 12%)
+ *
+ *    A formula implementada e a da LC 190/2022:
+ *
+ *      ICMS origem = valor x aliquota interestadual
+ *      base dupla  = (valor - ICMS origem) / (1 - aliquota interna)
+ *      DIFAL       = base dupla x (interna - interestadual)
+ *
+ *    O ULTIMO passo segue o demonstrativo do contador, que aplica a DIFERENCA
+ *    sobre a base dupla. A outra leitura corrente -- base x interna menos o
+ *    ICMS de origem sobre o valor cheio -- daria mais, e nao e a dele.
+ *
+ *    RESIDUO CONHECIDO: com a mesma aliquota, a base dele saiu ~2% abaixo da
+ *    nossa (fator 1,0654 contra 1,0864). Provavelmente o "valor contabil" do
+ *    relatorio dele inclui coisa que nao entra na base do ICMS. O painel fica
+ *    alguns pontos percentuais acima da apuracao oficial, e isso esta dito na
+ *    tela -- antes ficava ~9% abaixo.
  */
 
 import { paraNumero, type Pedido } from "@/types/nuvemshop";
@@ -41,8 +63,14 @@ export interface LinhaEstado {
   nome: string;
   /** Quantos pedidos criados foram para este estado, pagos ou nao. */
   pedidos: number;
-  /** Base do DIFAL deste estado: o total dos pedidos criados, COM o frete. */
+  /** Valor da operacao: o total dos pedidos criados, COM o frete. */
   base: number;
+  /**
+   * A base depois do gross-up -- o "Base de Calculo" do demonstrativo fiscal.
+   * E sobre ela que a diferenca de aliquota incide. Igual a `base` na venda
+   * interna e no estado desativado, onde nao ha DIFAL.
+   */
+  baseDupla: number;
   /** Aliquota interna cadastrada, em percentual. */
   aliquotaInterna: number;
   /** Aliquota interestadual aplicada, em percentual. */
@@ -156,7 +184,22 @@ export function apurarDifal(
     const diferenca =
       interna || !ativo ? 0 : Math.max(0, aliquotaInterna - interestadual);
 
-    const valorDifal = recolheDifal ? (acumulado.base * diferenca) / 100 : 0;
+    /*
+     * Base dupla: o ICMS entra na propria base (regra 4 no topo). Sem o
+     * gross-up o valor sai abaixo do devido -- era assim ate 18/09/2026.
+     *
+     * Aliquota interna de 100% ou mais nao existe, mas um cadastro errado
+     * dividiria por zero e produziria Infinity, que viraria um DIFAL absurdo
+     * sem ninguem perceber. Nesse caso a base fica sem gross-up.
+     */
+    const podeGrossUp = aliquotaInterna > 0 && aliquotaInterna < 100;
+    const icmsOrigem = (acumulado.base * interestadual) / 100;
+    const baseDupla =
+      interna || !ativo || !podeGrossUp
+        ? acumulado.base
+        : (acumulado.base - icmsOrigem) / (1 - aliquotaInterna / 100);
+
+    const valorDifal = recolheDifal ? (baseDupla * diferenca) / 100 : 0;
 
     if (interna) baseInterna += acumulado.base;
     else baseInterestadual += acumulado.base;
@@ -171,6 +214,7 @@ export function apurarDifal(
       nome: cadastro?.nome ?? nomeDoEstado(uf),
       pedidos: acumulado.pedidos,
       base: acumulado.base,
+      baseDupla,
       aliquotaInterna,
       aliquotaInterestadual: interestadual,
       diferenca,
@@ -221,6 +265,7 @@ export function somarDifal(
       if (atual) {
         atual.pedidos += linha.pedidos;
         atual.base += linha.base;
+        atual.baseDupla += linha.baseDupla;
         atual.difal += linha.difal;
         atual.confirmado = atual.confirmado && linha.confirmado;
       } else {

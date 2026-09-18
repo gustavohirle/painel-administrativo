@@ -456,9 +456,10 @@ precisam de olho:
    carregar imposto, e a carga por venda paga agora embute o imposto dos
    pedidos que nunca foram pagos. Ver 5.17.
 
-**Ponto para o contador:** o painel continua **sem o gross-up** do DIFAL (base
-dupla), então aquele número segue conservador para menos. E o frete que a loja
-paga à transportadora (`shipping_cost_owner`) não gera crédito no modelo.
+**Ponto para o contador:** o DIFAL passou a usar **base dupla** no mesmo dia,
+depois que ele mandou o demonstrativo de agosto (5.10.1) — antes o painel saía
+abaixo do devido, agora sai alguns pontos acima. E o frete que a loja paga à
+transportadora (`shipping_cost_owner`) não gera crédito no modelo.
 
 ### 5.1.2 A comissão é sobre o que cai na conta
 
@@ -559,9 +560,10 @@ com as fatias da pizza, e cada passo é base × alíquota.
   DAS (alíquota efetiva pelo RBT12). O DIFAL fica fora, porque tem fatia e aba
   próprias.
 - **DIFAL**, por marca: a fórmula e as regras (venda interna, 12%/7%, Simples,
-  base dupla) e, por estado, pedidos | base (com frete, paga ou não) | interna | −
-  interestadual | = diferença | DIFAL. Marca no Simples aparece com a
-  distribuição e zero.
+  base dupla) e, por estado, pedidos | valor da operação | base de cálculo |
+  interna | − interestadual | = diferença | DIFAL — as duas colunas de base
+  porque é o gross-up que explica o número, e é assim que o demonstrativo do
+  contador vem. Marca no Simples aparece com a distribuição e zero.
 - O topo mostra o calculado e o **valor da pizza**: com fechamento informado
   (5.1.3), os dois diferem e a tela diz a diferença.
 
@@ -869,8 +871,9 @@ origem, e a diferença entre a **interna do destino** e a interestadual vai para
 o estado de destino. Essa diferença é o DIFAL.
 
 ```
-DIFAL = valor do pedido, com frete, pago ou não
-      × (alíquota interna do destino − interestadual)
+ICMS origem = valor do pedido, com frete, pago ou não × alíquota interestadual
+base dupla  = (valor − ICMS origem) ÷ (1 − alíquota interna do destino)
+DIFAL       = base dupla × (alíquota interna do destino − interestadual)
 ```
 
 O estado de destino vem de `shipping_address.province` do pedido. A Nuvemshop
@@ -889,9 +892,10 @@ Três regras que mudam o resultado e são fáceis de errar:
 2. **Optante do Simples não recolhe DIFAL como remetente** (STF, ADI 5464).
    Como o regime é por influencer, isso sai de graça: marca no Simples fica
    fora da conta, mas continua aparecendo na distribuição por estado.
-3. **A apuração oficial usa base dupla** (o imposto entra na própria base). O
-   painel **não** faz esse gross-up, então o valor fica um pouco abaixo do
-   devido. Está dito na tela.
+3. **A base é DUPLA**: o imposto entra na própria base de cálculo. O painel
+   não fazia esse gross-up e por isso saía abaixo do devido; passou a fazer em
+   18/09/2026, quando o contador mandou o demonstrativo de agosto para AL —
+   ver abaixo.
 
 **A lista por estado é ordenada por UF, em ordem alfabética** (`porEstado`, em
 `apurarDifal` e em `somarDifal`). Ela é **discriminação, não ranking**: quem a
@@ -905,6 +909,43 @@ A exceção é o gráfico **"Para quais estados vai o DIFAL"**, em `/difal`: ali
 ordem por valor é o próprio assunto — o cartão promete "os maiores destinos" e
 corta nos 12 primeiros. Ele reordena por conta própria, porque cortar 12 de uma
 lista alfabética entregaria os estados que começam com A, e não os maiores.
+
+#### O demonstrativo do contador (18/09/2026)
+
+Ele mandou a apuração de **agosto/2026 para AL**, e ela fechou duas lacunas de
+uma vez:
+
+| Campo | Valor |
+|---|---|
+| Valor contábil | R$ 9.681,52 |
+| **Base de cálculo** | **R$ 10.315,01** |
+| Alíquota | **19,00%** |
+| DIFAL | R$ 722,05 = base × (19% − 12%) |
+
+Três leituras, e as três mudaram alguma coisa:
+
+1. **A alíquota de AL era 19%, não 20%** — o painel tinha 20%, semeado e não
+   confirmado. Corrigida e marcada como confirmada.
+2. **A base de cálculo é MAIOR que o valor contábil**: é o gross-up. Implementado
+   em `apurarDifal`, com a fórmula acima. O último passo segue o demonstrativo
+   dele, que aplica a **diferença** sobre a base dupla; a outra leitura corrente
+   — base × interna menos o ICMS de origem sobre o valor cheio — daria mais, e
+   não é a dele.
+3. **Os cancelados NÃO saem da conta.** O valor contábil dele (R$ 9.681,52) está
+   a R$ 170 do nosso total **com** cancelados e **com** frete (R$ 9.851,41), e a
+   R$ 1.797 do total sem cancelados. Foi o que derrubou a hipótese do dono de
+   que o erro estava aí — e corroborou as duas decisões de 5.1.1 (frete na base,
+   faturado em vez de recebido).
+
+**Resíduo conhecido:** com a mesma alíquota, a base dele saiu ~2% abaixo da
+nossa (fator 1,0654 contra 1,0864 da fórmula legal). Provavelmente o "valor
+contábil" do relatório inclui coisa que não entra na base do ICMS, e a base de
+lá é montada nota a nota. O painel ficou **R$ 749** contra os R$ 722 dele em
+agosto/AL — alguns pontos percentuais **acima**, onde antes estava 9% abaixo.
+Está dito na tela.
+
+Vale pedir ao contador **as 27 alíquotas** de uma vez: se AL estava errada, as
+outras provavelmente também.
 
 As 27 alíquotas internas vêm semeadas de `types/estados.ts` e são editáveis em
 `/difal`. Nenhuma nasce confirmada: vários estados mexeram nas suas entre 2023

@@ -283,9 +283,14 @@ function DifalPorMarca({ marcas, ufOrigem }: { marcas: MemoriaDaMarca[]; ufOrige
         titulo="A conta"
         descricao="Por pedido criado, pelo estado de entrega."
       >
-        <p className="numerico rounded-lg bg-fundo px-4 py-3 text-sm text-tinta">
-          DIFAL = valor do pedido (com o frete) × (alíquota interna do destino − alíquota interestadual)
-        </p>
+        {/* Duas linhas, nao uma: o HTML junta as duas formulas num paragrafo so. */}
+        <div className="numerico space-y-1 rounded-lg bg-fundo px-4 py-3 text-sm text-tinta">
+          <p>
+            base de cálculo = (valor do pedido, com frete − ICMS interestadual) ÷ (1 − alíquota
+            interna)
+          </p>
+          <p>DIFAL = base de cálculo × (alíquota interna do destino − alíquota interestadual)</p>
+        </div>
         <ul className="mt-3 space-y-1 text-sm leading-relaxed text-tinta-media">
           <li>Venda dentro de {ufOrigem} não tem DIFAL.</li>
           <li>
@@ -294,8 +299,8 @@ function DifalPorMarca({ marcas, ufOrigem }: { marcas: MemoriaDaMarca[]; ufOrige
           </li>
           <li>Marca no Simples Nacional não recolhe DIFAL como remetente: aparece com zero.</li>
           <li>
-            A apuração oficial usa base dupla; o painel não faz esse ajuste, e o valor fica um
-            pouco abaixo do devido.
+            A base é <strong>dupla</strong>: o imposto entra na própria base, como na apuração
+            oficial. É por isso que a base de cálculo fica acima do valor do pedido.
           </li>
         </ul>
       </Cartao>
@@ -322,12 +327,13 @@ function DifalPorMarca({ marcas, ufOrigem }: { marcas: MemoriaDaMarca[]; ufOrige
                   {d.porEstado.length} estado(s) de destino
                 </summary>
                 <div className="mt-3 overflow-x-auto">
-                  <table className="tabela-ancorada w-full min-w-[760px] border-collapse text-sm">
+                  <table className="tabela-ancorada w-full min-w-[900px] border-collapse text-sm">
                     <thead>
                       <tr className="border-b border-borda-forte text-left text-xs uppercase tracking-wider text-tinta-fraca">
                         <th className="py-2.5 pr-4 font-semibold">Estado</th>
                         <th className="py-2.5 pr-4 text-right font-semibold">Pedidos</th>
-                        <th className="py-2.5 pr-4 text-right font-semibold">Base (com frete)</th>
+                        <th className="py-2.5 pr-4 text-right font-semibold">Valor da operação</th>
+                        <th className="py-2.5 pr-4 text-right font-semibold">Base de cálculo</th>
                         <th className="py-2.5 pr-4 text-right font-semibold">Interna</th>
                         <th className="py-2.5 pr-4 text-right font-semibold">− Interestadual</th>
                         <th className="py-2.5 pr-4 text-right font-semibold">= Diferença</th>
@@ -348,7 +354,8 @@ function DifalPorMarca({ marcas, ufOrigem }: { marcas: MemoriaDaMarca[]; ufOrige
                           <td className="numerico py-2.5 pr-4 text-right text-tinta-media">
                             {inteiro(linha.pedidos)}
                           </td>
-                          <td className="numerico py-2.5 pr-4 text-right text-tinta">{moeda(linha.base)}</td>
+                          <td className="numerico py-2.5 pr-4 text-right text-tinta-media">{moeda(linha.base)}</td>
+                          <td className="numerico py-2.5 pr-4 text-right text-tinta">{moeda(linha.baseDupla)}</td>
                           <td className="numerico py-2.5 pr-4 text-right text-tinta-media">
                             {aliquota(linha.aliquotaInterna)}
                           </td>

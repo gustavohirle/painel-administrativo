@@ -158,12 +158,39 @@ describe("aliquotaInterestadual", () => {
 
 describe("apurarDifal", () => {
   it("cobra a diferenca entre a interna do destino e a interestadual", () => {
-    // SP interna 18%, interestadual de GO 12% -> 6% de R$ 1.000 = R$ 60.
+    // SP interna 18%, interestadual de GO 12%, sobre BASE DUPLA:
+    //   ICMS origem = 1.000 x 12%            = 120
+    //   base dupla  = (1.000 - 120) / (1 - 0,18) = 1.073,17
+    //   DIFAL       = 1.073,17 x 6%          = 64,39
     const r = apurarDifal([pedido("SP")], TODAS, "GO");
 
-    expect(r.total).toBeCloseTo(60, 6);
     expect(r.baseInterestadual).toBe(1000);
+    expect(r.porEstado[0]!.baseDupla).toBeCloseTo((1000 - 120) / 0.82, 6);
     expect(r.porEstado[0]!.diferenca).toBeCloseTo(6, 6);
+    expect(r.total).toBeCloseTo(64.390244, 5);
+  });
+
+  it("faz o gross-up: a base de calculo fica ACIMA do valor da operacao", () => {
+    // Era a lacuna conhecida do painel ate 18/09/2026, quando o contador
+    // mandou o demonstrativo de agosto para AL: valor contabil R$ 9.681,52,
+    // base de calculo R$ 10.315,01, aliquota 19%, DIFAL R$ 722,05 -- que e
+    // exatamente base x (19% - 12%). Sem o gross-up o painel saia abaixo.
+    const r = apurarDifal([pedido("AL")], [aliquota("AL", 19)], "GO");
+    const linha = r.porEstado[0]!;
+
+    expect(linha.base).toBe(1000);
+    expect(linha.baseDupla).toBeCloseTo((1000 - 120) / 0.81, 6);
+    expect(linha.baseDupla).toBeGreaterThan(linha.base);
+    expect(r.total).toBeCloseTo(linha.baseDupla * 0.07, 6);
+  });
+
+  it("aliquota interna impossivel nao vira Infinity", () => {
+    // 100% dividiria por zero. O cadastro nao deveria aceitar, mas se aceitar
+    // o resultado tem que ser um numero -- um Infinity aqui viraria um DIFAL
+    // absurdo somado ao imposto sem ninguem perceber.
+    const r = apurarDifal([pedido("SP")], [aliquota("SP", 100)], "GO");
+    expect(Number.isFinite(r.total)).toBe(true);
+    expect(r.porEstado[0]!.baseDupla).toBe(1000);
   });
 
   it("venda dentro do proprio estado nao gera DIFAL", () => {
@@ -220,8 +247,8 @@ describe("apurarDifal", () => {
 
     expect(r.baseInterestadual).toBe(1100);
     expect(r.porEstado[0]!.base).toBe(1100);
-    // SP interna 18%, interestadual de GO 12% -> 6% de R$ 1.100 = R$ 66.
-    expect(r.total).toBeCloseTo(66, 6);
+    // SP interna 18%, interestadual de GO 12%, sobre a base dupla de 1.100.
+    expect(r.total).toBeCloseTo(((1100 - 132) / 0.82) * 0.06, 6);
   });
 
   it("conta TODO pedido criado, pago ou nao", () => {
@@ -254,7 +281,7 @@ describe("apurarDifal", () => {
 
     expect(r.porEstado).toHaveLength(1);
     expect(r.porEstado[0]!.pedidos).toBe(3);
-    expect(r.total).toBeCloseTo(180, 6); // 3 x R$ 60
+    expect(r.total).toBeCloseTo(((3000 - 360) / 0.82) * 0.06, 6); // 3 pedidos, uma base dupla so
   });
 
   it("acusa aliquota nao confirmada pelo contador", () => {

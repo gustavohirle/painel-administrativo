@@ -89,16 +89,17 @@ export default async function PaginaDifal({
 
         <div className="rounded-xl border border-alerta-borda bg-alerta-fundo px-6 py-5">
           <p className="text-sm font-semibold text-naopago">
-            As alíquotas vêm preenchidas, mas nenhuma está confirmada
+            Confirme cada alíquota com o contador
           </p>
           <p className="mt-1 max-w-4xl text-sm leading-relaxed text-tinta-media">
             Vários estados mexeram nas suas alíquotas internas entre 2023 e 2025,
-            e algumas já embutem fundo de combate à pobreza enquanto outras não.
-            Além disso, a apuração oficial usa base dupla -- o imposto entra na
-            própria base de cálculo -- e este painel <strong>não faz</strong> esse
-            ajuste, então o valor exibido fica um pouco <strong>abaixo</strong> do
-            devido. Confirme estado a estado com o contador e marque como
-            confirmado.
+            e algumas já embutem fundo de combate à pobreza enquanto outras não —
+            o painel veio com Alagoas a 20% e o demonstrativo do contador mostrou
+            19%. O cálculo já usa <strong>base dupla</strong> (o imposto entra na
+            própria base), como a apuração oficial; ainda assim o valor daqui
+            ficou alguns pontos percentuais <strong>acima</strong> do
+            demonstrativo de agosto, porque a base de lá é montada nota a nota.
+            Confirme estado a estado e marque como confirmado.
           </p>
         </div>
 
