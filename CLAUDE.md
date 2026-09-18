@@ -892,6 +892,16 @@ zero entra marcada de propósito, para o produto já estar pronto quando o
 contador informar a alíquota. PIS e COFINS nascem desmarcados, por decisão do
 cliente, e passam a valer no produto assim que ele os marcar.
 
+**A coluna "impostos do produto" mostra só os do REGIME do dono**, que é o que
+a apuração usa (`impostosDoRegime`). O produto guarda as marcações antigas: um
+item trazido da Nuvemshop antes de o influencer existir nasce com as do regime
+padrão (`REGIME_SEM_INFLUENCER`, Lucro Presumido) e continua com elas depois que
+o dono é cadastrado no Simples. Na loja real, 113 dos 133 produtos das marcas do
+Simples estavam assim, exibindo PIS, COFINS e ICMS do Presumido — imposto que
+ninguém paga, porque a apuração já os ignorava. As marcações de fora do regime
+viram uma nota discreta ("3 marcação(ões) de outro regime, sem efeito") e somem
+ao salvar o produto, que regrava a lista com o que está marcado na tela.
+
 ```
 custo do kit = ficha própria, se houver
              senão, Σ (custo do componente × quantidade)

@@ -181,9 +181,29 @@ export function GestaoProdutos({
           <tbody>
             {visiveis.map((produto) => {
               const aberto = editando !== "novo" && editando?.id === produto.id;
-              const marcados = impostos.filter((i) =>
+              /*
+               * So os impostos do REGIME do dono, que e o que a apuracao usa
+               * (`impostosDoRegime`). O produto guarda as marcacoes antigas: um
+               * item trazido da Nuvemshop antes de o influencer existir nasce
+               * com as do regime padrao, e continua com elas depois que o dono
+               * e cadastrado noutro regime. Mostrar aquilo fazia a tela
+               * prometer imposto que ninguem paga -- PIS e COFINS apareciam em
+               * produto de marca do Simples, onde os dois estao dentro do DAS.
+               */
+              const dono = produto.influencerId
+                ? porId.get(produto.influencerId)
+                : undefined;
+              const doRegime = impostos.filter((i) =>
+                i.regimes.includes(dono?.regime ?? REGIME_SEM_INFLUENCER),
+              );
+              const marcados = doRegime.filter((i) =>
                 produto.impostosIds.includes(i.id),
               );
+              const deOutroRegime = produto.impostosIds.filter(
+                (id) =>
+                  !doRegime.some((i) => i.id === id) &&
+                  impostos.some((i) => i.id === id),
+              ).length;
 
               return (
                 <Fragment key={produto.id}>
@@ -249,6 +269,14 @@ export function GestaoProdutos({
                     )}
                   </td>
                   <td className="py-3 pr-4">
+                    {deOutroRegime > 0 && (
+                      <p
+                        className="mb-1 text-xs text-tinta-fraca"
+                        title="Marcações de quando o produto estava em outro regime. Não entram em conta nenhuma; somem ao salvar o produto."
+                      >
+                        {deOutroRegime} marcação(ões) de outro regime, sem efeito
+                      </p>
+                    )}
                     {marcados.length === 0 ? (
                       <span className="text-xs text-tinta-fraca">nenhum</span>
                     ) : (
