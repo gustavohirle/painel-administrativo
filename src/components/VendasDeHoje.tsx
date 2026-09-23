@@ -31,6 +31,12 @@ interface VendasDeHojeProps {
  *    faria parecer que ninguem comprou. A tese da secao 1 vale aqui tambem.
  * 3. **Nenhuma conta nova**: e `reconciliar` sobre os pedidos do dia, a mesma
  *    funcao da tela inicial.
+ * 4. **A lista por marca repete as tres colunas de cima** -- vendas, valor e
+ *    ja pago (23/09/2026, pedido do dono). Antes so trazia o valor vendido, e
+ *    ali a pergunta e a mesma do topo: o dia ainda esta acontecendo e o que
+ *    interessa e quanto ja entrou. Sem o pago por marca, so o total respondia
+ *    isso -- e uma marca de boleto podia estar puxando o dia inteiro para
+ *    baixo sem aparecer.
  */
 export function VendasDeHoje({ pedidos, dia, marca, porMarca = false }: VendasDeHojeProps) {
   const r = reconciliar(pedidos);
@@ -40,7 +46,12 @@ export function VendasDeHoje({ pedidos, dia, marca, porMarca = false }: VendasDe
     ? [...new Set(pedidos.map((p) => p.marca))]
         .map((nome) => {
           const dela = reconciliar(pedidos.filter((p) => p.marca === nome));
-          return { marca: nome, pedidos: dela.quantidade.total, valor: dela.bruto };
+          return {
+            marca: nome,
+            pedidos: dela.quantidade.total,
+            valor: dela.bruto,
+            pago: dela.recebido,
+          };
         })
         .sort((a, b) => b.valor - a.valor)
     : [];
@@ -78,16 +89,51 @@ export function VendasDeHoje({ pedidos, dia, marca, porMarca = false }: VendasDe
       </div>
 
       {linhas.length > 1 && (
-        <ul className="mt-5 divide-y divide-borda border-t border-borda text-sm">
-          {linhas.map((linha) => (
-            <li key={linha.marca} className="flex items-baseline justify-between gap-3 py-2">
-              <span className="min-w-0 truncate font-medium text-tinta">{linha.marca}</span>
-              <span className="numerico shrink-0 text-tinta-media">
-                {inteiro(linha.pedidos)} venda(s) · {moedaRedonda(linha.valor)}
-              </span>
-            </li>
-          ))}
-        </ul>
+        <div className="mt-5 border-t border-borda text-sm">
+          {/*
+            Cabecalho so na tela grande. No celular ele consumiria uma linha
+            para tres rotulos que nao cabem alinhados -- la cada valor carrega o
+            proprio rotulo, embaixo do nome da marca.
+          */}
+          <div className="hidden border-b border-borda py-2 text-xs font-semibold uppercase tracking-wider text-tinta-fraca sm:flex sm:items-baseline sm:gap-3">
+            <span className="min-w-0 flex-1">Marca</span>
+            <span className="w-20 shrink-0 text-right">Vendas</span>
+            <span className="w-28 shrink-0 text-right">Valor</span>
+            <span className="w-28 shrink-0 text-right">Já pago</span>
+          </div>
+
+          <ul className="divide-y divide-borda">
+            {linhas.map((linha) => (
+              <li key={linha.marca} className="py-2 sm:flex sm:items-baseline sm:gap-3">
+                <span className="block min-w-0 truncate font-medium text-tinta sm:flex-1">
+                  {linha.marca}
+                </span>
+
+                {/* Celular: os tres valores numa linha propria, cada um com o
+                    seu rotulo, porque sem cabecalho eles nao se explicam. */}
+                <span className="numerico mt-0.5 flex items-baseline gap-3 text-tinta-media sm:hidden">
+                  <span>{inteiro(linha.pedidos)} venda(s)</span>
+                  <span>{moedaRedonda(linha.valor)}</span>
+                  <span className="font-semibold text-real">
+                    {moedaRedonda(linha.pago)} pago
+                  </span>
+                </span>
+
+                <span className="numerico hidden w-20 shrink-0 text-right text-tinta-media sm:block">
+                  {inteiro(linha.pedidos)}
+                </span>
+                <span className="numerico hidden w-28 shrink-0 text-right text-tinta-media sm:block">
+                  {moedaRedonda(linha.valor)}
+                </span>
+                {/* Verde, o mesmo do cartao "Ja pago hoje": as duas coisas sao
+                    o mesmo numero, em escalas diferentes. */}
+                <span className="numerico hidden w-28 shrink-0 text-right font-semibold text-real sm:block">
+                  {moedaRedonda(linha.pago)}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
     </Cartao>
   );
