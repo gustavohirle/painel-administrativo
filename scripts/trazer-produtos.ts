@@ -20,11 +20,18 @@
  * se acham depois as fichas que ainda sao chute.
  */
 
-import { obterFonteDePedidos, obterRepositorioCadastros } from "../src/data";
-import { produtosParaCadastrar } from "../src/lib/costing";
-import { pedidosRecebidos } from "../src/lib/metrics";
-import { chaveProduto } from "../src/types/produto";
-import { paraNumero } from "../src/types/nuvemshop";
+/*
+ * Importa o repositorio e o cache DIRETO, sem passar por `data/index.ts`: ele
+ * carrega `server-only`, que existe justamente para estourar fora de um Server
+ * Component -- e um script de linha de comando nao e um. Mesmo caminho do
+ * `prisma/seed.ts` e do `scripts/nuvemshop.ts`.
+ */
+import { lerCache } from "@/data/cachePedidos";
+import { RepositorioPostgres } from "@/data/prismaCostRepository";
+import { produtosParaCadastrar } from "@/lib/costing";
+import { pedidosRecebidos } from "@/lib/metrics";
+import { chaveProduto } from "@/types/produto";
+import { paraNumero } from "@/types/nuvemshop";
 
 /** Fracao do preco de venda que vira custo provisorio (secao 13). */
 const CUSTO_PROVISORIO = 0.35;
@@ -35,11 +42,12 @@ const brl = (n: number) =>
 async function main() {
   const gravar = process.argv.includes("--gravar");
 
-  const fonte = obterFonteDePedidos();
-  const repositorio = await obterRepositorioCadastros();
+  const repositorio = new RepositorioPostgres();
 
-  const [pedidos, produtos, impostos, influencers] = await Promise.all([
-    fonte.listarPedidos(),
+  // Da COPIA em disco, e nao da API: o cadastro se monta com o que ja foi
+  // buscado, e uma busca aqui duplicaria a do timer.
+  const { pedidos } = await lerCache();
+  const [produtos, impostos, influencers] = await Promise.all([
     repositorio.listarProdutos(),
     repositorio.listarImpostos(),
     repositorio.listarInfluencers(),
