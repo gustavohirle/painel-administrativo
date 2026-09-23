@@ -4,17 +4,32 @@
  * O ponto que costuma ser mal entendido: a aliquota do Simples NAO e a da
  * tabela. A tabela da a aliquota NOMINAL da faixa; o que se paga e a aliquota
  * EFETIVA, que desconta a "parcela a deduzir" e depende da receita dos ultimos
- * 12 meses (RBT12). Uma empresa na 5a faixa tem nominal de 14,7% e efetiva
- * perto de 12% -- confundir os dois erra a conta em milhares de reais.
+ * 12 meses (RBT12). Confundir os dois erra a conta em milhares de reais: na
+ * memoria do contador, nominal de 14,30% virou efetiva de 9,73%.
+ *
+ * A conta esta CONFERIDA contra aquele documento (competencia 08/2026):
+ * RBT12 1.910.089,97 x 14,30% = 273.142,87; menos 87.300,00 = 185.842,87;
+ * dividido pelo RBT12 = 9,7295346621814%. Ha teste com esses numeros.
  */
 
 import {
-  ANEXO_II_SIMPLES,
+  ANEXO_I_SIMPLES,
   SUBLIMITE_ICMS_SIMPLES,
   TETO_SIMPLES_NACIONAL,
   type FaixaSimples,
 } from "@/types/fiscal";
 import { razaoSegura } from "@/lib/format";
+
+/**
+ * O anexo usado na apuracao: o I, de COMERCIO (23/09/2026).
+ *
+ * Ate essa data era o II (industria), por suposicao. A memoria de calculo do
+ * contador e do Anexo I, secao de revenda de mercadorias -- as lojas Nuvemshop
+ * revendem o que a fabrica produz, e a industrializacao fica na outra empresa
+ * (5.15). O campo `Influencer.anexoSimples` continua sem efeito: quando alguma
+ * loja precisar de outro anexo, e aqui que ele passa a ser lido.
+ */
+const ANEXO_DA_APURACAO = ANEXO_I_SIMPLES;
 
 /**
  * Faixa correspondente ao RBT12.
@@ -24,8 +39,8 @@ import { razaoSegura } from "@/lib/format";
  * de uma tela vazia que nao explica nada.
  */
 export function faixaPorRBT12(rbt12: number): FaixaSimples {
-  const faixa = ANEXO_II_SIMPLES.find((f) => rbt12 <= f.ate);
-  return faixa ?? ANEXO_II_SIMPLES[ANEXO_II_SIMPLES.length - 1]!;
+  const faixa = ANEXO_DA_APURACAO.find((f) => rbt12 <= f.ate);
+  return faixa ?? ANEXO_DA_APURACAO[ANEXO_DA_APURACAO.length - 1]!;
 }
 
 /**

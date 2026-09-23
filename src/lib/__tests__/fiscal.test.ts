@@ -154,17 +154,18 @@ describe("faixaPorRBT12", () => {
 
 describe("aliquotaEfetiva", () => {
   it("desconta a parcela a deduzir -- nao e a aliquota da tabela", () => {
-    // Faixa 4: nominal 11,2%, deduzir R$ 22.500.
-    // (1.000.000 x 0,112 - 22.500) / 1.000.000 = 8,95%
-    expect(aliquotaEfetiva(1_000_000)).toBeCloseTo(8.95, 6);
+    // Anexo I, faixa 4: nominal 10,7%, deduzir R$ 22.500.
+    // (1.000.000 x 0,107 - 22.500) / 1.000.000 = 8,45%
+    expect(aliquotaEfetiva(1_000_000)).toBeCloseTo(8.45, 6);
   });
 
   it("na 1a faixa a efetiva coincide com a nominal (deducao zero)", () => {
-    expect(aliquotaEfetiva(180_000)).toBeCloseTo(4.5, 6);
+    expect(aliquotaEfetiva(180_000)).toBeCloseTo(4, 6);
   });
 
-  it("no limite da 5a faixa fica bem abaixo dos 14,7% nominais", () => {
-    expect(aliquotaEfetiva(3_600_000)).toBeCloseTo(12.325, 3);
+  it("no limite da 5a faixa fica bem abaixo dos 14,3% nominais", () => {
+    // (3.600.000 x 0,143 - 87.300) / 3.600.000 = 11,875%
+    expect(aliquotaEfetiva(3_600_000)).toBeCloseTo(11.875, 3);
   });
 
   it("devolve zero para receita zero, sem dividir por zero", () => {
@@ -176,7 +177,7 @@ describe("apurarSimples", () => {
   const apuracao = apurarSimples(1_000_000, 100_000);
 
   it("aplica a aliquota efetiva sobre a receita do mes", () => {
-    expect(apuracao.valorDAS).toBeCloseTo(8_950, 6);
+    expect(apuracao.valorDAS).toBeCloseTo(8_450, 6);
   });
 
   it("a soma da reparticao fecha com o valor da guia", () => {
@@ -301,7 +302,7 @@ describe("apurarImpostos", () => {
 
     const marca = r.porInfluencer[0]!;
     expect(marca.baseReceita).toBe(2000);
-    expect(marca.simples?.valorDAS).toBeCloseTo(179, 6); // 8,95% de 2000
+    expect(marca.simples?.valorDAS).toBeCloseTo(169, 6); // 8,45% de 2000
   });
 
   it("o frete cobrado do cliente entra na base de TODO tributo", () => {
@@ -322,7 +323,7 @@ describe("apurarImpostos", () => {
 
     const marca = r.porInfluencer[0]!;
     expect(marca.baseReceita).toBe(1100);
-    expect(marca.simples?.valorDAS).toBeCloseTo(98.45, 6); // 8,95% de 1100
+    expect(marca.simples?.valorDAS).toBeCloseTo(92.95, 6); // 8,45% de 1100
   });
 
   it("apura cada marca no SEU regime, nao num regime consolidado", () => {
@@ -1031,5 +1032,70 @@ describe("Simples: o imposto de uma marca nao depende de quem mais esta na tela"
     expect(r.porInfluencer.map((a) => a.marca)).toEqual(["Loja A", "Loja B"]);
     expect(r.grupoSimples!.marcas).toEqual(marcas);
     expect(r.grupoSimples!.rbt12.valor).toBeCloseTo(3_600_000, 2);
+  });
+});
+
+describe("a memoria de calculo do contador (competencia 08/2026)", () => {
+  /*
+   * CRIAR BEAUTY MARKETING DIGITAL LTDA, CNPJ 30.997.734/0001-58,
+   * Anexo I - Comercio, Secao 1 (revenda sem substituicao tributaria).
+   *
+   * E o unico documento do contador que o painel tem para o Simples, e foi ele
+   * que trocou o anexo da apuracao (era o II, industria). Os numeros abaixo
+   * estao copiados do papel: se alguem mexer na tabela ou na formula, este
+   * teste diz na hora.
+   */
+  const RBT12 = 1_910_089.97;
+
+  it("reproduz a aliquota efetiva, digito a digito", () => {
+    const a = apurarSimples(RBT12, 5_151.33);
+
+    expect(a.faixa).toBe(5);
+    expect(a.aliquotaNominal).toBe(14.3);
+    // ( 1.910.089,97 x 14,30% - 87.300,00 ) / 1.910.089,97
+    expect(a.aliquotaEfetiva).toBeCloseTo(9.7295346621814, 10);
+  });
+
+  it("reproduz a reparticao por tributo do documento", () => {
+    const a = apurarSimples(RBT12, 5_151.33);
+    const participacao = Object.fromEntries(a.composicao.map((t) => [t.sigla, t.participacao]));
+
+    expect(participacao).toEqual({
+      IRPJ: 5.5,
+      CSLL: 3.5,
+      COFINS: 12.74,
+      PIS: 2.76,
+      CPP: 42,
+      ICMS: 33.5,
+    });
+    // O Anexo I nao tem IPI: comercio nao industrializa.
+    expect(participacao.IPI).toBeUndefined();
+  });
+
+  it("reproduz o valor de cada tributo sobre a receita tributada da secao", () => {
+    // "Calculo Simples Nacional" do documento: receita tributada 5.151,33.
+    const a = apurarSimples(RBT12, 5_151.33);
+    const valor = Object.fromEntries(
+      a.composicao.map((t) => [t.sigla, Math.round(t.valor * 100) / 100]),
+    );
+
+    expect(valor.IRPJ).toBeCloseTo(27.57, 2);
+    expect(valor.CSLL).toBeCloseTo(17.54, 2);
+    expect(valor.COFINS).toBeCloseTo(63.85, 2);
+    expect(valor.PIS).toBeCloseTo(13.83, 2);
+    expect(valor.CPP).toBeCloseTo(210.5, 2);
+    expect(valor.ICMS).toBeCloseTo(167.9, 2);
+  });
+
+  it("a aliquota efetiva de cada tributo bate com a do documento", () => {
+    const a = apurarSimples(RBT12, 5_151.33);
+    const porSigla = Object.fromEntries(a.composicao.map((t) => [t.sigla, t.aliquotaSobreReceita]));
+
+    expect(porSigla.IRPJ).toBeCloseTo(0.535124406, 8);
+    expect(porSigla.CSLL).toBeCloseTo(0.340533713, 8);
+    expect(porSigla.COFINS).toBeCloseTo(1.239542716, 8);
+    expect(porSigla.PIS).toBeCloseTo(0.268535157, 8);
+    expect(porSigla.CPP).toBeCloseTo(4.086404558, 8);
+    expect(porSigla.ICMS).toBeCloseTo(3.259394112, 8);
   });
 });

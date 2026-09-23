@@ -142,7 +142,79 @@ export interface FaixaSimples {
 }
 
 /**
+ * Tabela do Anexo I do Simples Nacional (COMERCIO).
+ *
+ * E o anexo que a apuracao usa (`faixaPorRBT12`), desde 23/09/2026. Ate ali o
+ * painel calculava no Anexo II (industria); o dono mandou a memoria de calculo
+ * do contador -- competencia 08/2026, CNPJ 30.997.734/0001-58 -- e ela e do
+ * "Anexo I - Comercio, Secao 1 - Receitas decorrentes da revenda de mercadorias
+ * nao sujeitas a substituicao tributaria". Faz sentido: quem vende nas lojas
+ * Nuvemshop REVENDE o que a fabrica produz, e a industrializacao acontece na
+ * outra empresa (5.15).
+ *
+ * A 5a faixa daqui esta CONFERIDA contra aquele documento, numero a numero:
+ * nominal de 14,30%, parcela a deduzir de R$ 87.300,00 e a reparticao abaixo
+ * (IRPJ 5,50 / CSLL 3,50 / COFINS 12,74 / PIS 2,76 / CPP 42,00 / ICMS 33,50).
+ *
+ * Fonte: Lei Complementar 123/2006, com a redacao da LC 155/2016.
+ *
+ * O Anexo I nao tem IPI -- comercio nao industrializa. O campo continua no
+ * tipo, em zero, porque `FaixaSimples` serve aos dois anexos e a quebra do DAS
+ * na tela descarta participacao zerada.
+ */
+export const ANEXO_I_SIMPLES: FaixaSimples[] = [
+  {
+    faixa: 1,
+    ate: 180_000,
+    nominal: 4,
+    deduzir: 0,
+    reparticao: { IRPJ: 5.5, CSLL: 3.5, COFINS: 12.74, PIS: 2.76, CPP: 41.5, IPI: 0, ICMS: 34 },
+  },
+  {
+    faixa: 2,
+    ate: 360_000,
+    nominal: 7.3,
+    deduzir: 5_940,
+    reparticao: { IRPJ: 5.5, CSLL: 3.5, COFINS: 12.74, PIS: 2.76, CPP: 41.5, IPI: 0, ICMS: 34 },
+  },
+  {
+    faixa: 3,
+    ate: 720_000,
+    nominal: 9.5,
+    deduzir: 13_860,
+    reparticao: { IRPJ: 5.5, CSLL: 3.5, COFINS: 12.74, PIS: 2.76, CPP: 42, IPI: 0, ICMS: 33.5 },
+  },
+  {
+    faixa: 4,
+    ate: 1_800_000,
+    nominal: 10.7,
+    deduzir: 22_500,
+    reparticao: { IRPJ: 5.5, CSLL: 3.5, COFINS: 12.74, PIS: 2.76, CPP: 42, IPI: 0, ICMS: 33.5 },
+  },
+  {
+    // Conferida contra a memoria de calculo do contador (competencia 08/2026).
+    faixa: 5,
+    ate: 3_600_000,
+    nominal: 14.3,
+    deduzir: 87_300,
+    reparticao: { IRPJ: 5.5, CSLL: 3.5, COFINS: 12.74, PIS: 2.76, CPP: 42, IPI: 0, ICMS: 33.5 },
+  },
+  {
+    faixa: 6,
+    ate: 4_800_000,
+    nominal: 19,
+    deduzir: 378_000,
+    // Na 6a faixa o ICMS sai do DAS -- acima do sublimite ele e recolhido fora.
+    reparticao: { IRPJ: 13.5, CSLL: 10, COFINS: 28.27, PIS: 6.13, CPP: 42.1, IPI: 0, ICMS: 0 },
+  },
+];
+
+/**
  * Tabela do Anexo II do Simples Nacional (industria).
+ *
+ * NAO e a usada pela apuracao -- ver `ANEXO_I_SIMPLES` acima. Fica aqui porque
+ * a mesma empresa industrializa na Demazon (5.15), e o dia em que uma loja do
+ * painel vender o que ela mesma industrializa, e desta tabela que ela sai.
  *
  * Fonte: Lei Complementar 123/2006, com a redacao da LC 155/2016.
  * CONFIRME com o contador antes de usar em apuracao -- a tabela e estavel ha

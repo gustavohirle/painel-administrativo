@@ -810,13 +810,27 @@ contador** (competência 08/2026): RBT12 de R$ 1.910.089,97 × 14,30% =
 R$ 273.142,87, menos a parcela a deduzir de R$ 87.300,00 = R$ 185.842,87,
 dividido pelo RBT12 = **9,7295346621814%**. O painel faz exatamente essa conta.
 
-**O que NÃO bate com aquele documento é a tabela**: ele é do **Anexo I
-(Comércio)** e o painel usa `ANEXO_II_SIMPLES` (Indústria), em
-`faixaPorRBT12`. Nominal, parcela a deduzir e repartição por tributo são
-diferentes nos dois — o Anexo I daquela faixa reparte IRPJ 5,50%, CSLL 3,50%,
-COFINS 12,74%, PIS 2,76%, CPP 42,00% e ICMS 33,50%. O campo
-`Influencer.anexoSimples` existe e **hoje é ignorado**. Pendente de decisão do
-dono.
+**O anexo é o I (Comércio), não o II (Indústria)** — corrigido em 23/09/2026,
+quando o documento chegou. O painel supunha o Anexo II; a memória é do
+**Anexo I, Seção 1, receitas de revenda de mercadorias não sujeitas a ST**, e
+isso faz sentido: as lojas Nuvemshop **revendem** o que a fábrica produz, e a
+industrialização acontece na outra empresa (5.15).
+
+Os dois anexos continuam em `types/fiscal.ts`; quem manda na apuração é
+`ANEXO_DA_APURACAO`, em `simplesNacional.ts`. O Anexo II fica ali para o dia em
+que uma loja vender o que ela mesma industrializa. O campo
+`Influencer.anexoSimples` existe e **continua sem efeito** — é nesse ponto que
+ele passaria a ser lido.
+
+A troca mexe em tudo: nominal, parcela a deduzir e repartição. Na 4ª faixa a
+efetiva cai de 8,95% para 8,45%; na 5ª, de 12,325% para 11,875%. E o Anexo I
+**não tem IPI** (comércio não industrializa) — o campo fica em zero, e a quebra
+do DAS na tela descarta participação zerada.
+
+**Quatro testes reproduzem o documento dígito a dígito** — alíquota efetiva
+(9,7295346621814%), repartição, valor de cada tributo sobre os R$ 5.151,33 da
+seção, e a alíquota efetiva por tributo. Se alguém mexer na tabela ou na
+fórmula, eles avisam na hora.
 
 A alíquota **efetiva** não é a da tabela — confundir as duas erra a conta em
 milhares. A repartição por tributo vem da tabela oficial do Anexo II.
@@ -933,13 +947,18 @@ R$ 23 mil/mês aparece em milhões e parece defeito. O bloco do Simples em
 
 **O que isso custou, medido nas quatro lojas do Simples em set/2026:**
 
-| Marca | Base do mês | Antes (RBT12 próprio) | Depois (RBT12 da empresa) |
+| Marca | Base do mês | Antes (RBT12 próprio, Anexo II) | Depois (RBT12 da empresa, Anexo I) |
 |---|---|---|---|
-| Ka Beauty | R$ 152.472 | faixa 6 · 13,16% · R$ 20.072 | faixa 6 · 22,97% · R$ 35.027 |
-| Duale Beauty | R$ 108.246 | faixa 5 · 12,30% · R$ 13.314 | faixa 6 · 22,97% · R$ 24.867 |
-| Laoli Beauty | R$ 36.138 | faixa 3 · 8,06% · R$ 2.912 | faixa 6 · 22,97% · R$ 8.302 |
-| Revenda | R$ 138.798 | faixa 4 · 9,87% · R$ 13.702 | faixa 6 · 22,97% · R$ 31.886 |
-| **DAS do mês** | | **R$ 49.999** | **R$ 100.083** |
+| Ka Beauty | R$ 152.472 | faixa 6 · 13,16% · R$ 20.072 | faixa 6 · 15,31% · R$ 23.345 |
+| Duale Beauty | R$ 108.246 | faixa 5 · 12,30% · R$ 13.314 | faixa 6 · 15,31% · R$ 16.573 |
+| Laoli Beauty | R$ 36.138 | faixa 3 · 8,06% · R$ 2.912 | faixa 6 · 15,31% · R$ 5.533 |
+| Revenda | R$ 138.798 | faixa 4 · 9,87% · R$ 13.702 | faixa 6 · 15,31% · R$ 21.251 |
+| **DAS do mês** | | **R$ 49.999** | **R$ 66.702** |
+
+As duas mudanças andaram juntas e puxam para lados diferentes: o RBT12 somado
+sobe a faixa, e o Anexo I é mais barato que o II na 6ª faixa (19% nominal
+contra 30%). Com o RBT12 que o contador informa (R$ 1,91 mi, 5ª faixa, 9,73%)
+o mesmo mês daria **R$ 42.387**.
 
 **A consequência mais séria não é o DAS: é o teto.** O RBT12 somado dá
 **R$ 10.246.169** — **213% do teto de R$ 4,8 mi**. Nessa situação a empresa
