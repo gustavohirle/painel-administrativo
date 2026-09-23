@@ -45,6 +45,7 @@ import {
   mesclarPedidos,
   mesesAte,
   type CampoVigiado,
+  type PedidoConvertido,
 } from "@/lib/nuvemshop";
 import { buscarCarrinhosDaLoja, buscarPedidosDaLoja } from "@/data/apiSource";
 
@@ -103,9 +104,10 @@ const pasta = () =>
  * UTF-16) mais o grafo de objetos, e `JSON.parse` precisa dos dois ao mesmo
  * tempo. Num processo com 2 GB de heap isso estoura.
  *
- * E estourou, em 23/09/2026, em producao: a leitura da loja maior falhou, a
- * gravacao seguinte salvou o que sobrou por cima, e 239 mil pedidos de 13
- * meses viraram 45. Ver `lerDaLoja` -- a falha agora e FATAL, de proposito.
+ * A divisao por mes veio junto com o conserto de 23/09/2026, mas NAO foi ela
+ * que resolveu o defeito daquele dia: a causa raiz era `push(...array)`
+ * estourando a pilha (ver `acrescentar`). A divisao continua valendo por si --
+ * ela tira o pico de memoria e faz o arquivo parar de crescer com a janela.
  *
  * Por mes, o maior arquivo passa a ser o maior mes da maior loja (~30 MB), e
  * ele para de crescer com a janela: aumentar `NUVEMSHOP_MESES` acrescenta
@@ -175,6 +177,20 @@ async function gravarArquivo(caminho: string, conteudo: unknown): Promise<void> 
 const chaveDoMes = (pedido: Pedido) => String(pedido.created_at).slice(0, 7);
 
 /**
+ * Acrescenta `origem` ao fim de `destino`, em bloco.
+ *
+ * NAO use `destino.push(...origem)` aqui. O spread passa cada item como um
+ * ARGUMENTO da chamada, e com 239 mil pedidos isso estoura a pilha:
+ * "Maximum call stack size exceeded". O limite fica na casa das dezenas de
+ * milhares, entao o defeito nao aparece em teste pequeno nem numa loja
+ * pequena -- so na maior, em producao, que foi exatamente onde ele apareceu
+ * (23/09/2026).
+ */
+function acrescentar<T>(destino: T[], origem: T[]): void {
+  for (const item of origem) destino.push(item);
+}
+
+/**
  * Assinatura da copia em disco: o `mtime` do indice e o de cada pasta de loja.
  *
  * Com um arquivo so bastava o mtime dele. Agora um mes de uma loja pode mudar
@@ -222,14 +238,14 @@ async function lerDaLoja(storeId: string): Promise<LojaNoDiscoAntigo> {
     const lido = JSON.parse(
       await fs.readFile(path.join(pastaDaLoja(storeId), nome), "utf8"),
     ) as Pedido[];
-    if (Array.isArray(lido)) pedidos.push(...lido);
+    if (Array.isArray(lido)) acrescentar(pedidos, lido);
   }
 
   try {
     const lido = JSON.parse(
       await fs.readFile(arquivoDosCarrinhos(storeId), "utf8"),
     ) as CarrinhoAbandonado[];
-    if (Array.isArray(lido)) carrinhos.push(...lido);
+    if (Array.isArray(lido)) acrescentar(carrinhos, lido);
   } catch {
     // Carrinho e o numero menos importante da tela (5.6) e se refaz de hora em
     // hora; perde-lo nao justifica derrubar a leitura dos pedidos.
@@ -359,8 +375,8 @@ async function lerDoDisco(): Promise<BaseNuvemshop> {
   const carrinhos: CarrinhoAbandonado[] = [];
   for (const storeId of storeIds) {
     const daLoja = await lerDaLoja(storeId);
-    pedidos.push(...daLoja.pedidos);
-    carrinhos.push(...daLoja.carrinhos);
+    acrescentar(pedidos, daLoja.pedidos);
+    acrescentar(carrinhos, daLoja.carrinhos);
   }
 
   const base: BaseNuvemshop = {
@@ -644,11 +660,11 @@ async function buscarJanela(
   meses: string[],
   aoAvancar?: (p: ProgressoSincronizacao) => void,
 ) {
-  const todos = [];
+  const todos: PedidoConvertido[] = [];
   for (const mes of meses) {
     const { inicio, fim } = limitesDoMes(mes);
     const doMes = await buscarPedidosDaLoja(loja, { criadosDesde: inicio, criadosAte: fim });
-    todos.push(...doMes);
+    acrescentar(todos, doMes);
     aoAvancar?.({ loja: loja.marca, etapa: `pedidos de ${mes}`, pedidos: todos.length });
   }
   return todos;

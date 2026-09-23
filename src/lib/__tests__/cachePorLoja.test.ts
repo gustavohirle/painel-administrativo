@@ -8,12 +8,15 @@ import type { Pedido } from "@/types/nuvemshop";
 /*
  * O cache de pedidos guarda UM ARQUIVO POR LOJA E POR MÊS (seção 12).
  *
- * O que este arquivo protege são as duas lições de 23/09/2026, as duas
- * pagas com 44 minutos de busca perdidos em produção:
+ * O que este arquivo protege são as três lições de 23/09/2026, pagas com 239
+ * mil pedidos apagados em produção:
  *
- * 1. a migração dos formatos antigos não pode perder pedido;
- * 2. falha ao LER uma loja não pode ser engolida — quem não conseguiu ler
- *    não pode gravar por cima.
+ * 1. `destino.push(...origem)` estoura a pilha com array grande — foi a causa
+ *    raiz, e só aparece com volume (ver "volume", no fim);
+ * 2. falha ao LER uma loja não pode ser engolida — quem não conseguiu ler não
+ *    pode gravar por cima. Foi o que transformou um erro de leitura em perda
+ *    de dado;
+ * 3. a migração dos formatos antigos não pode perder pedido.
  */
 
 let pasta: string;
@@ -163,13 +166,13 @@ describe("leitura", () => {
 
   it("MÊS ILEGÍVEL FAZ A LEITURA FALHAR, em vez de devolver a loja vazia", async () => {
     /*
-     * É o defeito que apagou 239 mil pedidos em produção (23/09/2026): a
-     * leitura da loja maior falhou por falta de memória, um `catch` devolveu a
-     * loja vazia, e a gravação seguinte salvou esse vazio por cima de 13 meses
-     * de histórico.
+     * A segunda metade do defeito de 23/09/2026: a leitura da loja maior
+     * falhou (ver "volume", abaixo, para a causa), um `catch` devolveu a loja
+     * vazia, e a gravação seguinte salvou esse vazio por cima de 13 meses de
+     * histórico.
      *
      * Cópia velha é um problema; cópia APAGADA é outro, muito maior. Quem não
-     * conseguiu ler não grava.
+     * conseguiu ler não grava — e é isso que este teste exige.
      */
     await escrever("indice.json", { versao: 1, lojas: { "111": loja("Loja A") }, ausentes: {} });
     await fs.mkdir(path.join(pasta, "loja-111"), { recursive: true });
@@ -199,5 +202,37 @@ describe("leitura", () => {
 
     const { lerCache } = await carregar();
     expect((await lerCache()).pedidos).toEqual([]);
+  });
+});
+
+describe("volume", () => {
+  it("lê uma loja com 200 mil pedidos sem estourar a pilha", async () => {
+    /*
+     * O defeito que apagou 239 mil pedidos em produção (23/09/2026).
+     *
+     * A causa não era memória: era `destino.push(...origem)`. O spread passa
+     * cada item como um ARGUMENTO da chamada, e o limite fica na casa das
+     * dezenas de milhares — "Maximum call stack size exceeded". Não aparece em
+     * teste pequeno nem numa loja pequena, só na maior. Daí o volume aqui.
+     *
+     * Antes o erro era engolido por um `catch` e a gravação seguinte salvava o
+     * vazio por cima. Hoje ele derrubaria a leitura, o que já seria seguro —
+     * mas o certo é ele não acontecer.
+     */
+    const MUITOS = 200_000;
+    await escrever("indice.json", {
+      versao: 1,
+      lojas: { "111": loja("Loja Grande") },
+      ausentes: {},
+    });
+    await fs.mkdir(path.join(pasta, "loja-111"), { recursive: true });
+    await escrever(
+      path.join("loja-111", "pedidos-2026-09.json"),
+      Array.from({ length: MUITOS }, (_, i) => pedido(i, "Loja Grande")),
+    );
+
+    const { lerCache } = await carregar();
+    const base = await lerCache();
+    expect(base.pedidos).toHaveLength(MUITOS);
   });
 });

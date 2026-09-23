@@ -2509,11 +2509,22 @@ Por mês, o maior arquivo passa a ser o maior mês da maior loja (~30 MB), e ele
 **para de crescer com a janela**: aumentar `NUVEMSHOP_MESES` acrescenta
 arquivos, não engorda os que existem.
 
-**A lição que custou caro.** A primeira versão desta divisão quebrou só por
-loja, e envolvia a leitura de cada uma num `catch` que seguia com a loja vazia.
-Em produção a leitura dos 230 MB falhou, a sincronização seguinte gravou o
-vazio por cima, e **239 mil pedidos de 13 meses viraram 45** — 44 minutos de
-busca perdidos. O `catch` estava errado por inteiro:
+**A lição que custou caro**, e ela tem duas metades.
+
+A causa raiz **não era memória**: era `destino.push(...origem)`. O spread passa
+cada item como um **argumento** da chamada, e o limite fica na casa das dezenas
+de milhares — com 239 mil pedidos dá *"Maximum call stack size exceeded"*. Não
+aparece em teste pequeno nem numa loja pequena, só na maior, em produção. Hoje
+o acréscimo em bloco passa por `acrescentar`, que é um laço, e há teste com
+200 mil pedidos. **A divisão por mês foi feita no mesmo dia e não é o conserto
+desse defeito** — ela vale por si, por tirar o pico de memória e fazer o
+arquivo parar de crescer com a janela.
+
+A segunda metade é o que transformou um erro de leitura em **perda de dado**: a
+leitura de cada loja estava dentro de um `catch` que seguia com a loja vazia.
+Em produção a leitura falhou, a sincronização seguinte gravou o vazio por cima,
+e **239 mil pedidos de 13 meses viraram 45**. O `catch` estava errado por
+inteiro:
 
 > Cópia velha é um problema; cópia **apagada** é outro, muito maior. Ninguém
 > sobrescreve o que não conseguiu ler.
@@ -2522,6 +2533,10 @@ Hoje a falha ao ler um mês é **fatal** (`lerDaLoja`): ela derruba a leitura, e
 com ela a sincronização, então nada é gravado. Há teste que reproduz o defeito
 exato. A única exceção é o arquivo de carrinhos, que se refaz de hora em hora e
 é o número menos importante da tela (5.6).
+
+Foi essa regra que salvou a base na segunda vez: com o `push` ainda quebrado, a
+primeira sincronização depois do conserto **falhou e não gravou nada** — os
+256 MB continuaram no disco, e bastou corrigir o `push` e rodar de novo.
 
 Quatro decisões, além dessa:
 
