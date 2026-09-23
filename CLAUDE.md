@@ -2435,12 +2435,9 @@ Toda página lê a base inteira (o RBT12 precisa de 12 meses). Uma loja deste
 porte tem ~100 mil pedidos por ano: a 200 por chamada e 2 chamadas por
 segundo, são minutos. Por isso `cachePedidos.ts`:
 
-1. a primeira busca traz `NUVEMSHOP_MESES` (13) meses, **mês a mês**, de
+1. a primeira busca traz `NUVEMSHOP_MESES` meses, **mês a mês**, de
    preferência por `npm run nuvemshop:sincronizar` antes de subir. Medido na
-   loja real: 25.751 pedidos e 6.925 carrinhos em 293 s. A loja tem ~240 mil
-   pedidos em 13 meses (~222 MB no `pedidos.json`, perto do teto de ~512 MB de
-   uma string no Node); com mais lojas, o cache precisa virar um arquivo por
-   mês;
+   loja real: 25.751 pedidos e 6.925 carrinhos em 293 s;
 2. depois a página responde com o disco e, se a cópia passou de
    `NUVEMSHOP_ATUALIZAR_MINUTOS` (10), pede em segundo plano só o que mudou
    (`updated_at_min` com 10 minutos de sobreposição). Boleto pago e pedido
@@ -2453,6 +2450,41 @@ segundo, são minutos. Por isso `cachePedidos.ts`:
 
 Estado em `globalThis` e arquivo como fonte da verdade, pela armadilha 2. Uma
 busca por vez por processo. Gravação em arquivo temporário + `rename`.
+
+#### Um arquivo por loja (23/09/2026)
+
+```
+.live-data/
+  indice.json        { versao, lojas, ausentes }   — pequeno
+  loja-5018407.json  { pedidos, carrinhos }        — um por loja
+```
+
+O arquivo único funcionou enquanto a janela era de 3 meses (41 MB, cinco
+lojas). Para chegar aos 12 meses que o RBT12 pede (5.10.1) ele iria a ~180 MB,
+e **o problema não é o disco**: `JSON.stringify` monta a coisa inteira como uma
+string só na memória, ao lado dos objetos que a originaram, num processo com
+2 GB de heap. Partido por loja, o maior pedaço é o da loja maior, e cada
+arquivo é lido e liberado antes do próximo — por isso a leitura é um `for`
+sequencial e não um `Promise.all`.
+
+Quatro decisões:
+
+1. **A migração do formato antigo roda na primeira leitura** e só apaga o
+   `pedidos.json` depois que todos os arquivos novos estão gravados. Falha no
+   meio não perde a cópia. Há teste.
+2. **O índice é gravado por último.** É ele que diz "a cópia está pronta e é
+   desta hora", e é só ele que o selo do cabeçalho lê.
+3. **Só as lojas que mudaram são reescritas** (`storeIdsAlterados`). A loja que
+   falhou fica de fora: o arquivo dela continua valendo, e reescrevê-lo seria
+   gravar dezenas de MB para nada, a cada 5 minutos.
+4. **Arquivo de loja corrompido não derruba as outras.** A loja continua no
+   índice de propósito — assim ela não vira "loja pendente" para sempre e a
+   próxima sincronização a busca de novo.
+
+A validade da cópia em memória passou a ser a assinatura dos `mtime` do índice
+**e** de cada arquivo de loja: com um arquivo só bastava o dele, mas agora um
+arquivo de loja pode mudar sem o índice mudar, e a memória ficaria servindo a
+cópia velha.
 
 #### A hora da última sincronização fica no cabeçalho
 

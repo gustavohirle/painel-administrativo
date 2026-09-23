@@ -93,12 +93,44 @@ export type EstadoDaSincronizacao = SincronizacaoNaTela;
 
 const pasta = () =>
   process.env.NUVEMSHOP_CACHE_DIR || path.join(process.cwd(), ".live-data");
-const arquivo = () => path.join(pasta(), "pedidos.json");
+
+/*
+ * UM ARQUIVO POR LOJA, e nao um so para tudo (23/09/2026).
+ *
+ * O arquivo unico funcionou enquanto a janela era de 3 meses (41 MB, 5 lojas).
+ * Para chegar aos 12 meses que o RBT12 pede (5.10.1) ele iria a ~180 MB, e o
+ * problema nao e o disco: e que `JSON.stringify` precisa montar a coisa
+ * INTEIRA como uma string so na memoria, ao lado dos objetos que a originaram,
+ * num processo com 2 GB de heap. Partido por loja, o maior pedaco e o da loja
+ * maior -- e cada arquivo e lido e liberado antes do proximo.
+ *
+ * O indice e pequeno de proposito: e ele que diz de quando e a copia, e o selo
+ * do cabecalho (secao 12) le so isso.
+ */
+const indice = () => path.join(pasta(), "indice.json");
+const arquivoDaLoja = (storeId: string) => path.join(pasta(), `loja-${storeId}.json`);
+
+/** Formato antigo, de arquivo unico. Lido uma vez e convertido (ver `migrar`). */
+const arquivoAntigo = () => path.join(pasta(), "pedidos.json");
+
+/** O que o indice guarda: tudo menos os pedidos e os carrinhos. */
+interface IndiceNoDisco {
+  versao: number;
+  lojas: Record<string, EstadoDaLoja>;
+  ausentes: BaseNuvemshop["ausentes"];
+}
+
+/** O que cada arquivo de loja guarda. */
+interface LojaNoDisco {
+  pedidos: Pedido[];
+  carrinhos: CarrinhoAbandonado[];
+}
 
 const global = globalThis as unknown as {
   __cacheNuvemshop?: {
     base: BaseNuvemshop | null;
-    lidoComMtime: number;
+    /** mtime do indice e de cada arquivo de loja, juntos. */
+    assinatura: string | null;
     emAndamento: Promise<ResultadoSincronizacao> | null;
     ultimoErro: string | null;
     /** Quando a ultima busca falhou (em alguma loja); 0 se deu certo. */
@@ -107,7 +139,7 @@ const global = globalThis as unknown as {
 };
 global.__cacheNuvemshop ??= {
   base: null,
-  lidoComMtime: 0,
+  assinatura: null,
   emAndamento: null,
   ultimoErro: null,
   falhouEm: 0,
@@ -123,36 +155,166 @@ const vazia = (): BaseNuvemshop => ({
   ausentes: {},
 });
 
-async function lerDoDisco(): Promise<BaseNuvemshop> {
-  let mtime: number;
-  try {
-    mtime = (await fs.stat(arquivo())).mtimeMs;
-  } catch {
-    return vazia();
-  }
-  if (memoria.base && memoria.lidoComMtime === mtime) return memoria.base;
+/** Grava ao lado e renomeia: quem le no meio da gravacao nunca ve meio arquivo. */
+async function gravarArquivo(caminho: string, conteudo: unknown): Promise<void> {
+  const temporario = `${caminho}.${process.pid}.tmp`;
+  await fs.writeFile(temporario, JSON.stringify(conteudo), "utf8");
+  await fs.rename(temporario, caminho);
+}
 
+/**
+ * Assinatura da copia em disco: a data de modificacao do indice e a de cada
+ * arquivo de loja.
+ *
+ * Com um arquivo so bastava o mtime dele. Agora um arquivo de loja pode mudar
+ * sem o indice mudar, e a memoria ficaria servindo a copia velha.
+ */
+async function assinaturaDoDisco(lojas: string[]): Promise<string | null> {
   try {
-    const lido = JSON.parse(await fs.readFile(arquivo(), "utf8")) as BaseNuvemshop;
-    // Formato de outra versao: recomeca. Buscar de novo e mais seguro que migrar.
-    const base = lido.versao === VERSAO ? lido : vazia();
-    memoria.base = base;
-    memoria.lidoComMtime = mtime;
-    return base;
+    const partes = await Promise.all(
+      [indice(), ...lojas.map(arquivoDaLoja)].map(async (caminho) => {
+        try {
+          return String((await fs.stat(caminho)).mtimeMs);
+        } catch {
+          return "-";
+        }
+      }),
+    );
+    return partes.join(",");
   } catch {
-    return vazia();
+    return null;
   }
 }
 
-async function gravarNoDisco(base: BaseNuvemshop): Promise<void> {
+/**
+ * Converte a copia antiga, de arquivo unico, para um arquivo por loja.
+ *
+ * Roda uma vez, na primeira leitura depois do deploy. Sem isso o painel abriria
+ * sem pedido nenhum e buscaria os 12 meses das cinco lojas de uma vez, no
+ * caminho da primeira pagina aberta.
+ */
+async function migrar(): Promise<IndiceNoDisco | null> {
+  let antigo: BaseNuvemshop;
+  try {
+    antigo = JSON.parse(await fs.readFile(arquivoAntigo(), "utf8")) as BaseNuvemshop;
+  } catch {
+    return null;
+  }
+  if (antigo.versao !== VERSAO || !Array.isArray(antigo.pedidos)) return null;
+
+  // Uma marca por loja (secao 12): e a marca que carimba pedido e carrinho.
+  for (const [storeId, estado] of Object.entries(antigo.lojas ?? {})) {
+    await gravarArquivo(arquivoDaLoja(storeId), {
+      pedidos: antigo.pedidos.filter((p) => p.marca === estado.marca),
+      carrinhos: (antigo.carrinhos ?? []).filter((c) => c.marca === estado.marca),
+    } satisfies LojaNoDisco);
+  }
+
+  const novo: IndiceNoDisco = {
+    versao: VERSAO,
+    lojas: antigo.lojas ?? {},
+    ausentes: antigo.ausentes ?? {},
+  };
+  await gravarArquivo(indice(), novo);
+  // So apaga depois que tudo foi gravado: falha no meio nao perde a copia.
+  await fs.rm(arquivoAntigo(), { force: true });
+  return novo;
+}
+
+async function lerDoDisco(): Promise<BaseNuvemshop> {
   await fs.mkdir(pasta(), { recursive: true });
-  // Grava ao lado e renomeia: uma pagina lendo no meio da gravacao nunca ve
-  // meio arquivo.
-  const temporario = `${arquivo()}.${process.pid}.tmp`;
-  await fs.writeFile(temporario, JSON.stringify(base), "utf8");
-  await fs.rename(temporario, arquivo());
+
+  let cabecalho: IndiceNoDisco | null = null;
+  try {
+    const lido = JSON.parse(await fs.readFile(indice(), "utf8")) as IndiceNoDisco;
+    // Formato de outra versao: recomeca. Buscar de novo e mais seguro que migrar.
+    cabecalho = lido.versao === VERSAO ? lido : null;
+  } catch {
+    cabecalho = await migrar();
+  }
+  if (!cabecalho) return vazia();
+
+  const storeIds = Object.keys(cabecalho.lojas);
+  const assinatura = await assinaturaDoDisco(storeIds);
+  if (memoria.base && assinatura !== null && memoria.assinatura === assinatura) {
+    return memoria.base;
+  }
+
+  const pedidos: Pedido[] = [];
+  const carrinhos: CarrinhoAbandonado[] = [];
+  /*
+   * Uma loja por vez, de proposito: `JSON.parse` em paralelo teria todas as
+   * strings de origem vivas ao mesmo tempo. Assim cada uma e liberada antes da
+   * proxima.
+   */
+  for (const storeId of storeIds) {
+    try {
+      const daLoja = JSON.parse(
+        await fs.readFile(arquivoDaLoja(storeId), "utf8"),
+      ) as LojaNoDisco;
+      if (Array.isArray(daLoja.pedidos)) pedidos.push(...daLoja.pedidos);
+      if (Array.isArray(daLoja.carrinhos)) carrinhos.push(...daLoja.carrinhos);
+    } catch {
+      // Arquivo de uma loja faltando ou corrompido: as outras seguem, e a
+      // proxima sincronizacao a busca de novo (o estado dela continua no
+      // indice, entao ela nao vira "loja pendente" para sempre).
+    }
+  }
+
+  const base: BaseNuvemshop = {
+    versao: VERSAO,
+    lojas: cabecalho.lojas,
+    pedidos,
+    carrinhos,
+    ausentes: cabecalho.ausentes ?? {},
+  };
   memoria.base = base;
-  memoria.lidoComMtime = (await fs.stat(arquivo())).mtimeMs;
+  memoria.assinatura = assinatura;
+  return base;
+}
+
+/**
+ * Grava a copia. `storeIdsAlterados` limita a escrita as lojas que mudaram --
+ * reescrever as cinco a cada 5 minutos seria centenas de MB de disco por hora
+ * para nada.
+ */
+async function gravarNoDisco(
+  base: BaseNuvemshop,
+  storeIdsAlterados?: string[],
+): Promise<void> {
+  await fs.mkdir(pasta(), { recursive: true });
+
+  const marcaDaLoja = new Map(
+    Object.entries(base.lojas).map(([storeId, estado]) => [storeId, estado.marca]),
+  );
+  const aGravar = storeIdsAlterados ?? [...marcaDaLoja.keys()];
+
+  for (const storeId of aGravar) {
+    const marca = marcaDaLoja.get(storeId);
+    if (marca === undefined) continue;
+    await gravarArquivo(arquivoDaLoja(storeId), {
+      pedidos: base.pedidos.filter((p) => p.marca === marca),
+      carrinhos: base.carrinhos.filter((c) => c.marca === marca),
+    } satisfies LojaNoDisco);
+  }
+
+  // Loja que saiu da configuracao leva o arquivo dela junto.
+  for (const nome of await fs.readdir(pasta())) {
+    const achado = /^loja-(.+)\.json$/.exec(nome);
+    if (achado && !marcaDaLoja.has(achado[1]!)) {
+      await fs.rm(path.join(pasta(), nome), { force: true });
+    }
+  }
+
+  // O indice por ultimo: e ele que diz "a copia esta pronta e e desta hora".
+  await gravarArquivo(indice(), {
+    versao: VERSAO,
+    lojas: base.lojas,
+    ausentes: base.ausentes,
+  } satisfies IndiceNoDisco);
+
+  memoria.base = base;
+  memoria.assinatura = await assinaturaDoDisco(Object.keys(base.lojas));
 }
 
 export interface ProgressoSincronizacao {
@@ -228,6 +390,12 @@ async function executarSincronizacao({
   const desde = limitesDoMes(primeiroMes).inicio;
 
   const marcasAtivas = new Set(lojas.map((l) => l.marca));
+  /*
+   * Quais arquivos de loja precisam ser reescritos no fim. A loja que falhou
+   * fica de fora: o arquivo dela no disco continua valendo, e reescreve-lo
+   * seria gravar dezenas de MB para nada.
+   */
+  const alterados: string[] = [];
   // Loja que saiu da configuracao leva os pedidos dela junto.
   let pedidos = anterior.pedidos.filter((p) => marcasAtivas.has(p.marca));
   const estadoLojas: Record<string, EstadoDaLoja> = {};
@@ -250,6 +418,7 @@ async function executarSincronizacao({
       carrinhos = resultado.carrinhos;
       estadoLojas[loja.storeId] = resultado.estado;
       ausentes[loja.storeId] = resultado.ausentes;
+      alterados.push(loja.storeId);
     } catch (erro) {
       const motivo = erro instanceof Error ? erro.message : String(erro);
       falhas.push({ marca: loja.marca, storeId: loja.storeId, motivo });
@@ -268,6 +437,9 @@ async function executarSincronizacao({
         // Sem copia valida, a loja nao pode aparecer com pedidos de outra busca.
         pedidos = pedidos.filter((p) => p.marca !== loja.marca);
         carrinhos = carrinhos.filter((c) => c.marca !== loja.marca);
+        // E o arquivo dela precisa ser reescrito vazio, senao a copia velha
+        // (de outra marca, ou de uma busca que nao vale mais) ficaria la.
+        alterados.push(loja.storeId);
       }
     }
   }
@@ -284,7 +456,7 @@ async function executarSincronizacao({
     carrinhos,
     ausentes,
   };
-  await gravarNoDisco(base);
+  await gravarNoDisco(base, alterados);
   return { base, falhas };
 }
 
