@@ -966,8 +966,9 @@ está legalmente **fora do Simples**. `monitorarTeto` já devolve
 `acima_do_teto` e a tela diz isso, mas o número precisa de conferência antes de
 virar decisão, por três motivos:
 
-1. **É projeção de 3 meses.** `NUVEMSHOP_MESES=3`: o painel tem jul–set/2026 e
-   projeta ×12. O RBT12 de verdade tem 12 competências.
+1. **Era projeção de 3 meses.** `NUVEMSHOP_MESES` foi para 13 no mesmo dia, e o
+   RBT12 deixou de ser projeção — ver seção 12. O número abaixo é o de antes
+   dessa busca; refaça a conta com a base cheia antes de decidir qualquer coisa.
 2. **A base é o faturado** (5.1.1), que inclui cancelado e boleto nunca pago —
    e esses não entram na receita bruta do Simples. O painel superestima.
 3. **A memória do contador diz outro número.** Competência 08/2026, CNPJ
@@ -2387,9 +2388,9 @@ em 1366×768. Isso é `npm test` e olho na tela.
 
 Roteiro de uso em `DADOS_REAIS.md`. Aqui ficam as decisões.
 
-**Estado:** ligado à loja real desde 16/09/2026 (Tha Beauty, loja 5018407),
-com os pedidos de julho/2026 em diante (`NUVEMSHOP_MESES=3`; o resto vem
-depois, voltando para 13). O primeiro contato com uma loja nova continua sendo
+**Estado:** ligado à loja real desde 16/09/2026 (Tha Beauty, loja 5018407).
+A janela é de **13 meses** (`NUVEMSHOP_MESES=13`) desde 23/09/2026 — antes era
+3, e o RBT12 do Simples saía projetado. O primeiro contato com uma loja nova continua sendo
 `npm run nuvemshop:testar`, que mostra como o pedido chega antes de qualquer
 número ir para a tela.
 
@@ -2451,40 +2452,58 @@ segundo, são minutos. Por isso `cachePedidos.ts`:
 Estado em `globalThis` e arquivo como fonte da verdade, pela armadilha 2. Uma
 busca por vez por processo. Gravação em arquivo temporário + `rename`.
 
-#### Um arquivo por loja (23/09/2026)
+#### Um arquivo por loja e por mês (23/09/2026)
 
 ```
 .live-data/
-  indice.json        { versao, lojas, ausentes }   — pequeno
-  loja-5018407.json  { pedidos, carrinhos }        — um por loja
+  indice.json                        { versao, lojas, ausentes }
+  loja-5018407/pedidos-2026-09.json  [ pedidos daquele mês ]
+  loja-5018407/carrinhos.json        [ janela de 30 dias ]
 ```
 
 O arquivo único funcionou enquanto a janela era de 3 meses (41 MB, cinco
-lojas). Para chegar aos 12 meses que o RBT12 pede (5.10.1) ele iria a ~180 MB,
-e **o problema não é o disco**: `JSON.stringify` monta a coisa inteira como uma
-string só na memória, ao lado dos objetos que a originaram, num processo com
-2 GB de heap. Partido por loja, o maior pedaço é o da loja maior, e cada
-arquivo é lido e liberado antes do próximo — por isso a leitura é um `for`
-sequencial e não um `Promise.all`.
+lojas). Com 13 meses a loja maior sozinha dá **230 MB**, e o problema não é o
+disco: um JSON de 230 MB vira uma string de ~460 MB na memória (o V8 guarda
+texto em UTF-16) mais o grafo de objetos, e `JSON.parse` precisa dos dois ao
+mesmo tempo. Num processo com 2 GB de heap isso estoura.
 
-Quatro decisões:
+Por mês, o maior arquivo passa a ser o maior mês da maior loja (~30 MB), e ele
+**para de crescer com a janela**: aumentar `NUVEMSHOP_MESES` acrescenta
+arquivos, não engorda os que existem.
 
-1. **A migração do formato antigo roda na primeira leitura** e só apaga o
-   `pedidos.json` depois que todos os arquivos novos estão gravados. Falha no
-   meio não perde a cópia. Há teste.
+**A lição que custou caro.** A primeira versão desta divisão quebrou só por
+loja, e envolvia a leitura de cada uma num `catch` que seguia com a loja vazia.
+Em produção a leitura dos 230 MB falhou, a sincronização seguinte gravou o
+vazio por cima, e **239 mil pedidos de 13 meses viraram 45** — 44 minutos de
+busca perdidos. O `catch` estava errado por inteiro:
+
+> Cópia velha é um problema; cópia **apagada** é outro, muito maior. Ninguém
+> sobrescreve o que não conseguiu ler.
+
+Hoje a falha ao ler um mês é **fatal** (`lerDaLoja`): ela derruba a leitura, e
+com ela a sincronização, então nada é gravado. Há teste que reproduz o defeito
+exato. A única exceção é o arquivo de carrinhos, que se refaz de hora em hora e
+é o número menos importante da tela (5.6).
+
+Quatro decisões, além dessa:
+
+1. **A migração roda na primeira leitura** e atravessa os dois formatos
+   anteriores — o arquivo único e o de um arquivo por loja. Só apaga o antigo
+   depois de gravar o novo. Há teste para cada um.
 2. **O índice é gravado por último.** É ele que diz "a cópia está pronta e é
    desta hora", e é só ele que o selo do cabeçalho lê.
-3. **Só as lojas que mudaram são reescritas** (`storeIdsAlterados`). A loja que
-   falhou fica de fora: o arquivo dela continua valendo, e reescrevê-lo seria
-   gravar dezenas de MB para nada, a cada 5 minutos.
-4. **Arquivo de loja corrompido não derruba as outras.** A loja continua no
-   índice de propósito — assim ela não vira "loja pendente" para sempre e a
-   próxima sincronização a busca de novo.
+3. **Só as lojas que mudaram são reescritas** (`storeIdsAlterados`), e dentro
+   delas só os meses que têm pedido. Mês que sai da janela leva o arquivo dele
+   junto; loja que sai da configuração leva a pasta.
+4. **A validade da cópia em memória** é a assinatura dos `mtime` do índice e de
+   cada pasta de loja. Com um arquivo só bastava o dele.
 
-A validade da cópia em memória passou a ser a assinatura dos `mtime` do índice
-**e** de cada arquivo de loja: com um arquivo só bastava o dele, mas agora um
-arquivo de loja pode mudar sem o índice mudar, e a memória ficaria servindo a
-cópia velha.
+**O heap do Node precisou crescer** nos dois serviços que leem a base:
+`painel.service` e `painel-sincroniza.service` ganharam
+`NODE_OPTIONS=--max-old-space-size=3072` por drop-in em
+`/etc/systemd/system/<serviço>.d/10-memoria.conf`. O padrão que o Node calcula
+nesta máquina é ~2 GB, e a base de 13 meses (278 mil pedidos) chega perto
+demais disso. A máquina tem 5,8 GB.
 
 #### A hora da última sincronização fica no cabeçalho
 
@@ -2682,10 +2701,10 @@ está listado abaixo **não está**, de propósito.
   a loja nova e, na atualização seguinte, tiraria os pedidos dela da cópia),
   contrato na aba Influencers com a mesma marca, e "Trazer da Nuvemshop"
   (roteiro em `DADOS_REAIS.md`).
-- Com cinco lojas o `pedidos.json` cresce na mesma proporção: com
-  `NUVEMSHOP_MESES=13` passaria do teto de uma string no Node (seção 12,
-  item 1). Antes de voltar para 13, o cache precisa virar um arquivo por loja
-  ou por mês.
+- **`NUVEMSHOP_MESES` voltou para 13** em 23/09/2026, depois que o cache passou
+  a ser um arquivo por loja (seção 12). Foi o que o RBT12 do Simples pediu:
+  com três meses ele era projeção ×12, e a projeção dava R$ 10,2 mi contra os
+  R$ 1,91 mi que o contador apura (5.10.1).
 
 ### O que não vem pelo git
 

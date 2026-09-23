@@ -95,23 +95,33 @@ const pasta = () =>
   process.env.NUVEMSHOP_CACHE_DIR || path.join(process.cwd(), ".live-data");
 
 /*
- * UM ARQUIVO POR LOJA, e nao um so para tudo (23/09/2026).
+ * UM ARQUIVO POR LOJA E POR MES.
  *
  * O arquivo unico funcionou enquanto a janela era de 3 meses (41 MB, 5 lojas).
- * Para chegar aos 12 meses que o RBT12 pede (5.10.1) ele iria a ~180 MB, e o
- * problema nao e o disco: e que `JSON.stringify` precisa montar a coisa
- * INTEIRA como uma string so na memoria, ao lado dos objetos que a originaram,
- * num processo com 2 GB de heap. Partido por loja, o maior pedaco e o da loja
- * maior -- e cada arquivo e lido e liberado antes do proximo.
+ * Com 13 meses a loja maior sozinha da 230 MB, e o problema nao e o disco: um
+ * JSON de 230 MB vira uma string de ~460 MB na memoria (V8 guarda texto em
+ * UTF-16) mais o grafo de objetos, e `JSON.parse` precisa dos dois ao mesmo
+ * tempo. Num processo com 2 GB de heap isso estoura.
  *
- * O indice e pequeno de proposito: e ele que diz de quando e a copia, e o selo
- * do cabecalho (secao 12) le so isso.
+ * E estourou, em 23/09/2026, em producao: a leitura da loja maior falhou, a
+ * gravacao seguinte salvou o que sobrou por cima, e 239 mil pedidos de 13
+ * meses viraram 45. Ver `lerDaLoja` -- a falha agora e FATAL, de proposito.
+ *
+ * Por mes, o maior arquivo passa a ser o maior mes da maior loja (~30 MB), e
+ * ele para de crescer com a janela: aumentar `NUVEMSHOP_MESES` acrescenta
+ * arquivos, nao engorda os que existem.
  */
 const indice = () => path.join(pasta(), "indice.json");
-const arquivoDaLoja = (storeId: string) => path.join(pasta(), `loja-${storeId}.json`);
+const pastaDaLoja = (storeId: string) => path.join(pasta(), `loja-${storeId}`);
+const arquivoDoMes = (storeId: string, mes: string) =>
+  path.join(pastaDaLoja(storeId), `pedidos-${mes}.json`);
+/** Carrinho e janela de 30 dias: cabe num arquivo so, e nao cresce com a janela. */
+const arquivoDosCarrinhos = (storeId: string) =>
+  path.join(pastaDaLoja(storeId), "carrinhos.json");
 
-/** Formato antigo, de arquivo unico. Lido uma vez e convertido (ver `migrar`). */
+/** Formatos antigos, lidos uma vez e convertidos (ver `migrar`). */
 const arquivoAntigo = () => path.join(pasta(), "pedidos.json");
+const arquivoAntigoDaLoja = (storeId: string) => path.join(pasta(), `loja-${storeId}.json`);
 
 /** O que o indice guarda: tudo menos os pedidos e os carrinhos. */
 interface IndiceNoDisco {
@@ -120,8 +130,8 @@ interface IndiceNoDisco {
   ausentes: BaseNuvemshop["ausentes"];
 }
 
-/** O que cada arquivo de loja guarda. */
-interface LojaNoDisco {
+/** O que cada arquivo de loja guardava no formato anterior. So a migracao le. */
+interface LojaNoDiscoAntigo {
   pedidos: Pedido[];
   carrinhos: CarrinhoAbandonado[];
 }
@@ -162,63 +172,158 @@ async function gravarArquivo(caminho: string, conteudo: unknown): Promise<void> 
   await fs.rename(temporario, caminho);
 }
 
+const chaveDoMes = (pedido: Pedido) => String(pedido.created_at).slice(0, 7);
+
 /**
- * Assinatura da copia em disco: a data de modificacao do indice e a de cada
- * arquivo de loja.
+ * Assinatura da copia em disco: o `mtime` do indice e o de cada pasta de loja.
  *
- * Com um arquivo so bastava o mtime dele. Agora um arquivo de loja pode mudar
+ * Com um arquivo so bastava o mtime dele. Agora um mes de uma loja pode mudar
  * sem o indice mudar, e a memoria ficaria servindo a copia velha.
  */
-async function assinaturaDoDisco(lojas: string[]): Promise<string | null> {
+async function assinaturaDoDisco(storeIds: string[]): Promise<string> {
+  const partes: string[] = [];
+  for (const caminho of [indice(), ...storeIds.map(pastaDaLoja)]) {
+    try {
+      partes.push(`${caminho}:${(await fs.stat(caminho)).mtimeMs}`);
+    } catch {
+      partes.push(`${caminho}:-`);
+    }
+  }
+  return partes.join(",");
+}
+
+/**
+ * Le os pedidos e os carrinhos de uma loja, um mes por vez.
+ *
+ * A falha aqui e FATAL de proposito, e a licao custou 44 minutos de busca.
+ * Antes ela era engolida por um `catch` que seguia com a loja vazia -- e a
+ * gravacao seguinte salvava esse vazio por cima, apagando 13 meses de pedidos
+ * que ja estavam no disco. Copia velha e um problema; copia APAGADA e outro,
+ * muito maior. Ninguem sobrescreve o que nao conseguiu ler.
+ */
+async function lerDaLoja(storeId: string): Promise<LojaNoDiscoAntigo> {
+  const pedidos: Pedido[] = [];
+  const carrinhos: CarrinhoAbandonado[] = [];
+
+  let nomes: string[];
   try {
-    const partes = await Promise.all(
-      [indice(), ...lojas.map(arquivoDaLoja)].map(async (caminho) => {
-        try {
-          return String((await fs.stat(caminho)).mtimeMs);
-        } catch {
-          return "-";
-        }
-      }),
-    );
-    return partes.join(",");
+    nomes = await fs.readdir(pastaDaLoja(storeId));
   } catch {
-    return null;
+    // Pasta ausente e loja que nunca foi buscada: nao ha nada a perder.
+    return { pedidos, carrinhos };
+  }
+
+  /*
+   * Um arquivo por vez, e nao `Promise.all`: em paralelo todas as strings de
+   * origem ficariam vivas ao mesmo tempo, que e exatamente o pico que este
+   * formato existe para evitar.
+   */
+  for (const nome of nomes.filter((n) => n.startsWith("pedidos-")).sort()) {
+    const lido = JSON.parse(
+      await fs.readFile(path.join(pastaDaLoja(storeId), nome), "utf8"),
+    ) as Pedido[];
+    if (Array.isArray(lido)) pedidos.push(...lido);
+  }
+
+  try {
+    const lido = JSON.parse(
+      await fs.readFile(arquivoDosCarrinhos(storeId), "utf8"),
+    ) as CarrinhoAbandonado[];
+    if (Array.isArray(lido)) carrinhos.push(...lido);
+  } catch {
+    // Carrinho e o numero menos importante da tela (5.6) e se refaz de hora em
+    // hora; perde-lo nao justifica derrubar a leitura dos pedidos.
+  }
+
+  return { pedidos, carrinhos };
+}
+
+/** Grava uma loja: um arquivo por mes, mais o dos carrinhos. */
+async function gravarLoja(
+  storeId: string,
+  pedidos: Pedido[],
+  carrinhos: CarrinhoAbandonado[],
+): Promise<void> {
+  await fs.mkdir(pastaDaLoja(storeId), { recursive: true });
+
+  const porMes = new Map<string, Pedido[]>();
+  for (const pedido of pedidos) {
+    const mes = chaveDoMes(pedido);
+    const lista = porMes.get(mes);
+    if (lista) lista.push(pedido);
+    else porMes.set(mes, [pedido]);
+  }
+
+  for (const [mes, doMes] of porMes) {
+    await gravarArquivo(arquivoDoMes(storeId, mes), doMes);
+  }
+  await gravarArquivo(arquivoDosCarrinhos(storeId), carrinhos);
+
+  // Mes que saiu da janela leva o arquivo dele junto.
+  for (const nome of await fs.readdir(pastaDaLoja(storeId))) {
+    const achado = /^pedidos-(\d{4}-\d{2})\.json$/.exec(nome);
+    if (achado && !porMes.has(achado[1]!)) {
+      await fs.rm(path.join(pastaDaLoja(storeId), nome), { force: true });
+    }
   }
 }
 
 /**
- * Converte a copia antiga, de arquivo unico, para um arquivo por loja.
+ * Converte as copias de formato antigo: primeiro o arquivo unico, depois o de
+ * um arquivo por loja (sem a quebra por mes).
  *
- * Roda uma vez, na primeira leitura depois do deploy. Sem isso o painel abriria
- * sem pedido nenhum e buscaria os 12 meses das cinco lojas de uma vez, no
- * caminho da primeira pagina aberta.
+ * Roda na primeira leitura depois do deploy, e so apaga a copia antiga depois
+ * que a nova esta gravada -- falha no meio nao perde nada.
  */
-async function migrar(): Promise<IndiceNoDisco | null> {
-  let antigo: BaseNuvemshop;
+async function migrar(cabecalho: IndiceNoDisco | null): Promise<IndiceNoDisco | null> {
+  // 1. Arquivo unico (`pedidos.json`).
   try {
-    antigo = JSON.parse(await fs.readFile(arquivoAntigo(), "utf8")) as BaseNuvemshop;
+    const antigo = JSON.parse(await fs.readFile(arquivoAntigo(), "utf8")) as BaseNuvemshop;
+    if (antigo.versao === VERSAO && Array.isArray(antigo.pedidos)) {
+      for (const [storeId, estado] of Object.entries(antigo.lojas ?? {})) {
+        await gravarLoja(
+          storeId,
+          antigo.pedidos.filter((p) => p.marca === estado.marca),
+          (antigo.carrinhos ?? []).filter((c) => c.marca === estado.marca),
+        );
+      }
+      const novo: IndiceNoDisco = {
+        versao: VERSAO,
+        lojas: antigo.lojas ?? {},
+        ausentes: antigo.ausentes ?? {},
+      };
+      await gravarArquivo(indice(), novo);
+      await fs.rm(arquivoAntigo(), { force: true });
+      return novo;
+    }
   } catch {
-    return null;
-  }
-  if (antigo.versao !== VERSAO || !Array.isArray(antigo.pedidos)) return null;
-
-  // Uma marca por loja (secao 12): e a marca que carimba pedido e carrinho.
-  for (const [storeId, estado] of Object.entries(antigo.lojas ?? {})) {
-    await gravarArquivo(arquivoDaLoja(storeId), {
-      pedidos: antigo.pedidos.filter((p) => p.marca === estado.marca),
-      carrinhos: (antigo.carrinhos ?? []).filter((c) => c.marca === estado.marca),
-    } satisfies LojaNoDisco);
+    // Nao existe ou nao serve: tenta o formato seguinte.
   }
 
-  const novo: IndiceNoDisco = {
-    versao: VERSAO,
-    lojas: antigo.lojas ?? {},
-    ausentes: antigo.ausentes ?? {},
-  };
-  await gravarArquivo(indice(), novo);
-  // So apaga depois que tudo foi gravado: falha no meio nao perde a copia.
-  await fs.rm(arquivoAntigo(), { force: true });
-  return novo;
+  // 2. Um arquivo por loja (`loja-<id>.json`).
+  if (!cabecalho) return null;
+  for (const storeId of Object.keys(cabecalho.lojas)) {
+    let antigo: LojaNoDiscoAntigo;
+    try {
+      antigo = JSON.parse(
+        await fs.readFile(arquivoAntigoDaLoja(storeId), "utf8"),
+      ) as LojaNoDiscoAntigo;
+    } catch {
+      continue;
+    }
+    await gravarLoja(storeId, antigo.pedidos ?? [], antigo.carrinhos ?? []);
+    await fs.rm(arquivoAntigoDaLoja(storeId), { force: true });
+  }
+  return cabecalho;
+}
+
+/** `true` se a loja ja tem a pasta do formato novo. */
+async function temPastaNova(storeId: string): Promise<boolean> {
+  try {
+    return (await fs.stat(pastaDaLoja(storeId))).isDirectory();
+  } catch {
+    return false;
+  }
 }
 
 async function lerDoDisco(): Promise<BaseNuvemshop> {
@@ -230,35 +335,32 @@ async function lerDoDisco(): Promise<BaseNuvemshop> {
     // Formato de outra versao: recomeca. Buscar de novo e mais seguro que migrar.
     cabecalho = lido.versao === VERSAO ? lido : null;
   } catch {
-    cabecalho = await migrar();
+    cabecalho = null;
   }
+
+  /*
+   * Converte quando nao ha indice utilizavel, ou quando ha indice mas alguma
+   * loja ainda esta no formato de arquivo unico por loja.
+   */
+  const storeIdsConhecidos = cabecalho ? Object.keys(cabecalho.lojas) : [];
+  const faltaConverter =
+    cabecalho === null ||
+    (
+      await Promise.all(storeIdsConhecidos.map(temPastaNova))
+    ).some((tem) => !tem);
+  if (faltaConverter) cabecalho = (await migrar(cabecalho)) ?? cabecalho;
   if (!cabecalho) return vazia();
 
   const storeIds = Object.keys(cabecalho.lojas);
   const assinatura = await assinaturaDoDisco(storeIds);
-  if (memoria.base && assinatura !== null && memoria.assinatura === assinatura) {
-    return memoria.base;
-  }
+  if (memoria.base && memoria.assinatura === assinatura) return memoria.base;
 
   const pedidos: Pedido[] = [];
   const carrinhos: CarrinhoAbandonado[] = [];
-  /*
-   * Uma loja por vez, de proposito: `JSON.parse` em paralelo teria todas as
-   * strings de origem vivas ao mesmo tempo. Assim cada uma e liberada antes da
-   * proxima.
-   */
   for (const storeId of storeIds) {
-    try {
-      const daLoja = JSON.parse(
-        await fs.readFile(arquivoDaLoja(storeId), "utf8"),
-      ) as LojaNoDisco;
-      if (Array.isArray(daLoja.pedidos)) pedidos.push(...daLoja.pedidos);
-      if (Array.isArray(daLoja.carrinhos)) carrinhos.push(...daLoja.carrinhos);
-    } catch {
-      // Arquivo de uma loja faltando ou corrompido: as outras seguem, e a
-      // proxima sincronizacao a busca de novo (o estado dela continua no
-      // indice, entao ela nao vira "loja pendente" para sempre).
-    }
+    const daLoja = await lerDaLoja(storeId);
+    pedidos.push(...daLoja.pedidos);
+    carrinhos.push(...daLoja.carrinhos);
   }
 
   const base: BaseNuvemshop = {
@@ -275,7 +377,7 @@ async function lerDoDisco(): Promise<BaseNuvemshop> {
 
 /**
  * Grava a copia. `storeIdsAlterados` limita a escrita as lojas que mudaram --
- * reescrever as cinco a cada 5 minutos seria centenas de MB de disco por hora
+ * reescrever todas a cada 5 minutos seria centenas de MB de disco por hora
  * para nada.
  */
 async function gravarNoDisco(
@@ -292,17 +394,18 @@ async function gravarNoDisco(
   for (const storeId of aGravar) {
     const marca = marcaDaLoja.get(storeId);
     if (marca === undefined) continue;
-    await gravarArquivo(arquivoDaLoja(storeId), {
-      pedidos: base.pedidos.filter((p) => p.marca === marca),
-      carrinhos: base.carrinhos.filter((c) => c.marca === marca),
-    } satisfies LojaNoDisco);
+    await gravarLoja(
+      storeId,
+      base.pedidos.filter((p) => p.marca === marca),
+      base.carrinhos.filter((c) => c.marca === marca),
+    );
   }
 
-  // Loja que saiu da configuracao leva o arquivo dela junto.
+  // Loja que saiu da configuracao leva a pasta dela junto.
   for (const nome of await fs.readdir(pasta())) {
-    const achado = /^loja-(.+)\.json$/.exec(nome);
+    const achado = /^loja-(.+)$/.exec(nome);
     if (achado && !marcaDaLoja.has(achado[1]!)) {
-      await fs.rm(path.join(pasta(), nome), { force: true });
+      await fs.rm(path.join(pasta(), nome), { recursive: true, force: true });
     }
   }
 

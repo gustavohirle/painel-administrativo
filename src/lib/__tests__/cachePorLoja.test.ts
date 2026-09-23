@@ -6,21 +6,23 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Pedido } from "@/types/nuvemshop";
 
 /*
- * O cache de pedidos guarda UM ARQUIVO POR LOJA (seção 12).
+ * O cache de pedidos guarda UM ARQUIVO POR LOJA E POR MÊS (seção 12).
  *
- * O que este teste protege é a migração: no servidor existe uma cópia no
- * formato antigo, de arquivo único, e ela precisa virar o formato novo sem
- * perder pedido nenhum. Se perdesse, o painel abriria vazio e buscaria os 12
- * meses das cinco lojas no caminho da primeira página aberta.
+ * O que este arquivo protege são as duas lições de 23/09/2026, as duas
+ * pagas com 44 minutos de busca perdidos em produção:
+ *
+ * 1. a migração dos formatos antigos não pode perder pedido;
+ * 2. falha ao LER uma loja não pode ser engolida — quem não conseguiu ler
+ *    não pode gravar por cima.
  */
 
 let pasta: string;
 
-const pedido = (id: number, marca: string): Pedido =>
+const pedido = (id: number, marca: string, mes = "2026-09"): Pedido =>
   ({
     id,
     number: id,
-    created_at: "2026-09-10T12:00:00-03:00",
+    created_at: `${mes}-10T12:00:00-03:00`,
     paid_at: null,
     status: "open",
     payment_status: "pending",
@@ -42,13 +44,13 @@ const pedido = (id: number, marca: string): Pedido =>
 const loja = (marca: string) => ({
   marca,
   sincronizadoEm: "2026-09-23T10:00:00.000Z",
-  desdeMes: "2026-07",
+  desdeMes: "2025-09",
 });
 
 /**
- * O cache guarda a copia lida em `globalThis` (armadilha 2), entao cada teste
- * precisa de um modulo novo e de um `globalThis` limpo -- senao o segundo
- * teste leria a pasta do primeiro.
+ * O cache guarda a cópia lida em `globalThis` (armadilha 2), então cada teste
+ * precisa de um módulo novo e de um `globalThis` limpo — senão o segundo teste
+ * leria a pasta do primeiro.
  */
 async function carregar() {
   process.env.NUVEMSHOP_CACHE_DIR = pasta;
@@ -56,6 +58,9 @@ async function carregar() {
   vi.resetModules();
   return import("@/data/cachePedidos");
 }
+
+const escrever = (nome: string, conteudo: unknown) =>
+  fs.writeFile(path.join(pasta, nome), JSON.stringify(conteudo));
 
 beforeEach(async () => {
   pasta = await fs.mkdtemp(path.join(os.tmpdir(), "cache-painel-"));
@@ -65,107 +70,132 @@ afterEach(async () => {
   await fs.rm(pasta, { recursive: true, force: true });
 });
 
-describe("cache de pedidos, um arquivo por loja", () => {
-  it("converte a copia antiga de arquivo unico sem perder pedido", async () => {
-    await fs.writeFile(
-      path.join(pasta, "pedidos.json"),
-      JSON.stringify({
-        versao: 1,
-        lojas: { "111": loja("Loja A"), "222": loja("Loja B") },
-        pedidos: [pedido(1, "Loja A"), pedido(2, "Loja A"), pedido(3, "Loja B")],
-        carrinhos: [{ id: 9, marca: "Loja B", created_at: "2026-09-01T00:00:00-03:00" }],
-        ausentes: { "111": { shipping_cost_customer: 2 } },
-      }),
-    );
+describe("migração do arquivo único", () => {
+  it("converte sem perder pedido, e quebra por mês", async () => {
+    await escrever("pedidos.json", {
+      versao: 1,
+      lojas: { "111": loja("Loja A"), "222": loja("Loja B") },
+      pedidos: [
+        pedido(1, "Loja A", "2026-08"),
+        pedido(2, "Loja A", "2026-09"),
+        pedido(3, "Loja A", "2026-09"),
+        pedido(4, "Loja B", "2026-09"),
+      ],
+      carrinhos: [{ id: 9, marca: "Loja B", created_at: "2026-09-01T00:00:00-03:00" }],
+      ausentes: { "111": { shipping_cost_customer: 2 } },
+    });
 
     const { lerCache } = await carregar();
     const base = await lerCache();
 
-    expect(base.pedidos).toHaveLength(3);
+    expect(base.pedidos).toHaveLength(4);
     expect(base.carrinhos).toHaveLength(1);
-    expect(Object.keys(base.lojas).sort()).toEqual(["111", "222"]);
-    // O indice guarda o que nao e pedido -- inclusive os campos vigiados.
     expect(base.ausentes["111"]).toEqual({ shipping_cost_customer: 2 });
 
-    const arquivos = (await fs.readdir(pasta)).sort();
-    expect(arquivos).toEqual(["indice.json", "loja-111.json", "loja-222.json"]);
-
-    // Cada arquivo com os pedidos da SUA loja, e so eles.
-    const a = JSON.parse(await fs.readFile(path.join(pasta, "loja-111.json"), "utf8"));
-    const b = JSON.parse(await fs.readFile(path.join(pasta, "loja-222.json"), "utf8"));
-    expect(a.pedidos.map((p: Pedido) => p.id)).toEqual([1, 2]);
-    expect(b.pedidos.map((p: Pedido) => p.id)).toEqual([3]);
-    expect(b.carrinhos).toHaveLength(1);
-  });
-
-  it("o arquivo antigo so some depois que os novos estao gravados", async () => {
-    await fs.writeFile(
-      path.join(pasta, "pedidos.json"),
-      JSON.stringify({
-        versao: 1,
-        lojas: { "111": loja("Loja A") },
-        pedidos: [pedido(1, "Loja A")],
-        carrinhos: [],
-        ausentes: {},
-      }),
+    // Um arquivo por mês, e é isso que impede o arquivo de crescer com a janela.
+    expect((await fs.readdir(path.join(pasta, "loja-111"))).sort()).toEqual([
+      "carrinhos.json",
+      "pedidos-2026-08.json",
+      "pedidos-2026-09.json",
+    ]);
+    const agosto = JSON.parse(
+      await fs.readFile(path.join(pasta, "loja-111", "pedidos-2026-08.json"), "utf8"),
     );
+    expect(agosto.map((p: Pedido) => p.id)).toEqual([1]);
 
-    const { lerCache } = await carregar();
-    await lerCache();
+    // Só apaga o antigo depois de gravar o novo.
     expect((await fs.readdir(pasta)).includes("pedidos.json")).toBe(false);
   });
+});
 
-  it("ler duas vezes devolve o mesmo, sem remigrar", async () => {
-    await fs.writeFile(
-      path.join(pasta, "pedidos.json"),
-      JSON.stringify({
-        versao: 1,
-        lojas: { "111": loja("Loja A") },
-        pedidos: [pedido(1, "Loja A"), pedido(2, "Loja A")],
-        carrinhos: [],
-        ausentes: {},
-      }),
-    );
+describe("migração do formato de um arquivo por loja", () => {
+  it("converte para a quebra por mês sem perder pedido", async () => {
+    await escrever("indice.json", {
+      versao: 1,
+      lojas: { "111": loja("Loja A") },
+      ausentes: {},
+    });
+    await escrever("loja-111.json", {
+      pedidos: [pedido(1, "Loja A", "2026-08"), pedido(2, "Loja A", "2026-09")],
+      carrinhos: [],
+    });
+
+    const { lerCache } = await carregar();
+    const base = await lerCache();
+
+    expect(base.pedidos.map((p: Pedido) => p.id).sort()).toEqual([1, 2]);
+    expect((await fs.readdir(pasta)).includes("loja-111.json")).toBe(false);
+    expect((await fs.readdir(path.join(pasta, "loja-111"))).sort()).toEqual([
+      "carrinhos.json",
+      "pedidos-2026-08.json",
+      "pedidos-2026-09.json",
+    ]);
+  });
+});
+
+describe("leitura", () => {
+  it("ler duas vezes devolve o mesmo", async () => {
+    await escrever("pedidos.json", {
+      versao: 1,
+      lojas: { "111": loja("Loja A") },
+      pedidos: [pedido(1, "Loja A"), pedido(2, "Loja A")],
+      carrinhos: [],
+      ausentes: {},
+    });
 
     const { lerCache } = await carregar();
     expect((await lerCache()).pedidos).toHaveLength(2);
     expect((await lerCache()).pedidos).toHaveLength(2);
   });
 
-  it("pasta vazia devolve base vazia, e nao quebra", async () => {
+  it("pasta vazia devolve base vazia, e não quebra", async () => {
     const { lerCache } = await carregar();
     const base = await lerCache();
     expect(base.pedidos).toEqual([]);
     expect(base.lojas).toEqual({});
   });
 
-  it("arquivo de uma loja corrompido nao derruba as outras", async () => {
+  it("cópia de outra versão recomeça, em vez de migrar às cegas", async () => {
+    await escrever("indice.json", { versao: 99, lojas: { "111": loja("Loja A") }, ausentes: {} });
+    const { lerCache } = await carregar();
+    expect((await lerCache()).pedidos).toEqual([]);
+  });
+
+  it("MÊS ILEGÍVEL FAZ A LEITURA FALHAR, em vez de devolver a loja vazia", async () => {
     /*
-     * A loja continua no indice de proposito: assim ela nao vira "loja
-     * pendente" para sempre, e a proxima sincronizacao a busca de novo.
+     * É o defeito que apagou 239 mil pedidos em produção (23/09/2026): a
+     * leitura da loja maior falhou por falta de memória, um `catch` devolveu a
+     * loja vazia, e a gravação seguinte salvou esse vazio por cima de 13 meses
+     * de histórico.
+     *
+     * Cópia velha é um problema; cópia APAGADA é outro, muito maior. Quem não
+     * conseguiu ler não grava.
      */
-    await fs.writeFile(
-      path.join(pasta, "indice.json"),
-      JSON.stringify({ versao: 1, lojas: { "111": loja("Loja A"), "222": loja("Loja B") }, ausentes: {} }),
-    );
-    await fs.writeFile(
-      path.join(pasta, "loja-111.json"),
-      JSON.stringify({ pedidos: [pedido(1, "Loja A")], carrinhos: [] }),
-    );
-    await fs.writeFile(path.join(pasta, "loja-222.json"), "{ isto nao e json");
+    await escrever("indice.json", { versao: 1, lojas: { "111": loja("Loja A") }, ausentes: {} });
+    await fs.mkdir(path.join(pasta, "loja-111"), { recursive: true });
+    await escrever(path.join("loja-111", "pedidos-2026-09.json"), [pedido(1, "Loja A")]);
+    await fs.writeFile(path.join(pasta, "loja-111", "pedidos-2026-08.json"), "{ isto nao e json");
+
+    const { lerCache } = await carregar();
+    await expect(lerCache()).rejects.toThrow();
+  });
+
+  it("carrinho ilegível não derruba a leitura dos pedidos", async () => {
+    // Carrinho é o número menos importante da tela e se refaz de hora em hora.
+    await escrever("indice.json", { versao: 1, lojas: { "111": loja("Loja A") }, ausentes: {} });
+    await fs.mkdir(path.join(pasta, "loja-111"), { recursive: true });
+    await escrever(path.join("loja-111", "pedidos-2026-09.json"), [pedido(1, "Loja A")]);
+    await fs.writeFile(path.join(pasta, "loja-111", "carrinhos.json"), "{ nao e json");
 
     const { lerCache } = await carregar();
     const base = await lerCache();
-
-    expect(base.pedidos.map((p: Pedido) => p.id)).toEqual([1]);
-    expect(Object.keys(base.lojas).sort()).toEqual(["111", "222"]);
+    expect(base.pedidos).toHaveLength(1);
+    expect(base.carrinhos).toEqual([]);
   });
 
-  it("copia de outra versao recomeca, em vez de migrar as cegas", async () => {
-    await fs.writeFile(
-      path.join(pasta, "indice.json"),
-      JSON.stringify({ versao: 99, lojas: { "111": loja("Loja A") }, ausentes: {} }),
-    );
+  it("loja sem pasta nenhuma é loja que nunca foi buscada, e não é erro", async () => {
+    await escrever("indice.json", { versao: 1, lojas: { "111": loja("Loja A") }, ausentes: {} });
+    await fs.mkdir(path.join(pasta, "loja-111"), { recursive: true });
 
     const { lerCache } = await carregar();
     expect((await lerCache()).pedidos).toEqual([]);
