@@ -3,6 +3,15 @@
  * modo demonstracao e modo real.
  */
 
+import {
+  CANAIS_DE_MARKETPLACE,
+  chaveDaConta,
+  NOMES_DA_CREDENCIAL,
+  ROTULO_CANAL,
+  type CanalMarketplace,
+  type ContaDeCanal,
+} from "@/types/canais";
+
 export type FonteDados = "demo" | "live";
 
 /**
@@ -252,4 +261,115 @@ export function exigirHttpsNoCookie(): boolean {
 
   const liberado = process.env.PERMITIR_HTTP_SEM_TLS === "1";
   return !(liberado && modoDemonstracao());
+}
+
+// ---------------------------------------------------------------------------
+// Canais de marketplace (Shopee, TikTok Shop, Mercado Livre)
+// ---------------------------------------------------------------------------
+
+/**
+ * Contas de marketplace configuradas.
+ *
+ * Um bloco por conta, numerado a partir de 1 (ate 20):
+ *
+ *     CANAL_1_TIPO=mercadolivre
+ *     CANAL_1_MARCA="Tha Beauty"
+ *     CANAL_1_LOJA_ID=123456789
+ *     CANAL_1_CHAVE=...
+ *     CANAL_1_SEGREDO=...
+ *
+ * Bloco sem TIPO e sem CHAVE e ignorado por inteiro: da para deixar os cinco
+ * blocos prontos no arquivo e preencher conforme as chaves chegam. Bloco pela
+ * metade, nao -- ali alguem comecou a preencher e parou, e seguir em silencio
+ * esconderia o erro ate a busca falhar.
+ *
+ * Os nomes dos campos sao genericos de proposito: os tres marketplaces pedem
+ * as mesmas quatro coisas com nomes diferentes, e `NOMES_DA_CREDENCIAL` (em
+ * `types/canais.ts`) faz a traducao para quem vai colar as chaves.
+ *
+ * Devolve lista vazia quando nada esta configurado. Hoje NINGUEM consome isto
+ * para buscar pedido: a integracao e a Fase 4 (secao 9), e o que existe ate
+ * aqui e o cadastro das credenciais.
+ */
+export function contasDeCanal(): ContaDeCanal[] {
+  const contas: ContaDeCanal[] = [];
+
+  for (let n = 1; n <= 20; n++) {
+    const ler = (campo: string) => process.env[`CANAL_${n}_${campo}`]?.trim() ?? "";
+    const tipo = ler("TIPO").toLowerCase();
+    const chave = ler("CHAVE");
+    const marca = ler("MARCA");
+    const segredo = ler("SEGREDO");
+    const lojaId = ler("LOJA_ID");
+
+    // Bloco intocado: nem o tipo, nem a chave. Segue adiante sem reclamar.
+    if (tipo === "" && (chave === "" || chaveDeExemplo(chave))) continue;
+
+    if (!(CANAIS_DE_MARKETPLACE as readonly string[]).includes(tipo)) {
+      throw new Error(
+        `CANAL_${n}_TIPO precisa ser um destes: ${CANAIS_DE_MARKETPLACE.join(", ")}. ` +
+          `Veio "${ler("TIPO")}". Confira o .env.live.`,
+      );
+    }
+    const canal = tipo as CanalMarketplace;
+    const nomes = NOMES_DA_CREDENCIAL[canal];
+
+    // Bloco preparado, chave ainda nao colada: continua sendo "nao configurado".
+    if (chave === "" || chaveDeExemplo(chave)) continue;
+
+    /*
+     * Daqui para baixo o bloco esta em uso, e falta de campo e ERRO -- e nao
+     * uma conta que simplesmente nao busca. A mensagem cita o nome que a
+     * pessoa viu no painel do marketplace, e nao o nosso: quem esta com a tela
+     * da Shopee aberta procura "partner_key", nao "SEGREDO".
+     */
+    if (marca === "") {
+      throw new Error(
+        `CANAL_${n}_MARCA esta vazio. A marca e o que liga o pedido ao contrato do influencer: ` +
+          `sem ela o faturamento deste canal nao entra em conta nenhuma.`,
+      );
+    }
+    if (segredo === "" || chaveDeExemplo(segredo)) {
+      throw new Error(
+        `CANAL_${n}_SEGREDO esta vazio (${nomes.segredo}, no ${nomes.onde}).`,
+      );
+    }
+    if (lojaId === "") {
+      throw new Error(`CANAL_${n}_LOJA_ID esta vazio (${nomes.lojaId}, no ${nomes.onde}).`);
+    }
+
+    const opcional = (campo: string) => {
+      const valor = ler(campo);
+      return valor === "" || chaveDeExemplo(valor) ? null : valor;
+    };
+
+    contas.push({
+      canal,
+      marca,
+      lojaId,
+      chave,
+      segredo,
+      tokenInicial: opcional("TOKEN"),
+      refreshInicial: opcional("REFRESH"),
+    });
+  }
+
+  /*
+   * A mesma loja duas vezes no mesmo canal e erro: as duas buscariam os mesmos
+   * pedidos e o faturamento sairia dobrado. Em canais diferentes, nao -- o
+   * mesmo numero pode existir na Shopee e no Mercado Livre sem nenhuma
+   * relacao.
+   */
+  const vistas = new Set<string>();
+  for (const conta of contas) {
+    const id = chaveDaConta(conta.canal, conta.lojaId);
+    if (vistas.has(id)) {
+      throw new Error(
+        `A loja ${conta.lojaId} aparece duas vezes em ${ROTULO_CANAL[conta.canal]}. Confira o .env.live.`,
+      );
+    }
+    vistas.add(id);
+  }
+
+  return contas;
 }

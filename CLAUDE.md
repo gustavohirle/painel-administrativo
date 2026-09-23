@@ -2355,11 +2355,12 @@ Não implemente nada disto. Está aqui para não tomar decisões que fechem port
   consulta de status e rastreio de pedido.
 - **Multi-usuário.** Hoje não há login. Quando houver, o `RepositorioCadastros`
   ganha um escopo de organização.
-- **Fase 4 — TikTok Shop e Mercado Livre.** A empresa vende por esses dois
+- **Fase 4 — Shopee, TikTok Shop e Mercado Livre.** A empresa vende por esses
   canais e eles **não passam pela Nuvemshop**, então hoje estão fora do painel
-  inteiro. Decisão do dono em 18/09/2026: **não mexer agora**, integrar as APIs
-  no futuro. Enquanto isso, três coisas ficam sabidamente furadas, e quem for
-  usar o painel para decidir precisa saber:
+  inteiro. Em 23/09/2026 o dono passou a ligar as chaves, e o painel já as
+  recebe (ver abaixo) — mas **nenhuma busca existe ainda**. Enquanto isso, três
+  coisas ficam sabidamente furadas, e quem for usar o painel para decidir
+  precisa saber:
 
   1. **O estoque é otimista.** O saldo é "última contagem − vendido desde
      então" (5.12), e o vendido só conta a Nuvemshop. Venda de marketplace
@@ -2372,9 +2373,73 @@ Não implemente nada disto. Está aqui para não tomar decisões que fechem port
      nenhuma tela diz isso hoje, por decisão do dono. Foi o que fez o DIFAL do
      painel não bater com o do contador (5.10.2).
 
-  Ao integrar: os dois têm API própria e OAuth próprio, e o caminho é o mesmo
-  da Nuvemshop — conversão na borda para `Pedido`, cache por loja, e `marca`
-  carimbando a origem. Nenhuma regra de negócio muda (seção 3).
+  **A primeira medida do buraco** saiu em 23/09/2026: no CNPJ da Ka Beauty, a
+  distância entre o RBT12 do contador e o do painel era de **R$ 49.997,32 em
+  sete meses**, ~2,6% do faturamento daquele CNPJ (5.10.1). O dono atribuiu a
+  diferença aos marketplaces. Fica uma ressalva anotada: ele disse depois que
+  **só a Tha Beauty vende nesses canais**, e as duas coisas não se encaixam —
+  vale confirmar com o contador de onde vêm aqueles R$ 50 mil.
+
+  **As credenciais já entram** (23/09/2026), e são três canais, não dois: entrou
+  a **Shopee** junto. O que existe é só o cadastro — preencher não traz pedido
+  nenhum, e o script diz isso em voz alta no fim.
+
+  Um bloco por conta no `.env.live`, numerado, no mesmo molde das lojas
+  Nuvemshop (`contasDeCanal`, em `lib/config.ts`):
+
+  ```
+  CANAL_1_TIPO=mercadolivre        # shopee | tiktok | mercadolivre
+  CANAL_1_MARCA="Tha Beauty"
+  CANAL_1_LOJA_ID=123456789
+  CANAL_1_CHAVE=...
+  CANAL_1_SEGREDO=...
+  ```
+
+  Os nomes são genéricos porque os três marketplaces pedem as mesmas quatro
+  coisas com nomes diferentes; `NOMES_DA_CREDENCIAL` (em `types/canais.ts`) faz
+  a tradução, e é ela que as **mensagens de erro** usam — quem está com a tela
+  da Shopee aberta procura "partner_key", não "SEGREDO":
+
+  | campo | Shopee | TikTok Shop | Mercado Livre |
+  |---|---|---|---|
+  | `CHAVE` | `partner_id` | `app_key` | `client_id` |
+  | `SEGREDO` | `partner_key` | `app_secret` | `client_secret` |
+  | `LOJA_ID` | `shop_id` | `shop_cipher` | `seller_id` |
+
+  Quatro decisões:
+
+  1. **Bloco intocado é ignorado; bloco pela metade é ERRO.** Dá para deixar os
+     três blocos prontos e preencher conforme as chaves chegam, mas um campo
+     esquecido não pode virar uma conta que silenciosamente não busca — isso só
+     daria sinal dias depois.
+  2. **O TOKEN não mora no `.env.live`.** Nos três canais o token de acesso dura
+     horas e o de renovação é **trocado a cada uso**, então a credencial que
+     vale agora não é a que alguém colou uma vez. Ela fica em
+     `.live-data/tokens-canais.json`, modo 600 (`data/tokensCanais.ts`) — que é
+     também o único caminho gravável do serviço em produção (seção 14). O
+     `.env.live` serve para a primeira autorização e para destravar uma conta
+     cujo token guardado venceu; `tokenDaConta` prefere o gravado. É o mesmo
+     problema já anotado para o Bling, logo abaixo.
+  3. **Marca repetida entre canais é normal**, ao contrário da Nuvemshop, onde
+     é erro. Lá cada loja é de uma marca; aqui **só a Tha Beauty vende nos três
+     canais** (dito pelo dono em 23/09/2026), e os três blocos apontam para
+     ela. A mesma loja repetida no mesmo canal continua sendo erro — as duas
+     buscariam os mesmos pedidos e o faturamento sairia dobrado.
+  4. **`npm run canais:conferir` mostra o que foi lido, sem chamar API.** O
+     identificador do aplicativo aparece inteiro (não é segredo, e é por ele
+     que se confere a conta); segredo e token saem mascarados, com os quatro
+     últimos dígitos — o bastante para comparar com a tela do marketplace.
+
+  **A decisão que falta**, e que vem junto com o primeiro conversor: hoje
+  `Pedido` não tem de que canal veio. Com a Nuvemshop isso não fazia falta
+  porque `marca` bastava — uma loja por marca. Com a Tha vendendo em quatro
+  canais, todos carimbados "Tha Beauty", o painel some com a distinção: não dá
+  para dizer quanto veio da Nuvemshop e quanto veio de marketplace. `Pedido`
+  vai precisar de um campo `canal`.
+
+  Ao integrar: cada um tem API e OAuth próprios, e o caminho é o mesmo da
+  Nuvemshop — conversão na borda para `Pedido`, cache por loja e por mês, e
+  `marca` ligando ao contrato. Nenhuma regra de negócio muda (seção 3).
 
 - **Bling (ERP), se o cliente quiser.** Ele já usa o Bling ligado à Nuvemshop, e
   de lá sairia o que a API da loja não tem: **composição de kit**

@@ -182,3 +182,34 @@ endereço fixo, é preciso um túnel nomeado com domínio próprio.
 Os pedidos copiados ficam em `.live-data/pedidos.json`, **sem nome, e-mail,
 telefone, documento nem endereço de cliente**, só o estado de destino. Mesmo
 assim é dado da empresa: a pasta não vai para o git.
+
+---
+
+## Marketplaces (Shopee, TikTok Shop, Mercado Livre)
+
+Hoje o painel apenas **guarda as credenciais** desses canais. Preencher os
+blocos não traz pedido nenhum — a busca é a Fase 4 (seção 9 do CLAUDE.md).
+
+1. Abra o `.env.live` e preencha um bloco `CANAL_<n>_*` por conta. O modelo,
+   com a tabela de qual campo é qual em cada marketplace, está no
+   `.env.live.example`.
+2. Rode:
+
+   ```bash
+   npm run canais:conferir
+   ```
+
+   Ele mostra o que o painel leu, sem chamar API nenhuma. Segredo e token saem
+   mascarados; o identificador do aplicativo aparece inteiro, que é por ele que
+   se confere a conta.
+3. Confira que existe **contrato na aba Influencers com exatamente a marca** que
+   você escreveu no bloco. A grafia precisa bater, com acento e maiúsculas — é
+   por ela que o pedido acha o influencer (armadilha 9).
+
+**Não cole o segredo em conversa, e-mail ou print.** No servidor, edite com
+`nano /opt/painel/app/.env.live`, como as chaves da Nuvemshop.
+
+O token de acesso **não** fica no `.env.live`: os três canais giram o token, e
+o que vale em execução é gravado em `.live-data/tokens-canais.json` (modo 600).
+O campo `CANAL_<n>_TOKEN` serve para a primeira autorização e para destravar
+uma conta cujo token guardado venceu.
