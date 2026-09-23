@@ -85,6 +85,7 @@ export async function criarUsuario(
 const esquemaAlteracao = z.object({
   id: z.string().trim().min(1),
   nome: z.string().trim().min(3, "Escreva o nome da pessoa").max(80),
+  usuario: z.string().trim().min(1, "Informe o login"),
   perfil: z.enum(perfis, { errorMap: () => ({ message: "Escolha a função" }) }),
   ativo: z.boolean(),
 });
@@ -98,6 +99,7 @@ export async function alterarUsuario(
   const analise = esquemaAlteracao.safeParse({
     id: formData.get("id"),
     nome: formData.get("nome"),
+    usuario: formData.get("usuario"),
     perfil: formData.get("perfil"),
     // Caixa desmarcada nao vai no formulario.
     ativo: formData.get("ativo") === "on",
@@ -111,24 +113,45 @@ export async function alterarUsuario(
   const atual = usuarios.find((u) => u.id === analise.data.id);
   if (!atual) return { ok: false, mensagem: "Usuário não encontrado." };
 
-  const problema = problemaAoAlterar(usuarios, atual.id, quemPede.id, {
-    perfil: analise.data.perfil,
-    ativo: analise.data.ativo,
-  });
+  const login = normalizarLogin(analise.data.usuario);
+
+  const problema =
+    problemaNoLogin(login, usuarios, atual.id) ??
+    problemaAoAlterar(usuarios, atual.id, quemPede.id, {
+      perfil: analise.data.perfil,
+      ativo: analise.data.ativo,
+    });
   if (problema) return { ok: false, mensagem: problema };
 
-  // O hash e o login nao mudam aqui: senha tem acao propria, e trocar login
-  // deixaria a pessoa sem saber como entrar.
+  /*
+   * O LOGIN muda aqui; o hash nao (senha tem acao propria).
+   *
+   * Antes o login era intocavel, com o argumento de que troca-lo deixaria a
+   * pessoa sem saber como entrar. O que aconteceu foi o contrario: o dono
+   * renomeou "dono" para "Valmir", continuou entrando com "dono" e achou que
+   * era defeito -- porque a tela chamava as duas coisas de nome. O risco de
+   * trocar sem avisar se resolve avisando, e e o que a mensagem abaixo faz.
+   *
+   * A sessao aberta sobrevive: o cookie guarda o ID, nao o login.
+   */
+  const trocouLogin = login !== atual.usuario;
+
   await repositorio.salvarUsuario({
     ...atual,
     nome: analise.data.nome,
+    usuario: login,
     perfil: analise.data.perfil,
     ativo: analise.data.ativo,
     atualizadoEm: new Date().toISOString(),
   });
 
   revalidatePath("/usuarios");
-  return { ok: true, mensagem: "Usuário atualizado." };
+  return {
+    ok: true,
+    mensagem: trocouLogin
+      ? `Usuário atualizado. Ele entra agora com o login "${login}" — avise a pessoa. Quem já está logado continua, até sair.`
+      : "Usuário atualizado.",
+  };
 }
 
 export async function definirSenha(

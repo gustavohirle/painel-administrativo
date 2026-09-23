@@ -1219,6 +1219,14 @@ Três detalhes que já cobraram tempo:
   "Reading from node:util is not handled".
 - **Trocar a senha de alguém não derruba a sessão aberta dele**: o cookie é
   assinado e só expira. Está escrito na tela para ninguém supor o contrário.
+- **O LOGIN é editável, e é campo separado do nome** (23/09/2026). Era
+  intocável, com o argumento de que trocá-lo deixaria a pessoa sem saber como
+  entrar. O que aconteceu foi o contrário: o cliente renomeou "dono" para
+  "Valmir", continuou entrando com "dono" e achou que era defeito — porque a
+  tela chamava as duas coisas de nome. O risco de trocar sem avisar se resolve
+  **avisando**: a mensagem de sucesso diz o login novo, e a lista escreve
+  "login: dono" por extenso. A sessão aberta sobrevive, porque o cookie guarda
+  o ID e não o login.
 
 O `fumaca` entende `null` em `AREA_DA_ROTA` como "qualquer pessoa logada", que
 é o caso do `/conta`.

@@ -111,7 +111,13 @@ export function GestaoUsuarios({
                           </span>
                         )}
                       </p>
-                      <p className="numerico text-xs text-tinta-fraca">{usuario.usuario}</p>
+                      {/* "login:" escrito por extenso: sem o rotulo, o nome e
+                          o login pareciam a mesma coisa em tamanhos
+                          diferentes, e trocar um sem trocar o outro virava
+                          defeito na cabeca de quem olha. */}
+                      <p className="text-xs text-tinta-fraca">
+                        login: <span className="numerico">{usuario.usuario}</span>
+                      </p>
                     </td>
 
                     <td className="py-3 pr-4">
@@ -330,10 +336,29 @@ function FormularioEdicao({
     <div className="space-y-4 rounded-xl border border-borda bg-fundo p-4 sm:p-5">
       <form action={acao} className="space-y-4">
         <input type="hidden" name="id" value={usuario.id} />
-        <div className="grid gap-4 sm:grid-cols-2">
+        <div className="grid gap-4 sm:grid-cols-3">
           <label className="block">
             <span className="mb-1 block text-sm font-medium text-tinta">Nome</span>
             <input name="nome" required defaultValue={usuario.nome} maxLength={80} className={CAMPO} />
+            <span className="mt-1 block text-xs text-tinta-fraca">
+              Como a pessoa aparece na tela.
+            </span>
+          </label>
+          {/* O login e campo proprio, e a explicacao mora aqui porque foi
+              exatamente isto que confundiu: trocar o nome nao troca o login. */}
+          <label className="block">
+            <span className="mb-1 block text-sm font-medium text-tinta">Login</span>
+            <input
+              name="usuario"
+              required
+              defaultValue={usuario.usuario}
+              className={CAMPO}
+              autoComplete="off"
+            />
+            <span className="mt-1 block text-xs text-tinta-fraca">
+              É com isto que ela entra. Trocar aqui muda o login — avise a
+              pessoa. Quem já está logado continua até sair.
+            </span>
           </label>
           <label className="flex items-end gap-2 pb-2">
             <input
