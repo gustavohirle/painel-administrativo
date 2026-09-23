@@ -27,6 +27,8 @@ function influencer(id: string, marca: string, parcial: Partial<Influencer> = {}
     regime: "lucro_presumido",
     anexoSimples: "II",
     uf: "GO",
+    cnpj: null,
+    inicioAtividade: null,
     rbt12Manual: null,
     ativo: true,
     observacao: null,

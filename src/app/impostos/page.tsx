@@ -127,17 +127,15 @@ export default async function PaginaImpostos({
             usoPorImposto={usoPorImposto}
             operacoes={operacoes}
             valorPorImposto={valorPorImposto}
-            grupoSimples={
-              resultado.grupoSimples
-                ? {
-                    marcas: resultado.grupoSimples.marcas,
-                    rbt12: resultado.grupoSimples.rbt12.valor,
-                    rbt12Projetado: resultado.grupoSimples.rbt12.projetado,
-                    faixa: resultado.grupoSimples.faixa,
-                    aliquotaEfetiva: resultado.grupoSimples.aliquotaEfetiva,
-                  }
-                : null
-            }
+            gruposSimples={resultado.gruposSimples.map((g) => ({
+              cnpj: g.cnpj,
+              marcas: g.marcas,
+              rbt12: g.rbt12.valor,
+              rbt12Origem: g.rbt12.origem,
+              mesesDoRbt12: g.rbt12.mesesConsiderados,
+              faixa: g.faixa,
+              aliquotaEfetiva: g.aliquotaEfetiva,
+            }))}
           />
         </Cartao>
 

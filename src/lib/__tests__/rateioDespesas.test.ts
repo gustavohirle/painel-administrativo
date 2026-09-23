@@ -22,6 +22,8 @@ function influencer(id: string, marca: string, ativo = true): Influencer {
     regime: "lucro_presumido",
     anexoSimples: "II",
     uf: "GO",
+    cnpj: null,
+    inicioAtividade: null,
     rbt12Manual: null,
     ativo,
     observacao: null,

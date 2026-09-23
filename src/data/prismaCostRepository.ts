@@ -97,6 +97,10 @@ function mapearInfluencer(linha: Linha<typeof prisma.influencer>): Influencer {
     regime: linha.regime as RegimeTributario,
     anexoSimples: linha.anexoSimples as AnexoSimples,
     uf: linha.uf,
+    cnpj: linha.cnpj,
+    // Data sem hora: volta a ser texto "aaaa-mm-dd", como a data da despesa.
+    inicioAtividade:
+      linha.inicioAtividade === null ? null : linha.inicioAtividade.toISOString().slice(0, 10),
     rbt12Manual:
       linha.rbt12Manual === null ? null : decimalParaNumero(linha.rbt12Manual),
     ativo: linha.ativo,
@@ -252,6 +256,9 @@ export class RepositorioPostgres implements RepositorioCadastros {
       regime: entrada.regime,
       anexoSimples: entrada.anexoSimples,
       uf: entrada.uf,
+      cnpj: entrada.cnpj,
+      inicioAtividade:
+        entrada.inicioAtividade === null ? null : new Date(`${entrada.inicioAtividade}T12:00:00Z`),
       rbt12Manual: entrada.rbt12Manual,
       ativo: entrada.ativo,
       observacao: entrada.observacao,

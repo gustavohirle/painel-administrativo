@@ -28,6 +28,56 @@ const rbt12Digitado = z.preprocess((entrada) => {
   return Number.isFinite(n) ? n : Number.NaN;
 }, z.number({ invalid_type_error: "Receita de 12 meses inválida" }).min(0).nullable());
 
+/**
+ * CNPJ: guarda so os digitos, e recusa o que nao for um CNPJ de verdade.
+ *
+ * E a CHAVE do grupo do Simples (5.10.1). Se o mesmo CNPJ for digitado numa
+ * loja com pontuacao e noutra sem, as duas viram grupos diferentes e cada uma
+ * cai numa faixa que nao e a dela -- por isso a normalizacao acontece aqui, na
+ * gravacao, e nao na leitura.
+ *
+ * Os digitos verificadores sao conferidos porque um erro de digitacao aqui nao
+ * da erro em lugar nenhum: ele apenas separa em silencio duas lojas que
+ * deveriam somar.
+ */
+const cnpjDigitado = z.preprocess(
+  (entrada) => {
+    if (typeof entrada !== "string") return entrada;
+    const digitos = entrada.replace(/\D/g, "");
+    return digitos === "" ? null : digitos;
+  },
+  z
+    .string()
+    .nullable()
+    .refine((v) => v === null || v.length === 14, "CNPJ tem 14 dígitos")
+    .refine((v) => v === null || cnpjValido(v), "CNPJ inválido — confira os dígitos"),
+);
+
+/** Digitos verificadores do CNPJ (modulo 11). */
+function cnpjValido(digitos: string): boolean {
+  if (/^(\d)\1{13}$/.test(digitos)) return false;
+  const conta = (ate: number) => {
+    let peso = ate - 7;
+    let soma = 0;
+    for (let i = ate - 1; i >= 0; i--) {
+      soma += Number(digitos[i]) * peso;
+      peso = peso === 2 ? 9 : peso - 1;
+    }
+    const resto = soma % 11;
+    return resto < 2 ? 0 : 11 - resto;
+  };
+  return conta(12) === Number(digitos[12]) && conta(13) === Number(digitos[13]);
+}
+
+/** Data "aaaa-mm-dd", ou `null` quando o campo vem vazio. */
+const dataDigitada = z.preprocess(
+  (entrada) => (typeof entrada === "string" && entrada.trim() === "" ? null : entrada),
+  z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, "Data de início inválida")
+    .nullable(),
+);
+
 const esquemaInfluencer = z.object({
   id: z.string().optional(),
   nome: z.string().trim().min(1, "Informe o nome do influencer").max(120),
@@ -43,6 +93,8 @@ const esquemaInfluencer = z.object({
   }),
   anexoSimples: z.enum(["I", "II", "III", "IV", "V"]),
   uf: z.string().trim().length(2, "UF tem 2 letras").toUpperCase(),
+  cnpj: cnpjDigitado,
+  inicioAtividade: dataDigitada,
   rbt12Manual: rbt12Digitado,
   ativo: z.preprocess((v) => v === "on" || v === "true" || v === true, z.boolean()),
   observacao: z.string().trim().max(400).nullable().optional(),
@@ -64,6 +116,8 @@ export async function salvarInfluencer(
     regime: formData.get("regime") ?? "simples_nacional",
     anexoSimples: formData.get("anexoSimples") ?? "II",
     uf: formData.get("uf") ?? "GO",
+    cnpj: formData.get("cnpj") ?? "",
+    inicioAtividade: formData.get("inicioAtividade") ?? "",
     rbt12Manual: formData.get("rbt12Manual") ?? "",
     ativo: formData.get("ativo") ?? "false",
     observacao: formData.get("observacao") || null,

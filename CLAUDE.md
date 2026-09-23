@@ -952,30 +952,82 @@ mesmo CNPJ**, e o RBT12 é apurado por CNPJ: separar por loja punha a empresa
 numa faixa mais **baixa** que a devida. Quatro lojas de R$ 1 mi/ano não são
 quatro empresas na 2ª faixa — são uma empresa de R$ 4 mi na 5ª.
 
-Então: soma-se o faturamento de todas as marcas do regime, e **todas caem na
-mesma faixa**, com a mesma alíquota efetiva.
+Só que **"a empresa" é o CNPJ, e não "quem está no Simples"** — e essa segunda
+metade custou uma correção no mesmo dia. A primeira versão somou as quatro
+lojas do Simples numa faixa só, chegou a R$ 5,64 milhões e acusou estouro do
+teto de R$ 4,8 mi. Estava errado: a Ka Beauty tem CNPJ próprio. Ver "Como a
+divisão foi descoberta", abaixo.
 
-Quatro decisões de implementação, em `apurarImpostos`:
+Então: soma-se o faturamento das marcas **do mesmo CNPJ**, e todas as lojas
+daquele CNPJ caem na **mesma faixa**, com a mesma alíquota efetiva.
 
-1. **O grupo sai do CADASTRO de influencers, não dos pedidos em tela.** É o que
+Seis decisões de implementação, em `apurarImpostos`:
+
+1. **O grupo é o CNPJ** (`Influencer.cnpj`, só dígitos). Loja sem CNPJ
+   informado cai num grupo único, que é o comportamento de antes de o campo
+   existir — e a tela **avisa em vermelho**, porque somar lojas de CNPJ
+   diferente joga todas numa faixa que pode não ser a de nenhuma.
+2. **O RBT12 começa na abertura do CNPJ** (`Influencer.inicioAtividade`). Mês
+   anterior a ela foi faturado em outra empresa e não entra. A Ka é o caso:
+   CNPJ aberto em 01/01/2026, e os R$ 902 mil que a loja faturou entre setembro
+   e dezembro de 2025 são do CNPJ antigo. Divergindo entre lojas do mesmo CNPJ,
+   vale a abertura **mais antiga** — a empresa começou quando a primeira loja
+   dela começou.
+3. **Empresa nova NÃO projeta.** Com `inicioAtividade` preenchido, o RBT12 é a
+   **soma pura** dos meses desde a abertura (`origem: "abertura"`). É o que o
+   demonstrativo do contador faz: na competência 08/2026 da Ka, o RBT12 é a
+   soma de janeiro a julho, e não essa soma projetada para doze meses — que
+   daria quase o dobro e jogaria a empresa duas faixas acima. A projeção
+   continua valendo quando é a **base** que é curta: ali os meses faltantes
+   existiram e o painel simplesmente não os tem.
+4. **O grupo sai do CADASTRO de influencers, não dos pedidos em tela.** É o que
    faz o imposto de uma marca ser o mesmo na tela inicial e num relatório
    filtrado só nela. Se o grupo fosse montado a partir dos pedidos exibidos,
    filtrar por "marca = Ka" apuraria o RBT12 só da Ka, numa faixa mais baixa, e
    o painel teria duas versões do mesmo número (5.14). Pelo mesmo motivo,
    `historicoDe` em `relatorios.ts` **deixou de estreitar o histórico por
    marca** — quem separa é a apuração.
-2. **O DAS continua saindo marca a marca**: alíquota efetiva do grupo × base do
-   mês da marca. Como a alíquota é a mesma para todas, a soma das partes é
-   exatamente o DAS da empresa — e é isso que deixa o raio-x e o relatório
-   atribuírem imposto a uma marca sem inventar rateio. Há teste.
-3. **Fora do Simples o RBT12 continua por marca**, e serve só de referência: no
+5. **O DAS continua saindo marca a marca**: alíquota efetiva do CNPJ × base do
+   mês da marca. Como a alíquota é a mesma para todas as lojas daquele CNPJ, a
+   soma das partes é exatamente o DAS da empresa — e é isso que deixa o raio-x
+   e o relatório atribuírem imposto a uma marca sem inventar rateio. Há teste.
+6. **Fora do Simples o RBT12 continua por marca**, e serve só de referência: no
    Lucro Presumido não há faixa nem teto, e somar marcas ali não significaria
-   nada.
-4. **RBT12 informado à mão vale para o grupo inteiro.** O campo é por
-   influencer (`rbt12Manual`), mas o número é da empresa: informar num contrato
-   basta. Divergindo entre dois, vale o **maior** — subestimar a faixa cobra
-   imposto a menos, que é o erro caro, e a divergência fica visível porque o
-   RBT12 exibido é o mesmo para todas.
+   nada. **RBT12 informado à mão** vale para o CNPJ inteiro; divergindo entre
+   duas lojas dele, vale o **maior** — subestimar a faixa cobra imposto a
+   menos, que é o erro caro.
+
+**O CNPJ é normalizado na gravação, não na leitura**, e os dígitos
+verificadores são conferidos (`cnpjDigitado`, em `app/influencers/actions.ts`).
+Se o mesmo CNPJ for digitado com pontuação numa loja e sem noutra, as duas
+viram grupos diferentes e cada uma cai numa faixa que não é a dela — um erro
+que não dá mensagem em lugar nenhum, só separa em silêncio.
+
+#### Como a divisão foi descoberta (23/09/2026)
+
+O contador informou RBT12 de **R$ 1.910.089,97** para o CNPJ
+**30.997.734/0001-58**, competência 08/2026 — um CNPJ que não era nenhum dos
+dois anotados na seção 13. Com a base de 13 meses na mão, foi possível testar
+as quinze combinações de lojas contra esse número. Somando **janeiro a julho de
+2026** (o CNPJ abriu em 01/01/2026, então não tem doze meses):
+
+| Combinação | Total | Distância |
+|---|---|---|
+| **Ka Beauty sozinha** | **R$ 1.860.092,65** | **2,62%** |
+| Ka + Revenda | R$ 1.987.967,94 | 4,08% |
+| Ka + Duale | R$ 2.332.507,38 | 22,12% |
+| Laoli + Ka | R$ 2.393.089,59 | 25,29% |
+
+É a **Ka Beauty sozinha**. Os R$ 49.997,32 que faltam — a R$ 2,68 de cinquenta
+mil redondos, o que já sugeria um lançamento único e não uma divergência
+espalhada — são **venda por TikTok Shop e Mercado Livre**, confirmado pelo
+dono. É a quarta consequência da Fase 4 (seção 9), e a primeira medida: naquele
+CNPJ, os marketplaces são ~2,6% do faturamento.
+
+Repare na direção do erro. A base do painel é o **faturado**, que inclui
+cancelado e boleto nunca pago (5.1.1), então ela deveria estar **acima** da
+receita bruta do contador. Estar abaixo é o que confirma que falta receita que
+o painel não enxerga.
 
 `ApuracaoDeUmInfluencer.rbt12Compartilhado` diz quando o número exibido é o da
 empresa, e **a tela precisa dizer isso**: sem aviso, o RBT12 de uma loja de
@@ -998,26 +1050,17 @@ sobe a faixa, e o Anexo I é mais barato que o II na 6ª faixa (19% nominal
 contra 30%). Com o RBT12 que o contador informa (R$ 1,91 mi, 5ª faixa, 9,73%)
 o mesmo mês daria **R$ 42.387**.
 
-**A consequência mais séria não é o DAS: é o teto.** O RBT12 somado dá
-**R$ 10.246.169** — **213% do teto de R$ 4,8 mi**. Nessa situação a empresa
-está legalmente **fora do Simples**. `monitorarTeto` já devolve
-`acima_do_teto` e a tela diz isso, mas o número precisa de conferência antes de
-virar decisão, por três motivos:
+**O alarme de teto era falso, e foi o que denunciou o agrupamento errado.**
+Somando as quatro lojas, o RBT12 dava R$ 5,64 milhões — 118% do teto de
+R$ 4,8 mi —, e `monitorarTeto` anunciava que a empresa estava fora do Simples.
+Com o agrupamento por CNPJ, a Ka sozinha fica em R$ 1,86 milhão: **5ª faixa,
+dentro do teto, alíquota de 9,73%** — exatamente o que o contador apura. São
+conclusões opostas, e a diferença era só a chave do agrupamento.
 
-1. **Era projeção de 3 meses.** `NUVEMSHOP_MESES` foi para 13 no mesmo dia, e o
-   RBT12 deixou de ser projeção — ver seção 12. O número abaixo é o de antes
-   dessa busca; refaça a conta com a base cheia antes de decidir qualquer coisa.
-2. **A base é o faturado** (5.1.1), que inclui cancelado e boleto nunca pago —
-   e esses não entram na receita bruta do Simples. O painel superestima.
-3. **A memória do contador diz outro número.** Competência 08/2026, CNPJ
-   **30.997.734/0001-58** (CRIAR BEAUTY MARKETING DIGITAL LTDA):
-   **RBT12 de R$ 1.910.089,97**, na 5ª faixa do Anexo I. É um terceiro CNPJ,
-   que não é nenhum dos dois anotados na seção 13 — e a distância para os
-   R$ 10,2 mi do painel é grande demais para ser só (1) e (2). Falta saber
-   **quais lojas estão nesse CNPJ**.
-
-Enquanto isso não se resolve, o caminho curto é digitar o RBT12 do contador no
-campo do contrato: ele passa a valer para o grupo inteiro (decisão 4).
+**Preencha o CNPJ e a data de abertura de cada loja.** Enquanto não estiverem
+preenchidos, as lojas do Simples continuam sendo somadas como uma empresa só e
+a tela avisa. O caminho curto, para uma loja específica, continua sendo digitar
+o RBT12 do contador no campo do contrato.
 
 ### 5.10.2 DIFAL de ICMS
 

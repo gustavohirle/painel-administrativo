@@ -461,6 +461,47 @@ function FormularioInfluencer({
               />
             </label>
           </div>
+
+          {/*
+            CNPJ e início de atividade decidem a faixa do Simples, e por isso
+            ficam junto do regime e não no cadastro geral: duas lojas do mesmo
+            CNPJ somam o faturamento e caem na mesma faixa; de CNPJ diferente,
+            cada uma na sua.
+          */}
+          <div className="mt-4 grid gap-4 sm:grid-cols-2">
+            <label className="block">
+              <span className="text-sm font-medium text-tinta">
+                CNPJ da empresa <span className="text-tinta-fraca">(opcional)</span>
+              </span>
+              <input
+                name="cnpj"
+                inputMode="numeric"
+                placeholder="00.000.000/0000-00"
+                defaultValue={influencer?.cnpj ?? ""}
+                className="numerico mt-1 w-full rounded-lg border border-borda-forte bg-superficie px-3 py-2 text-tinta focus:border-tinta focus:outline-none"
+              />
+              <span className="mt-1 block text-xs text-tinta-fraca">
+                No Simples, o RBT12 e a faixa são por CNPJ. Lojas do mesmo CNPJ
+                somam; sem preencher, todas são somadas como uma empresa só.
+              </span>
+            </label>
+
+            <label className="block">
+              <span className="text-sm font-medium text-tinta">
+                Início de atividade <span className="text-tinta-fraca">(opcional)</span>
+              </span>
+              <input
+                type="date"
+                name="inicioAtividade"
+                defaultValue={influencer?.inicioAtividade ?? ""}
+                className="mt-1 w-full rounded-lg border border-borda-forte bg-superficie px-3 py-2 text-tinta focus:border-tinta focus:outline-none"
+              />
+              <span className="mt-1 block text-xs text-tinta-fraca">
+                Quando esta loja passou a faturar neste CNPJ. Mês anterior a ele
+                foi faturado em outra empresa e fica fora do RBT12.
+              </span>
+            </label>
+          </div>
         </fieldset>
 
         <label className="block">

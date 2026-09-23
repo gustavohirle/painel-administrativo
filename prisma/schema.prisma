@@ -63,6 +63,14 @@ model Influencer {
   regime       String  @default("simples_nacional")
   anexoSimples String  @default("II")
   uf           String  @default("GO")
+
+  /// CNPJ da empresa desta loja, so digitos. E a CHAVE do grupo do Simples:
+  /// RBT12, faixa, sublimite e teto sao apurados por CNPJ (5.10.1).
+  cnpj String?
+  /// Quando a loja passou a faturar NESTE CNPJ ("aaaa-mm-dd"). Mes anterior a
+  /// esta data foi faturado em outro CNPJ e fica fora do RBT12.
+  inicioAtividade DateTime? @db.Date
+
   /// Receita de 12 meses informada a mao. NULL = calcular do historico.
   rbt12Manual  Decimal? @db.Decimal(14, 2)
 

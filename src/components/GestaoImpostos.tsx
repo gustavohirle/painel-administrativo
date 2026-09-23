@@ -85,19 +85,26 @@ interface GestaoImpostosProps {
    */
   valorPorImposto: Record<string, number>;
   /**
-   * O grupo do Simples: as marcas que dividem o CNPJ e, com ele, o RBT12 e a
-   * faixa. `null` quando nenhuma marca esta no regime.
+   * Um resumo por CNPJ no Simples: as marcas que o dividem e, com elas, o
+   * RBT12 e a faixa. Vazio quando nenhuma marca esta no regime.
    */
-  grupoSimples: ResumoDoGrupoSimples | null;
+  gruposSimples: ResumoDoGrupoSimples[];
 }
 
-/** O que a tela precisa saber do grupo do Simples. Montado no servidor. */
+/** O que a tela precisa saber de um CNPJ do Simples. Montado no servidor. */
 export interface ResumoDoGrupoSimples {
+  cnpj: string | null;
   marcas: string[];
   rbt12: number;
-  rbt12Projetado: boolean;
+  rbt12Origem: "informado" | "historico" | "projecao" | "abertura";
+  mesesDoRbt12: number;
   faixa: number;
   aliquotaEfetiva: number;
+}
+
+/** "30.997.734/0001-58" a partir dos 14 digitos. */
+function cnpjFormatado(digitos: string): string {
+  return digitos.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, "$1.$2.$3/$4-$5");
 }
 
 /*
@@ -116,7 +123,7 @@ export function GestaoImpostos({
   usoPorImposto,
   operacoes,
   valorPorImposto,
-  grupoSimples,
+  gruposSimples,
 }: GestaoImpostosProps) {
   /*
    * Chave "regime-idDoImposto", nao so o id.
@@ -176,7 +183,7 @@ export function GestaoImpostos({
           marcas={operacoes.filter((o) => o.regime === regime)}
           usoPorImposto={usoPorImposto}
           valorPorImposto={valorPorImposto}
-          grupoSimples={regime === "simples_nacional" ? grupoSimples : null}
+          gruposSimples={regime === "simples_nacional" ? gruposSimples : []}
           editando={editando}
           setEditando={setEditando}
         />
@@ -189,7 +196,7 @@ export function GestaoImpostos({
           marcas={[]}
           usoPorImposto={usoPorImposto}
           valorPorImposto={valorPorImposto}
-          grupoSimples={null}
+          gruposSimples={[]}
           editando={editando}
           setEditando={setEditando}
         />
@@ -227,7 +234,7 @@ function SecaoDoRegime({
   marcas,
   usoPorImposto,
   valorPorImposto,
-  grupoSimples,
+  gruposSimples,
   editando,
   setEditando,
 }: {
@@ -236,7 +243,7 @@ function SecaoDoRegime({
   marcas: OperacaoDoRegime[];
   usoPorImposto: Record<string, number>;
   valorPorImposto: Record<string, number>;
-  grupoSimples: ResumoDoGrupoSimples | null;
+  gruposSimples: ResumoDoGrupoSimples[];
   editando: string | null;
   setEditando: (chave: string | null) => void;
 }) {
@@ -279,29 +286,52 @@ function SecaoDoRegime({
         )}
 
         {/*
-          O RBT12 do Simples e do CNPJ, e as marcas aqui sao lojas dele. Sem
-          esta linha, a tabela mostraria uma faixa que nao sai de nenhum numero
-          visivel na tela -- e a primeira reacao seria conferir marca a marca,
-          que e exatamente a leitura errada.
+          O RBT12 e do CNPJ, e as marcas aqui sao lojas dele. Sem esta faixa, a
+          tabela mostraria uma aliquota que nao sai de nenhum numero visivel na
+          tela -- e a primeira reacao seria conferir marca a marca, que e
+          exatamente a leitura errada.
         */}
-        {grupoSimples && (
-          <p className="mt-2 max-w-4xl rounded border border-borda bg-superficie px-3 py-2 text-xs leading-relaxed text-tinta-media">
-            As {grupoSimples.marcas.length} lojas do Simples são do{" "}
-            <strong className="text-tinta">mesmo CNPJ</strong>, então o RBT12 é
-            um só: o faturamento das doze últimas competências de todas elas
-            somado —{" "}
-            <strong className="numerico text-tinta">
-              {moedaRedonda(grupoSimples.rbt12)}
-            </strong>
-            {grupoSimples.rbt12Projetado && " (projetado)"}. Daí sai a{" "}
-            <strong className="text-tinta">faixa {grupoSimples.faixa}</strong>,
-            com alíquota efetiva de{" "}
-            <strong className="numerico text-tinta">
-              {percentual(grupoSimples.aliquotaEfetiva / 100, 2)}
-            </strong>
-            , que vale para <strong className="text-tinta">todas</strong> elas. O
-            DAS de cada loja é essa alíquota sobre o faturamento dela no mês.
-          </p>
+        {gruposSimples.length > 0 && (
+          <div className="mt-3 space-y-2">
+            {gruposSimples.map((g) => (
+              <p
+                key={g.cnpj ?? "sem-cnpj"}
+                className={`max-w-4xl rounded border px-3 py-2 text-xs leading-relaxed ${
+                  g.cnpj
+                    ? "border-borda bg-superficie text-tinta-media"
+                    : "border-alerta-borda bg-alerta-fundo text-tinta-media"
+                }`}
+              >
+                {g.cnpj ? (
+                  <>
+                    <strong className="numerico text-tinta">{cnpjFormatado(g.cnpj)}</strong>
+                    {" — "}
+                  </>
+                ) : (
+                  <>
+                    <strong className="text-naopago">Sem CNPJ informado.</strong>{" "}
+                    Enquanto ele não for preenchido no contrato, estas lojas são
+                    somadas <strong>como se fossem a mesma empresa</strong>, o que
+                    joga todas numa faixa que pode não ser a de nenhuma.{" "}
+                  </>
+                )}
+                {g.marcas.join(", ")}. RBT12{" "}
+                <strong className="numerico text-tinta">{moedaRedonda(g.rbt12)}</strong>
+                {g.rbt12Origem === "abertura" &&
+                  ` (soma dos ${g.mesesDoRbt12} meses desde a abertura da empresa)`}
+                {g.rbt12Origem === "projecao" &&
+                  ` (projetado a partir de ${g.mesesDoRbt12} meses)`}
+                {g.rbt12Origem === "informado" && " (informado no contrato)"}
+                {" → "}
+                <strong className="text-tinta">faixa {g.faixa}</strong>, alíquota efetiva de{" "}
+                <strong className="numerico text-tinta">
+                  {percentual(g.aliquotaEfetiva / 100, 2)}
+                </strong>
+                , a mesma para todas as lojas deste CNPJ. O DAS de cada uma é essa
+                alíquota sobre o faturamento dela no mês.
+              </p>
+            ))}
+          </div>
         )}
       </div>
 

@@ -112,6 +112,23 @@ export interface Influencer {
   /** UF da empresa. Muda aliquota interna de ICMS e beneficios estaduais. */
   uf: string;
   /**
+   * CNPJ da empresa desta loja, so digitos. `null` enquanto ninguem informar.
+   *
+   * E a CHAVE do grupo do Simples: RBT12, faixa, sublimite de ICMS e teto do
+   * regime sao apurados por CNPJ, e nao por loja nem por "quem esta no
+   * Simples" (5.10.1). Duas lojas do mesmo CNPJ somam; de CNPJ diferente, nao.
+   */
+  cnpj: string | null;
+  /**
+   * Quando esta loja passou a faturar NESTE CNPJ ("aaaa-mm-dd").
+   *
+   * Muda o RBT12: mes anterior a esta data foi faturado em outro CNPJ e nao
+   * entra na conta. A Ka Beauty e o caso que ensinou isso -- a empresa dela
+   * abriu em 01/01/2026, e os R$ 902 mil que a loja faturou entre setembro e
+   * dezembro de 2025 sao do CNPJ antigo.
+   */
+  inicioAtividade: string | null;
+  /**
    * Receita bruta de 12 meses informada a mao. `null` = calcular do historico
    * de pedidos desta marca.
    */

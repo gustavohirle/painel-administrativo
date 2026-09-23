@@ -127,6 +127,8 @@ function influencer(parcial: Partial<Influencer> = {}): Influencer {
     regime: "simples_nacional",
     anexoSimples: "II",
     uf: "GO",
+    cnpj: null,
+    inicioAtividade: null,
     rbt12Manual: null,
     ativo: true,
     observacao: null,
@@ -911,7 +913,7 @@ describe("Simples: RBT12 somado das marcas do regime", () => {
      * marca sem inventar numero.
      */
     const r = apurarImpostos(doMes, todos, [], [das], influencers);
-    const g = r.grupoSimples!;
+    const g = r.gruposSimples[0]!;
 
     const somaDasPartes = r.porInfluencer.reduce((s, a) => s + (a.simples?.valorDAS ?? 0), 0);
     expect(somaDasPartes).toBeCloseTo((g.baseDoMes * g.aliquotaEfetiva) / 100, 6);
@@ -927,8 +929,8 @@ describe("Simples: RBT12 somado das marcas do regime", () => {
     const r = apurarImpostos(doMes, todos, [], [das], comPresumido);
 
     // Tres lojas no Simples: R$ 3,6 mi, e nao os R$ 4,8 mi das quatro.
-    expect(r.grupoSimples!.marcas).toEqual(["Loja A", "Loja B", "Loja C"]);
-    expect(r.grupoSimples!.rbt12.valor).toBeCloseTo(3_600_000, 2);
+    expect(r.gruposSimples[0]!.marcas).toEqual(["Loja A", "Loja B", "Loja C"]);
+    expect(r.gruposSimples[0]!.rbt12.valor).toBeCloseTo(3_600_000, 2);
 
     const foraDoRegime = r.porInfluencer.find((a) => a.marca === "Loja D")!;
     expect(foraDoRegime.simples).toBeNull();
@@ -940,8 +942,8 @@ describe("Simples: RBT12 somado das marcas do regime", () => {
   it("o teto e o sublimite tambem sao medidos no RBT12 da empresa", () => {
     // Sozinha, cada loja estaria confortavelmente dentro; juntas, no teto.
     const r = apurarImpostos(doMes, todos, [], [das], influencers);
-    expect(r.grupoSimples!.monitorTeto.rbt12).toBeCloseTo(4_800_000, 2);
-    expect(r.grupoSimples!.monitorTeto.situacao).not.toBe("dentro");
+    expect(r.gruposSimples[0]!.monitorTeto.rbt12).toBeCloseTo(4_800_000, 2);
+    expect(r.gruposSimples[0]!.monitorTeto.situacao).not.toBe("dentro");
     for (const a of r.porInfluencer) {
       if (a.simples) expect(a.monitorTeto!.rbt12).toBeCloseTo(4_800_000, 2);
     }
@@ -951,7 +953,7 @@ describe("Simples: RBT12 somado das marcas do regime", () => {
     const presumido = marcas.map((marca, n) =>
       influencer({ id: `inf-${n}`, marca, regime: "lucro_presumido" }),
     );
-    expect(apurarImpostos(doMes, todos, [], [das], presumido).grupoSimples).toBeNull();
+    expect(apurarImpostos(doMes, todos, [], [das], presumido).gruposSimples).toEqual([]);
   });
 
   it("RBT12 informado num contrato vale para o grupo inteiro", () => {
@@ -973,7 +975,7 @@ describe("Simples: RBT12 somado das marcas do regime", () => {
       ...influencers.slice(2),
     ];
     const r = apurarImpostos(doMes, todos, [], [das], comInformado);
-    expect(r.grupoSimples!.rbt12.valor).toBeCloseTo(3_000_000, 2);
+    expect(r.gruposSimples[0]!.rbt12.valor).toBeCloseTo(3_000_000, 2);
   });
 });
 
@@ -1030,8 +1032,8 @@ describe("Simples: o imposto de uma marca nao depende de quem mais esta na tela"
     const r = apurarImpostos(semLojaC, todos, [], [das], influencers);
 
     expect(r.porInfluencer.map((a) => a.marca)).toEqual(["Loja A", "Loja B"]);
-    expect(r.grupoSimples!.marcas).toEqual(marcas);
-    expect(r.grupoSimples!.rbt12.valor).toBeCloseTo(3_600_000, 2);
+    expect(r.gruposSimples[0]!.marcas).toEqual(marcas);
+    expect(r.gruposSimples[0]!.rbt12.valor).toBeCloseTo(3_600_000, 2);
   });
 });
 
@@ -1097,5 +1099,178 @@ describe("a memoria de calculo do contador (competencia 08/2026)", () => {
     expect(porSigla.PIS).toBeCloseTo(0.268535157, 8);
     expect(porSigla.CPP).toBeCloseTo(4.086404558, 8);
     expect(porSigla.ICMS).toBeCloseTo(3.259394112, 8);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// O grupo do Simples e o CNPJ
+// ---------------------------------------------------------------------------
+
+describe("Simples: o grupo e o CNPJ, nao 'quem esta no Simples'", () => {
+  const MESES = Array.from({ length: 12 }, (_, i) => `2026-${String(i + 1).padStart(2, "0")}`);
+  const das = imposto({ id: "das", sigla: "DAS", dentroDoDAS: true, regimes: ["simples_nacional"] });
+
+  /** Um pedido por mes, do valor pedido, na marca pedida. */
+  const historico = (marca: string, porMes: number) =>
+    MESES.map((mes) =>
+      pedido({
+        marca,
+        created_at: `${mes}-10T12:00:00.000Z`,
+        total: porMes.toFixed(2),
+        subtotal: porMes.toFixed(2),
+      }),
+    );
+
+  const todos = [...historico("Loja A", 100_000), ...historico("Loja B", 100_000)];
+  const doMes = todos.filter((p) => p.created_at.startsWith("2026-12"));
+
+  it("CNPJ diferente NAO soma: cada empresa na sua faixa", () => {
+    /*
+     * A correcao de 23/09/2026. O painel somava "todo mundo que esta no
+     * Simples" numa faixa so, e isso acusava estouro do teto num caso em que
+     * cada loja estava confortavelmente dentro dele.
+     */
+    const separadas = [
+      influencer({ id: "a", marca: "Loja A", cnpj: "11444777000161" }),
+      influencer({ id: "b", marca: "Loja B", cnpj: "34028316000103" }),
+    ];
+    const r = apurarImpostos(doMes, todos, [], [das], separadas);
+
+    expect(r.gruposSimples).toHaveLength(2);
+    for (const g of r.gruposSimples) {
+      expect(g.marcas).toHaveLength(1);
+      expect(g.rbt12.valor).toBeCloseTo(1_200_000, 2);
+    }
+    // As duas lojas continuam com o RBT12 da empresa DELAS, e nao da soma.
+    for (const a of r.porInfluencer) expect(a.rbt12.valor).toBeCloseTo(1_200_000, 2);
+  });
+
+  it("mesmo CNPJ soma, e as duas caem na mesma faixa", () => {
+    const juntas = [
+      influencer({ id: "a", marca: "Loja A", cnpj: "11444777000161" }),
+      influencer({ id: "b", marca: "Loja B", cnpj: "11444777000161" }),
+    ];
+    const r = apurarImpostos(doMes, todos, [], [das], juntas);
+
+    expect(r.gruposSimples).toHaveLength(1);
+    expect(r.gruposSimples[0]!.cnpj).toBe("11444777000161");
+    expect(r.gruposSimples[0]!.rbt12.valor).toBeCloseTo(2_400_000, 2);
+    expect(new Set(r.porInfluencer.map((a) => a.simples!.faixa)).size).toBe(1);
+  });
+
+  it("sem CNPJ informado, continua somando tudo -- e o grupo se declara", () => {
+    // E o comportamento de antes de o campo existir. A tela avisa, porque
+    // somar lojas de CNPJ diferente joga todas numa faixa que nao e de nenhuma.
+    const semCnpj = [
+      influencer({ id: "a", marca: "Loja A" }),
+      influencer({ id: "b", marca: "Loja B" }),
+    ];
+    const r = apurarImpostos(doMes, todos, [], [das], semCnpj);
+
+    expect(r.gruposSimples).toHaveLength(1);
+    expect(r.gruposSimples[0]!.cnpj).toBeNull();
+    expect(r.gruposSimples[0]!.rbt12.valor).toBeCloseTo(2_400_000, 2);
+  });
+
+  it("uma com CNPJ e outra sem nao viram o mesmo grupo", () => {
+    const meio = [
+      influencer({ id: "a", marca: "Loja A", cnpj: "11444777000161" }),
+      influencer({ id: "b", marca: "Loja B" }),
+    ];
+    const r = apurarImpostos(doMes, todos, [], [das], meio);
+
+    expect(r.gruposSimples).toHaveLength(2);
+    expect(new Set(r.gruposSimples.map((g) => g.cnpj))).toEqual(
+      new Set(["11444777000161", null]),
+    );
+  });
+});
+
+describe("Simples: o RBT12 comeca na abertura do CNPJ", () => {
+  const das = imposto({ id: "das", sigla: "DAS", dentroDoDAS: true, regimes: ["simples_nacional"] });
+
+  /*
+   * O caso da Ka Beauty: CNPJ aberto em 01/01/2026, mas a loja ja vendia em
+   * 2025 -- naquele periodo, por outra empresa. Os meses de 2025 nao entram.
+   */
+  const todos = [
+    ...["2025-10", "2025-11", "2025-12"].map((mes) =>
+      pedido({ marca: "Ka", created_at: `${mes}-10T12:00:00.000Z`, total: "200000.00", subtotal: "200000.00" }),
+    ),
+    ...["2026-01", "2026-02", "2026-03"].map((mes) =>
+      pedido({ marca: "Ka", created_at: `${mes}-10T12:00:00.000Z`, total: "100000.00", subtotal: "100000.00" }),
+    ),
+  ];
+  const doMes = todos.filter((p) => p.created_at.startsWith("2026-03"));
+
+  it("mes anterior a abertura fica fora da conta", () => {
+    const comAbertura = [
+      influencer({ marca: "Ka", cnpj: "11444777000161", inicioAtividade: "2026-01-01" }),
+    ];
+    const r = apurarImpostos(doMes, todos, [], [das], comAbertura);
+
+    // So jan+fev+mar de 2026: 300 mil. Os 600 mil de 2025 eram do CNPJ antigo.
+    expect(r.gruposSimples[0]!.rbt12.valor).toBeCloseTo(300_000, 2);
+    expect(r.gruposSimples[0]!.rbt12.origem).toBe("abertura");
+  });
+
+  it("EMPRESA NOVA NAO PROJETA: e a soma pura dos meses desde a abertura", () => {
+    /*
+     * E o que o demonstrativo do contador faz. Projetar tres meses para doze
+     * daria 1,2 milhao em vez de 300 mil, e jogaria a empresa faixas acima.
+     */
+    const comAbertura = [
+      influencer({ marca: "Ka", cnpj: "11444777000161", inicioAtividade: "2026-01-01" }),
+    ];
+    const r = apurarImpostos(doMes, todos, [], [das], comAbertura);
+
+    expect(r.gruposSimples[0]!.rbt12.projetado).toBe(false);
+    expect(r.gruposSimples[0]!.rbt12.mesesConsiderados).toBe(3);
+  });
+
+  it("sem data de abertura, base curta continua sendo projetada", () => {
+    // Ali os meses faltantes existiram e o painel simplesmente nao os tem.
+    const semData = [influencer({ marca: "Ka", cnpj: "11444777000161" })];
+    const r = apurarImpostos(doMes, todos, [], [das], semData);
+
+    expect(r.gruposSimples[0]!.rbt12.origem).toBe("projecao");
+    expect(r.gruposSimples[0]!.rbt12.projetado).toBe(true);
+    // 6 meses somando 900 mil -> media de 150 mil -> 1,8 milhao projetado.
+    expect(r.gruposSimples[0]!.rbt12.valor).toBeCloseTo(1_800_000, 2);
+  });
+
+  it("a data de abertura nao escorrega de mes pelo fuso", () => {
+    // "2026-01-01" por `new Date` viraria 31/12/2025 no Brasil, e dezembro
+    // voltaria para a conta. A fatia de texto resolve (mesma armadilha da
+    // despesa).
+    const comAbertura = [
+      influencer({ marca: "Ka", cnpj: "11444777000161", inicioAtividade: "2026-01-01" }),
+    ];
+    const r = apurarImpostos(doMes, todos, [], [das], comAbertura);
+    expect(r.gruposSimples[0]!.rbt12.valor).toBeCloseTo(300_000, 2);
+  });
+
+  it("divergindo entre lojas do mesmo CNPJ, vale a abertura MAIS ANTIGA", () => {
+    // A empresa comecou quando a primeira loja dela comecou.
+    const comOutra = [
+      ...todos,
+      ...["2026-02", "2026-03"].map((mes) =>
+        pedido({ marca: "Kb", created_at: `${mes}-10T12:00:00.000Z`, total: "50000.00", subtotal: "50000.00" }),
+      ),
+    ];
+    const duas = [
+      influencer({ id: "a", marca: "Ka", cnpj: "11444777000161", inicioAtividade: "2026-01-01" }),
+      influencer({ id: "b", marca: "Kb", cnpj: "11444777000161", inicioAtividade: "2026-02-01" }),
+    ];
+    const r = apurarImpostos(
+      comOutra.filter((p) => p.created_at.startsWith("2026-03")),
+      comOutra,
+      [],
+      [das],
+      duas,
+    );
+
+    // Janeiro entra (a Ka ja faturava): 300 mil da Ka + 100 mil da Kb.
+    expect(r.gruposSimples[0]!.rbt12.valor).toBeCloseTo(400_000, 2);
   });
 });

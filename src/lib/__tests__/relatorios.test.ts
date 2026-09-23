@@ -98,6 +98,8 @@ function influencer(parcial: Partial<Influencer> = {}): Influencer {
     regime: "lucro_presumido",
     anexoSimples: "II",
     uf: "GO",
+    cnpj: null,
+    inicioAtividade: null,
     rbt12Manual: null,
     ativo: true,
     observacao: null,

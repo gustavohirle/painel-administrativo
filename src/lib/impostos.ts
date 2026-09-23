@@ -159,7 +159,11 @@ export interface ResultadoRBT12 {
   mesesConsiderados: number;
   /** `true` quando faltavam meses e o valor foi projetado para 12. */
   projetado: boolean;
-  origem: "informado" | "historico" | "projecao";
+  /**
+   * De onde o numero veio. `abertura` = empresa nova, soma pura dos meses
+   * desde que o CNPJ passou a faturar (sem projetar -- ver `calcularRBT12`).
+   */
+  origem: "informado" | "historico" | "projecao" | "abertura";
 }
 
 /**
@@ -172,6 +176,11 @@ export interface ResultadoRBT12 {
 export function calcularRBT12(
   pedidos: Pedido[],
   rbt12Manual: number | null,
+  /**
+   * Primeiro mes em que esta empresa faturou ("aaaa-mm"). Mes anterior a ele
+   * foi faturado em OUTRO CNPJ e nao entra na conta.
+   */
+  desdeOMes?: string | null,
 ): ResultadoRBT12 {
   if (rbt12Manual !== null && rbt12Manual > 0) {
     return {
@@ -190,7 +199,10 @@ export function calcularRBT12(
     else porMes.set(mes, [pedido]);
   }
 
-  const meses = [...porMes.keys()].sort((a, b) => b.localeCompare(a)).slice(0, 12);
+  const meses = [...porMes.keys()]
+    .filter((mes) => !desdeOMes || mes >= desdeOMes)
+    .sort((a, b) => b.localeCompare(a))
+    .slice(0, 12);
   const soma = meses.reduce(
     // Faturado COM frete, a mesma base do imposto do mes (decisao 1).
     (total, mes) => total + reconciliar(porMes.get(mes)!).bruto,
@@ -201,7 +213,27 @@ export function calcularRBT12(
     return { valor: 0, mesesConsiderados: 0, projetado: false, origem: "historico" };
   }
 
+  /*
+   * EMPRESA NOVA NAO PROJETA: o RBT12 dela e a soma pura dos meses desde a
+   * abertura.
+   *
+   * E o que o demonstrativo do contador faz. Na competencia 08/2026 da Ka
+   * Beauty -- CNPJ aberto em 01/01/2026 --, o RBT12 informado e a soma de
+   * janeiro a julho, e nao essa soma projetada para doze meses (que daria
+   * quase o dobro e jogaria a empresa duas faixas acima).
+   *
+   * A projecao continua valendo quando a base e que e curta: ali os meses
+   * faltantes existiram e o painel simplesmente nao os tem.
+   */
   if (meses.length < 12) {
+    if (desdeOMes) {
+      return {
+        valor: soma,
+        mesesConsiderados: meses.length,
+        projetado: false,
+        origem: "abertura",
+      };
+    }
     return {
       valor: (soma / meses.length) * 12,
       mesesConsiderados: meses.length,
@@ -280,13 +312,13 @@ export interface ApuracaoDeUmInfluencer {
 }
 
 /**
- * O grupo do Simples Nacional: as marcas que dividem o mesmo CNPJ e, com ele,
- * o mesmo RBT12, a mesma faixa e os mesmos limites do regime.
- *
- * `null` quando nenhuma marca do mes esta no Simples.
+ * Um CNPJ no Simples Nacional: as marcas que o dividem e, com ele, o mesmo
+ * RBT12, a mesma faixa e os mesmos limites do regime.
  */
 export interface GrupoSimples {
-  /** Marcas do Simples, na ordem em que aparecem na apuracao. */
+  /** So digitos. `null` = lojas sem CNPJ informado, somadas como uma so. */
+  cnpj: string | null;
+  /** Marcas deste CNPJ, em ordem alfabetica. */
   marcas: string[];
   /** RBT12 da empresa: soma dos ultimos 12 meses de TODAS as marcas acima. */
   rbt12: ResultadoRBT12;
@@ -307,10 +339,13 @@ export interface ResultadoImpostos {
   porInfluencer: ApuracaoDeUmInfluencer[];
 
   /**
-   * As marcas do Simples vistas como a empresa unica que elas sao. `null`
-   * quando nenhuma marca do mes esta no regime.
+   * Um resumo por CNPJ no Simples, do maior RBT12 para o menor. Vazio quando
+   * nenhuma marca do mes esta no regime.
+   *
+   * Sao varios e nao um so porque as lojas do Simples podem estar em empresas
+   * diferentes -- e estao: a Ka Beauty tem CNPJ proprio, aberto em 01/01/2026.
    */
-  grupoSimples: GrupoSimples | null;
+  gruposSimples: GrupoSimples[];
 
   /** Soma das bases de todas as apuracoes. */
   baseReceita: number;
@@ -538,23 +573,43 @@ function apurarGrupo(
   };
 }
 
+/** Chave do grupo de quem ainda nao teve o CNPJ informado. */
+const SEM_CNPJ = "sem-cnpj";
+
 /**
- * RBT12 informado a mao para o grupo do Simples.
+ * RBT12 informado a mao para um CNPJ.
  *
  * O campo e por influencer, mas o numero e da EMPRESA: informar num contrato
- * basta. Divergindo entre dois, vale o MAIOR -- subestimar a faixa cobra
- * imposto a menos, que e o erro caro; e a divergencia fica visivel na tela,
- * porque o RBT12 exibido e o mesmo para todas as marcas.
+ * basta. Divergindo entre dois do mesmo CNPJ, vale o MAIOR -- subestimar a
+ * faixa cobra imposto a menos, que e o erro caro; e a divergencia fica visivel
+ * na tela, porque o RBT12 exibido e o mesmo para todas as marcas do grupo.
  */
-function rbt12ManualDoGrupo(
-  marcas: string[],
-  influencerDaMarca: Map<string, Influencer>,
-): number | null {
-  const informados = marcas
-    .map((m) => influencerDaMarca.get(m)?.rbt12Manual ?? null)
+function maiorRbt12Informado(doGrupo: Influencer[]): number | null {
+  const informados = doGrupo
+    .map((i) => i.rbt12Manual)
     .filter((v): v is number => v !== null && v > 0);
 
   return informados.length ? Math.max(...informados) : null;
+}
+
+/**
+ * Primeiro mes em que o CNPJ faturou ("aaaa-mm"), ou `null` se ninguem
+ * informou.
+ *
+ * Divergindo entre as lojas do mesmo CNPJ, vale o MAIS ANTIGO: a empresa
+ * comecou quando a primeira loja dela comecou, e as outras entraram depois.
+ *
+ * A data vira mes por fatia de texto, e nao por `new Date`: "2026-01-01"
+ * viraria meia-noite em UTC, que no Brasil ainda e 31 de dezembro -- e o mes
+ * de abertura escorregaria para tras (mesma armadilha de `mesDaDespesa`).
+ */
+function primeiroMesDoGrupo(doGrupo: Influencer[]): string | null {
+  const datas = doGrupo
+    .map((i) => i.inicioAtividade)
+    .filter((v): v is string => typeof v === "string" && v.length >= 7)
+    .map((v) => v.slice(0, 7));
+
+  return datas.length ? datas.sort()[0]! : null;
 }
 
 /**
@@ -611,24 +666,52 @@ export function apurarImpostos(
    * conseguindo atribuir imposto a uma marca. Ha teste.
    */
   /*
-   * As marcas do grupo saem do CADASTRO, e nao dos pedidos do mes. E o que faz
-   * o imposto de uma marca ser o mesmo na tela inicial e num relatorio
-   * filtrado so nela: se o grupo fosse montado a partir dos pedidos em tela,
-   * filtrar por "marca = Ka" apuraria o RBT12 so da Ka, numa faixa mais baixa,
-   * e o painel teria duas versoes do mesmo numero (5.14).
+   * O grupo do Simples e o CNPJ, e ele sai do CADASTRO -- nao dos pedidos do
+   * mes.
+   *
+   * Do cadastro porque e o que faz o imposto de uma marca ser o mesmo na tela
+   * inicial e num relatorio filtrado so nela: se o grupo viesse dos pedidos em
+   * tela, filtrar por "marca = Ka" apuraria o RBT12 so da Ka, numa faixa mais
+   * baixa, e o painel teria duas versoes do mesmo numero (5.14).
+   *
+   * Por CNPJ porque e assim que a Receita apura. Loja sem CNPJ informado cai
+   * num grupo unico (`SEM_CNPJ`), que e o comportamento de antes de o campo
+   * existir -- e a tela avisa, porque somar lojas de CNPJ diferente joga todas
+   * numa faixa que nao e a de nenhuma.
    */
-  const marcasNoSimples = [...influencerDaMarca.values()]
-    .filter((i) => i.regime === "simples_nacional")
-    .map((i) => i.marca)
-    .sort((a, b) => a.localeCompare(b, "pt-BR"));
+  const contratosNoSimples = [...influencerDaMarca.values()].filter(
+    (i) => i.regime === "simples_nacional",
+  );
 
-  const doSimples = new Set(marcasNoSimples);
-  const rbt12DoGrupo = marcasNoSimples.length
-    ? calcularRBT12(
-        pedidosHistorico.filter((p) => doSimples.has(p.marca)),
-        rbt12ManualDoGrupo(marcasNoSimples, influencerDaMarca),
-      )
-    : null;
+  const grupos = new Map<string, Influencer[]>();
+  for (const influencer of contratosNoSimples) {
+    const chave = influencer.cnpj ?? SEM_CNPJ;
+    const lista = grupos.get(chave);
+    if (lista) lista.push(influencer);
+    else grupos.set(chave, [influencer]);
+  }
+
+  /** O RBT12 de cada CNPJ, pronto para as marcas dele. */
+  const rbt12PorCnpj = new Map<string, ResultadoRBT12>();
+  for (const [chave, doGrupo] of grupos) {
+    const marcas = new Set(doGrupo.map((i) => i.marca));
+    rbt12PorCnpj.set(
+      chave,
+      calcularRBT12(
+        pedidosHistorico.filter((p) => marcas.has(p.marca)),
+        maiorRbt12Informado(doGrupo),
+        primeiroMesDoGrupo(doGrupo),
+      ),
+    );
+  }
+
+  const cnpjDaMarca = new Map(
+    contratosNoSimples.map((i) => [i.marca, i.cnpj ?? SEM_CNPJ] as const),
+  );
+  const rbt12DaMarca = (marca: string) => {
+    const chave = cnpjDaMarca.get(marca);
+    return chave === undefined ? null : (rbt12PorCnpj.get(chave) ?? null);
+  };
 
   const porInfluencer = marcas.map((marca) => {
     const influencer = influencerDaMarca.get(marca) ?? null;
@@ -651,7 +734,7 @@ export function apurarImpostos(
       indice,
       impostos,
       aliquotasEstaduais,
-      rbt12DoGrupo,
+      rbt12DaMarca(marca),
     );
   });
 
@@ -679,27 +762,40 @@ export function apurarImpostos(
   const totalSobreVenda = porInfluencer.reduce((s, a) => s + a.total, 0);
   const receitaTotal = receitaComCadastro + receitaSemCadastro;
 
-  const noSimples = porInfluencer.filter((a) => a.simples !== null);
-  const primeiro = noSimples[0];
-  const grupoSimples: GrupoSimples | null =
-    primeiro && primeiro.simples && primeiro.monitorTeto && rbt12DoGrupo
-      ? {
-          // As marcas que formam o RBT12 -- todas as do regime, mesmo as que
-          // nao venderam neste mes. Os totais abaixo sao das que venderam.
-          marcas: marcasNoSimples,
-          rbt12: rbt12DoGrupo,
-          faixa: primeiro.simples.faixa,
-          aliquotaNominal: primeiro.simples.aliquotaNominal,
-          aliquotaEfetiva: primeiro.simples.aliquotaEfetiva,
-          baseDoMes: noSimples.reduce((s, a) => s + a.baseReceita, 0),
-          valorDAS: noSimples.reduce((s, a) => s + (a.simples?.valorDAS ?? 0), 0),
-          monitorTeto: primeiro.monitorTeto,
-        }
-      : null;
+  /*
+   * Um resumo por CNPJ, para a tela poder explicar de onde saiu a faixa.
+   *
+   * Cada grupo pega a faixa da primeira apuracao dele: dentro de um CNPJ todas
+   * as marcas tem a mesma, e e isso que a decisao 4 garante. Grupo cujo CNPJ
+   * nao vendeu neste mes nao entra -- nao ha o que mostrar.
+   */
+  const gruposSimples: GrupoSimples[] = [];
+  for (const [chave, doGrupo] of grupos) {
+    const marcas = new Set(doGrupo.map((i) => i.marca));
+    const apuracoes = porInfluencer.filter((a) => a.simples && marcas.has(a.marca));
+    const primeira = apuracoes[0];
+    const rbt12 = rbt12PorCnpj.get(chave);
+    if (!primeira?.simples || !primeira.monitorTeto || !rbt12) continue;
+
+    gruposSimples.push({
+      cnpj: chave === SEM_CNPJ ? null : chave,
+      // As marcas que formam o RBT12 -- todas as do CNPJ, mesmo as que nao
+      // venderam neste mes. Os totais abaixo sao so das que venderam.
+      marcas: [...marcas].sort((a, b) => a.localeCompare(b, "pt-BR")),
+      rbt12,
+      faixa: primeira.simples.faixa,
+      aliquotaNominal: primeira.simples.aliquotaNominal,
+      aliquotaEfetiva: primeira.simples.aliquotaEfetiva,
+      baseDoMes: apuracoes.reduce((t, a) => t + a.baseReceita, 0),
+      valorDAS: apuracoes.reduce((t, a) => t + (a.simples?.valorDAS ?? 0), 0),
+      monitorTeto: primeira.monitorTeto,
+    });
+  }
+  gruposSimples.sort((a, b) => b.rbt12.valor - a.rbt12.valor);
 
   return {
     porInfluencer: porInfluencer.sort((a, b) => b.total - a.total),
-    grupoSimples,
+    gruposSimples,
     baseReceita,
     totalSobreVenda,
     cargaSobreReceita: razaoSegura(totalSobreVenda, baseReceita),
