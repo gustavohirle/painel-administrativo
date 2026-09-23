@@ -127,6 +127,17 @@ export default async function PaginaImpostos({
             usoPorImposto={usoPorImposto}
             operacoes={operacoes}
             valorPorImposto={valorPorImposto}
+            grupoSimples={
+              resultado.grupoSimples
+                ? {
+                    marcas: resultado.grupoSimples.marcas,
+                    rbt12: resultado.grupoSimples.rbt12.valor,
+                    rbt12Projetado: resultado.grupoSimples.rbt12.projetado,
+                    faixa: resultado.grupoSimples.faixa,
+                    aliquotaEfetiva: resultado.grupoSimples.aliquotaEfetiva,
+                  }
+                : null
+            }
           />
         </Cartao>
 

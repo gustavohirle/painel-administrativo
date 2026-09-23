@@ -252,8 +252,15 @@ function CartaoDaOperacao({ apuracao }: { apuracao: ApuracaoDeUmInfluencer }) {
             />
           </div>
 
+          {/*
+            Com o RBT12 compartilhado o numero exibido e o da EMPRESA, e nao o
+            desta loja. Sem dizer isso, a linha de uma loja de R$ 23 mil/mes
+            apareceria em milhoes e pareceria defeito.
+          */}
           <p className="mt-2 text-xs text-tinta-fraca">
-            Receita de 12 meses desta marca:{" "}
+            {apuracao.rbt12Compartilhado
+              ? "Receita de 12 meses da empresa (todas as lojas no Simples): "
+              : "Receita de 12 meses desta marca: "}
             <strong className="numerico text-tinta-media">
               {moedaRedonda(apuracao.rbt12.valor)}
             </strong>

@@ -253,7 +253,8 @@ function ComoABase({ passo }: { passo: PassoDoImposto }) {
     return (
       <>
         Guia única do Simples sobre o faturado do mês, com frete. Alíquota efetiva pela receita de 12
-        meses ({moeda(o.rbt12)}
+        meses {o.rbt12Compartilhado ? "da empresa inteira — todas as lojas no Simples somadas — " : ""}
+        ({moeda(o.rbt12)}
         {o.rbt12Projetado ? ", projetada" : ""}): faixa {o.faixa}, nominal {aliquota(o.aliquotaNominal)}.
       </>
     );

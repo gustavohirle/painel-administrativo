@@ -440,16 +440,21 @@ export function montarRelatorio(
 
   const porMarca = influencerPorMarca(dados.influencers);
 
-  /** Historico para o RBT12 de um grupo: mesma marca, ate o mes do grupo. */
+  /**
+   * Historico para o RBT12 de um grupo: tudo ate o mes do grupo.
+   *
+   * NAO estreita por marca. `apurarImpostos` ja separa o que precisa -- por
+   * marca fora do Simples, e somando as marcas do regime dentro dele (o RBT12
+   * e do CNPJ). Estreitar aqui tirava as outras lojas do Simples da conta e
+   * punha a marca numa faixa mais baixa que a da tela inicial: o mesmo imposto
+   * com dois valores no mesmo painel.
+   */
   const historicoDe = (pedidosDoGrupo: Pedido[]): Pedido[] => {
     if (pedidosDoGrupo.length === 0) return [];
-    const marcas = new Set(pedidosDoGrupo.map((p) => p.marca));
     const ultimoMes = pedidosDoGrupo
       .map((p) => chaveMes(p.created_at))
       .reduce((a, b) => (a > b ? a : b));
-    return dados.pedidos.filter(
-      (p) => marcas.has(p.marca) && chaveMes(p.created_at) <= ultimoMes,
-    );
+    return dados.pedidos.filter((p) => chaveMes(p.created_at) <= ultimoMes);
   };
 
   let linhas: LinhaRelatorio[];

@@ -366,8 +366,14 @@ describe("apurarImpostos", () => {
     expect(grande.total).toBeCloseTo(6.5, 6);
   });
 
-  it("o RBT12 e por marca, nao no consolidado", () => {
-    // Somar as marcas jogaria uma empresa pequena numa faixa que nao e a dela.
+  it("o RBT12 do Simples soma as marcas do regime: e o da EMPRESA", () => {
+    /*
+     * Invertido em 23/09/2026, a pedido do dono. Antes era por marca, com o
+     * argumento de que somar jogaria uma empresa pequena numa faixa que nao e
+     * a dela. So que as marcas do Simples sao lojas do MESMO CNPJ, e o RBT12 e
+     * apurado por CNPJ -- separar por loja jogava a empresa numa faixa mais
+     * baixa que a devida.
+     */
     const pedidos = [
       pedido({ marca: "A", total: "1000.00" }),
       pedido({ marca: "B", total: "1000.00" }),
@@ -385,8 +391,34 @@ describe("apurarImpostos", () => {
     );
 
     for (const apuracao of r.porInfluencer) {
-      // Cada marca faturou 1000 no mes -> projeta 12.000, nao 24.000.
+      // As duas marcas faturaram 1000 no mes -> projeta 24.000 para a empresa.
+      expect(apuracao.rbt12.valor).toBeCloseTo(24_000, 6);
+      expect(apuracao.rbt12Compartilhado).toBe(true);
+    }
+  });
+
+  it("fora do Simples o RBT12 continua sendo o da propria marca", () => {
+    // No Lucro Presumido nao ha faixa nem teto: o numero e so referencia, e
+    // somar marcas ali nao significaria nada.
+    const pedidos = [
+      pedido({ marca: "A", total: "1000.00" }),
+      pedido({ marca: "B", total: "1000.00" }),
+    ];
+
+    const r = apurarImpostos(
+      pedidos,
+      pedidos,
+      [],
+      [],
+      [
+        influencer({ id: "a", marca: "A", regime: "lucro_presumido" }),
+        influencer({ id: "b", marca: "B", regime: "lucro_presumido" }),
+      ],
+    );
+
+    for (const apuracao of r.porInfluencer) {
       expect(apuracao.rbt12.valor).toBeCloseTo(12_000, 6);
+      expect(apuracao.rbt12Compartilhado).toBe(false);
     }
   });
 
@@ -800,5 +832,204 @@ describe("produtosParaCadastrar", () => {
     expect(antes.cobertura).toBe(0);
     expect(depois.cobertura).toBe(1);
     expect(depois.totalSobreVenda).toBeCloseTo(antes.totalSobreVenda + 100, 6);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// O RBT12 do Simples e da EMPRESA, nao da marca
+// ---------------------------------------------------------------------------
+
+describe("Simples: RBT12 somado das marcas do regime", () => {
+  // Doze meses fechados, para nenhum numero sair projetado.
+  const MESES = Array.from({ length: 12 }, (_, i) => `2026-${String(i + 1).padStart(2, "0")}`);
+
+  /** Um pedido por mes, do valor pedido, na marca pedida. */
+  const historico = (marca: string, porMes: number) =>
+    MESES.map((mes) =>
+      pedido({
+        marca,
+        created_at: `${mes}-10T12:00:00.000Z`,
+        total: porMes.toFixed(2),
+        subtotal: porMes.toFixed(2),
+      }),
+    );
+
+  const das = imposto({
+    id: "das",
+    sigla: "DAS",
+    dentroDoDAS: true,
+    regimes: ["simples_nacional"],
+  });
+
+  /** Quatro lojas de R$ 1,2 mi/ano cada: a empresa fatura R$ 4,8 mi. */
+  const marcas = ["Loja A", "Loja B", "Loja C", "Loja D"];
+  const influencers = marcas.map((marca, n) =>
+    influencer({ id: `inf-${n}`, nome: `Dono ${n}`, marca, regime: "simples_nacional" }),
+  );
+  const todos = marcas.flatMap((m) => historico(m, 100_000));
+  const doMes = todos.filter((p) => p.created_at.startsWith("2026-12"));
+
+  it("todas as marcas do Simples caem na MESMA faixa, com o mesmo RBT12", () => {
+    const r = apurarImpostos(doMes, todos, [], [das], influencers);
+    const noSimples = r.porInfluencer.filter((a) => a.simples);
+
+    expect(noSimples).toHaveLength(4);
+    // 4 lojas x 12 meses x R$ 100 mil = R$ 4,8 mi para a empresa inteira.
+    for (const apuracao of noSimples) {
+      expect(apuracao.rbt12.valor).toBeCloseTo(4_800_000, 2);
+      expect(apuracao.rbt12Compartilhado).toBe(true);
+    }
+    expect(new Set(noSimples.map((a) => a.simples!.faixa)).size).toBe(1);
+    expect(new Set(noSimples.map((a) => a.simples!.aliquotaEfetiva)).size).toBe(1);
+  });
+
+  it("uma loja sozinha cairia numa faixa mais BAIXA -- e e esse o erro corrigido", () => {
+    const soUma = apurarImpostos(
+      doMes.filter((p) => p.marca === "Loja A"),
+      todos.filter((p) => p.marca === "Loja A"),
+      [],
+      [das],
+      influencers,
+    );
+    const juntas = apurarImpostos(doMes, todos, [], [das], influencers);
+
+    const sozinha = soUma.porInfluencer[0]!.simples!;
+    const noGrupo = juntas.porInfluencer.find((a) => a.marca === "Loja A")!.simples!;
+
+    expect(sozinha.rbt12).toBeCloseTo(1_200_000, 2);
+    expect(noGrupo.rbt12).toBeCloseTo(4_800_000, 2);
+    expect(noGrupo.faixa).toBeGreaterThan(sozinha.faixa);
+    expect(noGrupo.aliquotaEfetiva).toBeGreaterThan(sozinha.aliquotaEfetiva);
+  });
+
+  it("o DAS de cada marca soma exatamente o DAS da empresa", () => {
+    /*
+     * A aliquota efetiva e a mesma para todas, entao ratear por marca e so uma
+     * atribuicao: a soma tem que bater com a aliquota do grupo sobre a base do
+     * grupo. E isso que deixa o raio-x e o relatorio atribuirem imposto a uma
+     * marca sem inventar numero.
+     */
+    const r = apurarImpostos(doMes, todos, [], [das], influencers);
+    const g = r.grupoSimples!;
+
+    const somaDasPartes = r.porInfluencer.reduce((s, a) => s + (a.simples?.valorDAS ?? 0), 0);
+    expect(somaDasPartes).toBeCloseTo((g.baseDoMes * g.aliquotaEfetiva) / 100, 6);
+    expect(g.valorDAS).toBeCloseTo(somaDasPartes, 6);
+    expect(g.marcas).toEqual(marcas);
+  });
+
+  it("marca fora do Simples nao entra no RBT12 do grupo", () => {
+    const comPresumido = [
+      ...influencers.slice(0, 3),
+      influencer({ id: "inf-3", nome: "Dono 3", marca: "Loja D", regime: "lucro_presumido" }),
+    ];
+    const r = apurarImpostos(doMes, todos, [], [das], comPresumido);
+
+    // Tres lojas no Simples: R$ 3,6 mi, e nao os R$ 4,8 mi das quatro.
+    expect(r.grupoSimples!.marcas).toEqual(["Loja A", "Loja B", "Loja C"]);
+    expect(r.grupoSimples!.rbt12.valor).toBeCloseTo(3_600_000, 2);
+
+    const foraDoRegime = r.porInfluencer.find((a) => a.marca === "Loja D")!;
+    expect(foraDoRegime.simples).toBeNull();
+    expect(foraDoRegime.rbt12Compartilhado).toBe(false);
+    // Fora do Simples o RBT12 continua sendo o da propria marca, de referencia.
+    expect(foraDoRegime.rbt12.valor).toBeCloseTo(1_200_000, 2);
+  });
+
+  it("o teto e o sublimite tambem sao medidos no RBT12 da empresa", () => {
+    // Sozinha, cada loja estaria confortavelmente dentro; juntas, no teto.
+    const r = apurarImpostos(doMes, todos, [], [das], influencers);
+    expect(r.grupoSimples!.monitorTeto.rbt12).toBeCloseTo(4_800_000, 2);
+    expect(r.grupoSimples!.monitorTeto.situacao).not.toBe("dentro");
+    for (const a of r.porInfluencer) {
+      if (a.simples) expect(a.monitorTeto!.rbt12).toBeCloseTo(4_800_000, 2);
+    }
+  });
+
+  it("sem marca no Simples, nao ha grupo", () => {
+    const presumido = marcas.map((marca, n) =>
+      influencer({ id: `inf-${n}`, marca, regime: "lucro_presumido" }),
+    );
+    expect(apurarImpostos(doMes, todos, [], [das], presumido).grupoSimples).toBeNull();
+  });
+
+  it("RBT12 informado num contrato vale para o grupo inteiro", () => {
+    const comInformado = [
+      influencer({ ...influencers[0]!, rbt12Manual: 2_000_000 }),
+      ...influencers.slice(1),
+    ];
+    const r = apurarImpostos(doMes, todos, [], [das], comInformado);
+    for (const a of r.porInfluencer) {
+      expect(a.rbt12.valor).toBeCloseTo(2_000_000, 2);
+      expect(a.rbt12.origem).toBe("informado");
+    }
+  });
+
+  it("informados divergentes: vale o maior, porque subestimar a faixa e o erro caro", () => {
+    const comInformado = [
+      influencer({ ...influencers[0]!, rbt12Manual: 2_000_000 }),
+      influencer({ ...influencers[1]!, rbt12Manual: 3_000_000 }),
+      ...influencers.slice(2),
+    ];
+    const r = apurarImpostos(doMes, todos, [], [das], comInformado);
+    expect(r.grupoSimples!.rbt12.valor).toBeCloseTo(3_000_000, 2);
+  });
+});
+
+describe("Simples: o imposto de uma marca nao depende de quem mais esta na tela", () => {
+  /*
+   * A armadilha do RBT12 compartilhado: se o grupo fosse montado a partir dos
+   * pedidos EM TELA, um relatorio filtrado numa marca so apuraria o RBT12
+   * dela, cairia numa faixa mais baixa e mostraria um DAS menor que o da tela
+   * inicial -- duas versoes do mesmo numero (5.14). Por isso o grupo sai do
+   * CADASTRO de influencers, e nao dos pedidos.
+   */
+  const MESES = Array.from({ length: 12 }, (_, i) => `2026-${String(i + 1).padStart(2, "0")}`);
+  const marcas = ["Loja A", "Loja B", "Loja C"];
+  const influencers = marcas.map((marca, n) =>
+    influencer({ id: `inf-${n}`, nome: `Dono ${n}`, marca, regime: "simples_nacional" }),
+  );
+  const das = imposto({ id: "das", sigla: "DAS", dentroDoDAS: true, regimes: ["simples_nacional"] });
+
+  const todos = marcas.flatMap((marca) =>
+    MESES.map((mes) =>
+      pedido({
+        marca,
+        created_at: `${mes}-10T12:00:00.000Z`,
+        total: "100000.00",
+        subtotal: "100000.00",
+      }),
+    ),
+  );
+  const doMes = todos.filter((p) => p.created_at.startsWith("2026-12"));
+
+  it("o DAS da Loja A e o mesmo com as tres marcas em tela e com ela sozinha", () => {
+    const comTodas = apurarImpostos(doMes, todos, [], [das], influencers);
+    const soLojaA = apurarImpostos(
+      doMes.filter((p) => p.marca === "Loja A"),
+      todos,
+      [],
+      [das],
+      influencers,
+    );
+
+    const naTelaCheia = comTodas.porInfluencer.find((a) => a.marca === "Loja A")!;
+    const filtrada = soLojaA.porInfluencer.find((a) => a.marca === "Loja A")!;
+
+    expect(filtrada.rbt12.valor).toBeCloseTo(naTelaCheia.rbt12.valor, 2);
+    expect(filtrada.simples!.faixa).toBe(naTelaCheia.simples!.faixa);
+    expect(filtrada.simples!.aliquotaEfetiva).toBeCloseTo(naTelaCheia.simples!.aliquotaEfetiva, 10);
+    expect(filtrada.simples!.valorDAS).toBeCloseTo(naTelaCheia.simples!.valorDAS, 6);
+  });
+
+  it("marca do Simples que nao vendeu no mes continua contando no RBT12", () => {
+    // Ela nao aparece em `porInfluencer` (nao ha pedido dela no mes), mas o
+    // faturamento dela nos 12 meses e da empresa e entra na faixa.
+    const semLojaC = doMes.filter((p) => p.marca !== "Loja C");
+    const r = apurarImpostos(semLojaC, todos, [], [das], influencers);
+
+    expect(r.porInfluencer.map((a) => a.marca)).toEqual(["Loja A", "Loja B"]);
+    expect(r.grupoSimples!.marcas).toEqual(marcas);
+    expect(r.grupoSimples!.rbt12.valor).toBeCloseTo(3_600_000, 2);
   });
 });

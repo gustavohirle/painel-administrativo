@@ -34,6 +34,11 @@
  *
  * 3. Tributo do regime que esta INATIVO nao some em silencio -- ele volta em
  *    `inativosDoRegime` para a tela poder dizer "o ICMS nao esta nesta conta".
+ *
+ * 4. No SIMPLES, o RBT12 e da EMPRESA, nao da marca (23/09/2026). As marcas do
+ *    Simples sao lojas do mesmo CNPJ, e o RBT12, a faixa e os limites do
+ *    regime sao do CNPJ: somam-se os faturamentos de todas elas, e todas caem
+ *    na MESMA faixa. Ver `apurarImpostos`.
  */
 
 import { paraNumero, type Pedido } from "@/types/nuvemshop";
@@ -238,6 +243,13 @@ export interface ApuracaoDeUmInfluencer {
   baseReceita: number;
 
   rbt12: ResultadoRBT12;
+  /**
+   * `true` quando o RBT12 acima e o da EMPRESA -- somado das marcas do
+   * Simples -- e nao o desta marca sozinha. A tela precisa dizer isso: sem
+   * aviso, o RBT12 de uma loja de R$ 23 mil/mes apareceria em milhoes e
+   * pareceria defeito.
+   */
+  rbt12Compartilhado: boolean;
   /** DAS do mes. `null` fora do Simples. */
   simples: ApuracaoSimples | null;
   monitorTeto: MonitorTeto | null;
@@ -267,9 +279,38 @@ export interface ApuracaoDeUmInfluencer {
   cargaSobreReceita: number;
 }
 
+/**
+ * O grupo do Simples Nacional: as marcas que dividem o mesmo CNPJ e, com ele,
+ * o mesmo RBT12, a mesma faixa e os mesmos limites do regime.
+ *
+ * `null` quando nenhuma marca do mes esta no Simples.
+ */
+export interface GrupoSimples {
+  /** Marcas do Simples, na ordem em que aparecem na apuracao. */
+  marcas: string[];
+  /** RBT12 da empresa: soma dos ultimos 12 meses de TODAS as marcas acima. */
+  rbt12: ResultadoRBT12;
+  faixa: number;
+  aliquotaNominal: number;
+  /** A mesma para todas as marcas -- e o que a decisao 4 garante. */
+  aliquotaEfetiva: number;
+  /** Faturamento do mes somado das marcas do grupo. */
+  baseDoMes: number;
+  /** DAS do mes da empresa: a soma do DAS das marcas. */
+  valorDAS: number;
+  /** Sublimite de ICMS e teto do regime, medidos no RBT12 da empresa. */
+  monitorTeto: MonitorTeto;
+}
+
 export interface ResultadoImpostos {
   /** Uma apuracao por influencer, cada uma no seu regime. */
   porInfluencer: ApuracaoDeUmInfluencer[];
+
+  /**
+   * As marcas do Simples vistas como a empresa unica que elas sao. `null`
+   * quando nenhuma marca do mes esta no regime.
+   */
+  grupoSimples: GrupoSimples | null;
 
   /** Soma das bases de todas as apuracoes. */
   baseReceita: number;
@@ -358,6 +399,12 @@ function apurarGrupo(
   indice: IndiceProdutos,
   impostos: Imposto[],
   aliquotasEstaduais: AliquotaEstado[],
+  /**
+   * RBT12 da EMPRESA, quando este grupo esta no Simples. Vem pronto de
+   * `apurarImpostos`, somado de todas as marcas do regime: o RBT12 e do CNPJ,
+   * e nao de cada loja.
+   */
+  rbt12DoGrupo: ResultadoRBT12 | null,
 ): ApuracaoDeUmInfluencer {
   // Faturado: todo pedido criado, com o frete (decisao 1 no topo).
   const r = reconciliar(pedidosDoMes);
@@ -366,7 +413,12 @@ function apurarGrupo(
   const porImposto = receitaPorImposto(pedidosDoMes, indice);
 
   const noSimples = fiscal.regime === "simples_nacional";
-  const rbt12 = calcularRBT12(pedidosHistorico, fiscal.rbt12Manual);
+  /*
+   * No Simples vale o RBT12 da empresa; fora dele, o da propria marca -- que e
+   * so referencia, porque no Lucro Presumido nao ha faixa nem teto.
+   */
+  const rbt12 =
+    (noSimples ? rbt12DoGrupo : null) ?? calcularRBT12(pedidosHistorico, fiscal.rbt12Manual);
 
   /*
    * Optante do Simples nao recolhe DIFAL como remetente -- o STF suspendeu a
@@ -474,6 +526,7 @@ function apurarGrupo(
     regime: fiscal.regime,
     baseReceita,
     rbt12,
+    rbt12Compartilhado: noSimples && rbt12DoGrupo !== null,
     simples,
     monitorTeto,
     difal,
@@ -486,10 +539,33 @@ function apurarGrupo(
 }
 
 /**
+ * RBT12 informado a mao para o grupo do Simples.
+ *
+ * O campo e por influencer, mas o numero e da EMPRESA: informar num contrato
+ * basta. Divergindo entre dois, vale o MAIOR -- subestimar a faixa cobra
+ * imposto a menos, que e o erro caro; e a divergencia fica visivel na tela,
+ * porque o RBT12 exibido e o mesmo para todas as marcas.
+ */
+function rbt12ManualDoGrupo(
+  marcas: string[],
+  influencerDaMarca: Map<string, Influencer>,
+): number | null {
+  const informados = marcas
+    .map((m) => influencerDaMarca.get(m)?.rbt12Manual ?? null)
+    .filter((v): v is number => v !== null && v > 0);
+
+  return informados.length ? Math.max(...informados) : null;
+}
+
+/**
  * Apura os impostos do periodo, um grupo por influencer.
  *
- * `pedidosHistorico` e a base inteira: o RBT12 olha 12 meses para tras, nao so
- * o mes da tela -- e olha por marca, nao no consolidado.
+ * `pedidosHistorico` e a base inteira: o RBT12 olha 12 meses para tras, e nao
+ * so o mes da tela.
+ *
+ * Fora do Simples ele e por marca, e serve so de referencia. DENTRO do
+ * Simples ele e da empresa: soma das marcas do regime, uma faixa so para todas
+ * (decisao 4 no topo).
  */
 export function apurarImpostos(
   pedidosDoMes: Pedido[],
@@ -515,6 +591,45 @@ export function apurarImpostos(
     a.localeCompare(b, "pt-BR"),
   );
 
+  const regimeDaMarca = (marca: string): RegimeTributario =>
+    // Sem influencer nao ha regime proprio: cai no padrao ate alguem vincular
+    // a marca a um influencer.
+    influencerDaMarca.get(marca)?.regime ?? REGIME_SEM_INFLUENCER;
+
+  /*
+   * O RBT12 do SIMPLES e da EMPRESA, e nao de cada loja (23/09/2026, decisao
+   * do dono). As marcas do Simples sao lojas Nuvemshop do mesmo CNPJ, e o
+   * RBT12 -- com ele a faixa, a aliquota efetiva, o sublimite de ICMS e o teto
+   * do regime -- e apurado por CNPJ. Uma marca por vez colocava cada loja numa
+   * faixa propria, e quase sempre numa faixa mais BAIXA do que a devida: quatro
+   * lojas de R$ 1 mi/ano cada nao sao quatro empresas na 2a faixa, sao uma
+   * empresa de R$ 4 mi na 5a.
+   *
+   * O DAS continua saindo marca a marca (aliquota efetiva do grupo x base do
+   * mes da marca). Como a aliquota e a mesma para todas, a soma das partes e
+   * exatamente o DAS da empresa -- e assim o raio-x e o relatorio continuam
+   * conseguindo atribuir imposto a uma marca. Ha teste.
+   */
+  /*
+   * As marcas do grupo saem do CADASTRO, e nao dos pedidos do mes. E o que faz
+   * o imposto de uma marca ser o mesmo na tela inicial e num relatorio
+   * filtrado so nela: se o grupo fosse montado a partir dos pedidos em tela,
+   * filtrar por "marca = Ka" apuraria o RBT12 so da Ka, numa faixa mais baixa,
+   * e o painel teria duas versoes do mesmo numero (5.14).
+   */
+  const marcasNoSimples = [...influencerDaMarca.values()]
+    .filter((i) => i.regime === "simples_nacional")
+    .map((i) => i.marca)
+    .sort((a, b) => a.localeCompare(b, "pt-BR"));
+
+  const doSimples = new Set(marcasNoSimples);
+  const rbt12DoGrupo = marcasNoSimples.length
+    ? calcularRBT12(
+        pedidosHistorico.filter((p) => doSimples.has(p.marca)),
+        rbt12ManualDoGrupo(marcasNoSimples, influencerDaMarca),
+      )
+    : null;
+
   const porInfluencer = marcas.map((marca) => {
     const influencer = influencerDaMarca.get(marca) ?? null;
     const doMes = pedidosDoMes.filter((p) => p.marca === marca);
@@ -527,9 +642,7 @@ export function apurarImpostos(
         marca,
       },
       {
-        // Sem influencer nao ha regime proprio: cai no padrao ate alguem
-        // vincular a marca a um influencer.
-        regime: influencer?.regime ?? REGIME_SEM_INFLUENCER,
+        regime: regimeDaMarca(marca),
         uf: influencer?.uf ?? "GO",
         rbt12Manual: influencer?.rbt12Manual ?? null,
       },
@@ -538,6 +651,7 @@ export function apurarImpostos(
       indice,
       impostos,
       aliquotasEstaduais,
+      rbt12DoGrupo,
     );
   });
 
@@ -565,8 +679,27 @@ export function apurarImpostos(
   const totalSobreVenda = porInfluencer.reduce((s, a) => s + a.total, 0);
   const receitaTotal = receitaComCadastro + receitaSemCadastro;
 
+  const noSimples = porInfluencer.filter((a) => a.simples !== null);
+  const primeiro = noSimples[0];
+  const grupoSimples: GrupoSimples | null =
+    primeiro && primeiro.simples && primeiro.monitorTeto && rbt12DoGrupo
+      ? {
+          // As marcas que formam o RBT12 -- todas as do regime, mesmo as que
+          // nao venderam neste mes. Os totais abaixo sao das que venderam.
+          marcas: marcasNoSimples,
+          rbt12: rbt12DoGrupo,
+          faixa: primeiro.simples.faixa,
+          aliquotaNominal: primeiro.simples.aliquotaNominal,
+          aliquotaEfetiva: primeiro.simples.aliquotaEfetiva,
+          baseDoMes: noSimples.reduce((s, a) => s + a.baseReceita, 0),
+          valorDAS: noSimples.reduce((s, a) => s + (a.simples?.valorDAS ?? 0), 0),
+          monitorTeto: primeiro.monitorTeto,
+        }
+      : null;
+
   return {
     porInfluencer: porInfluencer.sort((a, b) => b.total - a.total),
+    grupoSimples,
     baseReceita,
     totalSobreVenda,
     cargaSobreReceita: razaoSegura(totalSobreVenda, baseReceita),

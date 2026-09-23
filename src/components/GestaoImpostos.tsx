@@ -3,7 +3,7 @@
 import { Fragment, useActionState, useState } from "react";
 
 import { removerImposto, salvarImposto } from "@/app/impostos/actions";
-import { inteiro, moeda, percentual } from "@/lib/format";
+import { inteiro, moeda, moedaRedonda, percentual } from "@/lib/format";
 import { ESTADO_INICIAL } from "@/types/formulario";
 import type { EsferaImposto, Imposto, RegimeTributario } from "@/types/fiscal";
 
@@ -84,6 +84,20 @@ interface GestaoImpostosProps {
    * marcas quando so tres estao no regime dele.
    */
   valorPorImposto: Record<string, number>;
+  /**
+   * O grupo do Simples: as marcas que dividem o CNPJ e, com ele, o RBT12 e a
+   * faixa. `null` quando nenhuma marca esta no regime.
+   */
+  grupoSimples: ResumoDoGrupoSimples | null;
+}
+
+/** O que a tela precisa saber do grupo do Simples. Montado no servidor. */
+export interface ResumoDoGrupoSimples {
+  marcas: string[];
+  rbt12: number;
+  rbt12Projetado: boolean;
+  faixa: number;
+  aliquotaEfetiva: number;
 }
 
 /*
@@ -102,6 +116,7 @@ export function GestaoImpostos({
   usoPorImposto,
   operacoes,
   valorPorImposto,
+  grupoSimples,
 }: GestaoImpostosProps) {
   /*
    * Chave "regime-idDoImposto", nao so o id.
@@ -161,6 +176,7 @@ export function GestaoImpostos({
           marcas={operacoes.filter((o) => o.regime === regime)}
           usoPorImposto={usoPorImposto}
           valorPorImposto={valorPorImposto}
+          grupoSimples={regime === "simples_nacional" ? grupoSimples : null}
           editando={editando}
           setEditando={setEditando}
         />
@@ -173,6 +189,7 @@ export function GestaoImpostos({
           marcas={[]}
           usoPorImposto={usoPorImposto}
           valorPorImposto={valorPorImposto}
+          grupoSimples={null}
           editando={editando}
           setEditando={setEditando}
         />
@@ -210,6 +227,7 @@ function SecaoDoRegime({
   marcas,
   usoPorImposto,
   valorPorImposto,
+  grupoSimples,
   editando,
   setEditando,
 }: {
@@ -218,6 +236,7 @@ function SecaoDoRegime({
   marcas: OperacaoDoRegime[];
   usoPorImposto: Record<string, number>;
   valorPorImposto: Record<string, number>;
+  grupoSimples: ResumoDoGrupoSimples | null;
   editando: string | null;
   setEditando: (chave: string | null) => void;
 }) {
@@ -256,6 +275,32 @@ function SecaoDoRegime({
         {regime && (
           <p className="mt-2 max-w-4xl text-xs leading-relaxed text-tinta-media">
             {NOTA_DO_REGIME[regime]}
+          </p>
+        )}
+
+        {/*
+          O RBT12 do Simples e do CNPJ, e as marcas aqui sao lojas dele. Sem
+          esta linha, a tabela mostraria uma faixa que nao sai de nenhum numero
+          visivel na tela -- e a primeira reacao seria conferir marca a marca,
+          que e exatamente a leitura errada.
+        */}
+        {grupoSimples && (
+          <p className="mt-2 max-w-4xl rounded border border-borda bg-superficie px-3 py-2 text-xs leading-relaxed text-tinta-media">
+            As {grupoSimples.marcas.length} lojas do Simples são do{" "}
+            <strong className="text-tinta">mesmo CNPJ</strong>, então o RBT12 é
+            um só: o faturamento das doze últimas competências de todas elas
+            somado —{" "}
+            <strong className="numerico text-tinta">
+              {moedaRedonda(grupoSimples.rbt12)}
+            </strong>
+            {grupoSimples.rbt12Projetado && " (projetado)"}. Daí sai a{" "}
+            <strong className="text-tinta">faixa {grupoSimples.faixa}</strong>,
+            com alíquota efetiva de{" "}
+            <strong className="numerico text-tinta">
+              {percentual(grupoSimples.aliquotaEfetiva / 100, 2)}
+            </strong>
+            , que vale para <strong className="text-tinta">todas</strong> elas. O
+            DAS de cada loja é essa alíquota sobre o faturamento dela no mês.
           </p>
         )}
       </div>

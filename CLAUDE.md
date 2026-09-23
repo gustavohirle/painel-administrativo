@@ -470,7 +470,7 @@ precisam de olho:
    pedidos que nunca foram pagos. Ver 5.17.
 
 **Ponto para o contador:** o DIFAL passou a usar **base dupla** no mesmo dia,
-depois que ele mandou o demonstrativo de agosto (5.10.1) — antes o painel saía
+depois que ele mandou o demonstrativo de agosto (5.10.2) — antes o painel saía
 abaixo do devido, agora sai alguns pontos acima. E o frete que a loja paga à
 transportadora (`shipping_cost_owner`) não gera crédito no modelo.
 
@@ -582,7 +582,7 @@ com as fatias da pizza, e cada passo é base × alíquota.
 
 As tabelas são `tabela-ancorada` e não cartões: aqui a leitura é comparar
 estado com estado — e, pela mesma razão, a lista de estados vem **em ordem
-alfabética de UF** (ver 5.10.1).
+alfabética de UF** (ver 5.10.2).
 
 ### 5.1.5 Resultado oculto
 
@@ -800,9 +800,23 @@ No Simples:
 
 ```
 RBT12          = faturamento dos últimos 12 meses (todo pedido, COM frete — 5.1.1)
+                 somado de TODAS as marcas do regime — ver 5.10.1
 alíquota efetiva = (RBT12 × nominal da faixa − parcela a deduzir) / RBT12
 DAS do mês     = alíquota efetiva × faturado do mês (com frete)
 ```
+
+A fórmula da alíquota efetiva foi **conferida contra a memória de cálculo do
+contador** (competência 08/2026): RBT12 de R$ 1.910.089,97 × 14,30% =
+R$ 273.142,87, menos a parcela a deduzir de R$ 87.300,00 = R$ 185.842,87,
+dividido pelo RBT12 = **9,7295346621814%**. O painel faz exatamente essa conta.
+
+**O que NÃO bate com aquele documento é a tabela**: ele é do **Anexo I
+(Comércio)** e o painel usa `ANEXO_II_SIMPLES` (Indústria), em
+`faixaPorRBT12`. Nominal, parcela a deduzir e repartição por tributo são
+diferentes nos dois — o Anexo I daquela faixa reparte IRPJ 5,50%, CSLL 3,50%,
+COFINS 12,74%, PIS 2,76%, CPP 42,00% e ICMS 33,50%. O campo
+`Influencer.anexoSimples` existe e **hoje é ignorado**. Pendente de decisão do
+dono.
 
 A alíquota **efetiva** não é a da tabela — confundir as duas erra a conta em
 milhares. A repartição por tributo vem da tabela oficial do Anexo II.
@@ -812,10 +826,10 @@ fechado; a quebra por tributo é só leitura. Somar as duas coisas dobra o
 imposto. Por isso o cadastro de impostos guarda **apenas** o que é recolhido
 por fora da guia.
 
-O painel monitora os dois limites do regime **por marca**, que são diferentes:
-passar do **sublimite** (R$ 3,6 mi) tira só o ICMS da guia; passar do **teto**
-(R$ 4,8 mi) desenquadra do regime. O RBT12 também é por marca — somar as cinco
-jogaria uma empresa pequena numa faixa que não é a dela.
+O painel monitora os dois limites do regime, que são diferentes: passar do
+**sublimite** (R$ 3,6 mi) tira só o ICMS da guia; passar do **teto**
+(R$ 4,8 mi) desenquadra do regime. Os dois são medidos no RBT12 do grupo
+(5.10.1), porque também são por CNPJ.
 
 Fora do Simples, um tributo pode incidir sobre a receita ou sobre **lucro
 presumido**: base = `presunção × receita − dedução mensal`. A dedução existe
@@ -877,7 +891,77 @@ cosmético é zero).
 Toda alíquota carrega `confirmadoPeloContador`, que começa `false` e aparece
 na tela como aviso. O painel nunca apresenta número fiscal como definitivo.
 
-### 5.10.1 DIFAL de ICMS
+### 5.10.1 O RBT12 do Simples é da EMPRESA, não da marca
+
+Decisão do dono em **23/09/2026**, invertendo o que estava aqui. Antes o RBT12
+era por marca, com o argumento de que somar jogaria uma empresa pequena numa
+faixa que não é a dela. Só que **as marcas do Simples são lojas Nuvemshop do
+mesmo CNPJ**, e o RBT12 é apurado por CNPJ: separar por loja punha a empresa
+numa faixa mais **baixa** que a devida. Quatro lojas de R$ 1 mi/ano não são
+quatro empresas na 2ª faixa — são uma empresa de R$ 4 mi na 5ª.
+
+Então: soma-se o faturamento de todas as marcas do regime, e **todas caem na
+mesma faixa**, com a mesma alíquota efetiva.
+
+Quatro decisões de implementação, em `apurarImpostos`:
+
+1. **O grupo sai do CADASTRO de influencers, não dos pedidos em tela.** É o que
+   faz o imposto de uma marca ser o mesmo na tela inicial e num relatório
+   filtrado só nela. Se o grupo fosse montado a partir dos pedidos exibidos,
+   filtrar por "marca = Ka" apuraria o RBT12 só da Ka, numa faixa mais baixa, e
+   o painel teria duas versões do mesmo número (5.14). Pelo mesmo motivo,
+   `historicoDe` em `relatorios.ts` **deixou de estreitar o histórico por
+   marca** — quem separa é a apuração.
+2. **O DAS continua saindo marca a marca**: alíquota efetiva do grupo × base do
+   mês da marca. Como a alíquota é a mesma para todas, a soma das partes é
+   exatamente o DAS da empresa — e é isso que deixa o raio-x e o relatório
+   atribuírem imposto a uma marca sem inventar rateio. Há teste.
+3. **Fora do Simples o RBT12 continua por marca**, e serve só de referência: no
+   Lucro Presumido não há faixa nem teto, e somar marcas ali não significaria
+   nada.
+4. **RBT12 informado à mão vale para o grupo inteiro.** O campo é por
+   influencer (`rbt12Manual`), mas o número é da empresa: informar num contrato
+   basta. Divergindo entre dois, vale o **maior** — subestimar a faixa cobra
+   imposto a menos, que é o erro caro, e a divergência fica visível porque o
+   RBT12 exibido é o mesmo para todas.
+
+`ApuracaoDeUmInfluencer.rbt12Compartilhado` diz quando o número exibido é o da
+empresa, e **a tela precisa dizer isso**: sem aviso, o RBT12 de uma loja de
+R$ 23 mil/mês aparece em milhões e parece defeito. O bloco do Simples em
+`/impostos` abre com a frase que explica o grupo, e a memória de cálculo
+(5.1.4) diz "da empresa inteira".
+
+**O que isso custou, medido nas quatro lojas do Simples em set/2026:**
+
+| Marca | Base do mês | Antes (RBT12 próprio) | Depois (RBT12 da empresa) |
+|---|---|---|---|
+| Ka Beauty | R$ 152.472 | faixa 6 · 13,16% · R$ 20.072 | faixa 6 · 22,97% · R$ 35.027 |
+| Duale Beauty | R$ 108.246 | faixa 5 · 12,30% · R$ 13.314 | faixa 6 · 22,97% · R$ 24.867 |
+| Laoli Beauty | R$ 36.138 | faixa 3 · 8,06% · R$ 2.912 | faixa 6 · 22,97% · R$ 8.302 |
+| Revenda | R$ 138.798 | faixa 4 · 9,87% · R$ 13.702 | faixa 6 · 22,97% · R$ 31.886 |
+| **DAS do mês** | | **R$ 49.999** | **R$ 100.083** |
+
+**A consequência mais séria não é o DAS: é o teto.** O RBT12 somado dá
+**R$ 10.246.169** — **213% do teto de R$ 4,8 mi**. Nessa situação a empresa
+está legalmente **fora do Simples**. `monitorarTeto` já devolve
+`acima_do_teto` e a tela diz isso, mas o número precisa de conferência antes de
+virar decisão, por três motivos:
+
+1. **É projeção de 3 meses.** `NUVEMSHOP_MESES=3`: o painel tem jul–set/2026 e
+   projeta ×12. O RBT12 de verdade tem 12 competências.
+2. **A base é o faturado** (5.1.1), que inclui cancelado e boleto nunca pago —
+   e esses não entram na receita bruta do Simples. O painel superestima.
+3. **A memória do contador diz outro número.** Competência 08/2026, CNPJ
+   **30.997.734/0001-58** (CRIAR BEAUTY MARKETING DIGITAL LTDA):
+   **RBT12 de R$ 1.910.089,97**, na 5ª faixa do Anexo I. É um terceiro CNPJ,
+   que não é nenhum dos dois anotados na seção 13 — e a distância para os
+   R$ 10,2 mi do painel é grande demais para ser só (1) e (2). Falta saber
+   **quais lojas estão nesse CNPJ**.
+
+Enquanto isso não se resolve, o caminho curto é digitar o RBT12 do contador no
+campo do contrato: ele passa a valer para o grupo inteiro (decisão 4).
+
+### 5.10.2 DIFAL de ICMS
 
 Na venda interestadual ao consumidor final — que é o caso de uma loja
 Nuvemshop — o ICMS se parte em dois: a alíquota **interestadual** fica na
@@ -1832,7 +1916,7 @@ Quatro escolhas que mudam a resposta:
    primeira versão o tratava como custo da loja; o cliente corrigiu.
 3. **DIFAL é a média ponderada dos destinos**, contando as vendas dentro do
    próprio estado (que não pagam). Marca no Simples fica com zero e a linha diz
-   por quê (5.10.1).
+   por quê (5.10.2).
 4. **Despesas com influencer entram rateadas pelo faturamento sem frete.** São custo fixo do
    mês, não da unidade, mas saem do lucro; sem elas a identidade com a DRE não
    fecha.
@@ -2185,7 +2269,7 @@ Não implemente nada disto. Está aqui para não tomar decisões que fechem port
      outros canais, a distância do teto de R$ 4,8 mi é menor que a exibida.
   3. **Faturamento, imposto e lucro são da NUVEMSHOP, não da empresa** — e
      nenhuma tela diz isso hoje, por decisão do dono. Foi o que fez o DIFAL do
-     painel não bater com o do contador (5.10.1).
+     painel não bater com o do contador (5.10.2).
 
   Ao integrar: os dois têm API própria e OAuth próprio, e o caminho é o mesmo
   da Nuvemshop — conversão na borda para `Pedido`, cache por loja, e `marca`

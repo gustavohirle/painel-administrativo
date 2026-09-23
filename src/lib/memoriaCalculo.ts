@@ -39,6 +39,8 @@ export type OrigemDaBase =
       tipo: "das";
       rbt12: number;
       rbt12Projetado: boolean;
+      /** `true` quando o RBT12 e o da empresa, somado das lojas do Simples. */
+      rbt12Compartilhado: boolean;
       faixa: number;
       aliquotaNominal: number;
     };
@@ -110,6 +112,7 @@ export function memoriaDosImpostos(
             tipo: "das",
             rbt12: apuracao.simples.rbt12,
             rbt12Projetado: apuracao.rbt12.projetado,
+            rbt12Compartilhado: apuracao.rbt12Compartilhado,
             faixa: apuracao.simples.faixa,
             aliquotaNominal: apuracao.simples.aliquotaNominal,
           };
