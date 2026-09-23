@@ -19,6 +19,7 @@
     "nuvemshop:sincronizar": "node --env-file=.env.live node_modules/tsx/dist/cli.mjs scripts/nuvemshop.ts sincronizar",
     "nuvemshop:token": "node --env-file=.env.live node_modules/tsx/dist/cli.mjs scripts/nuvemshop.ts token",
     "canais:conferir": "node --env-file=.env.live node_modules/tsx/dist/cli.mjs scripts/canais.ts",
+    "env:enviar": "node scripts/enviar-env.mjs",
     "live:preparar": "npm run db:criar:live && npm run db:push:live && npm run db:seed:live",
     "db:criar:live": "node --env-file=.env.live scripts/criar-banco.mjs",
     "db:push:live": "node --env-file=.env.live node_modules/prisma/build/index.js db push --skip-generate",

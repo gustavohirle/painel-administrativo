@@ -2918,6 +2918,32 @@ conseguir.
 túnel rápido da 5.15). Com domínio apontando para o IP: certificado Let's
 Encrypt no nginx, `painel-tunel` desligado, endereço fixo.
 
+### Levar chave nova para o servidor
+
+Quem preenche as chaves de API **não acessa o servidor**: elas são coladas no
+`.env.live` local e levadas por `npm run env:enviar` (sem `--confirmar`, só
+mostra o que mudaria). Foi assim com as cinco chaves da Nuvemshop, na mão, e
+desde 23/09/2026 é um comando.
+
+Ele **mescla**, nunca copia por cima, e mantém uma lista de variáveis que não
+sobem (`NUNCA_ENVIAR`): `DATABASE_URL`, `SESSAO_SECRET`, as senhas semeadas,
+`NUVEMSHOP_CACHE_DIR`, `PAINEL_DIST_DIR` e `NUVEMSHOP_ATUALIZAR_MINUTOS` — as
+que dizem respeito à **máquina**, e não à integração. Igualar as duas pontas
+nessas é exatamente o estrago que ele existe para evitar: o Postgres local, as
+sessões abertas e o intervalo de 25 minutos que só vale no servidor (porque lá
+o timer também busca).
+
+O resumo antes de aplicar **é para ser lido**. Na primeira execução ele pegou
+um `NUVEMSHOP_MESES=3` local contra os 13 do servidor — um envio cego teria
+derrubado a base de 278 mil pedidos para 41 mil, e ninguém veria por quê até
+alguém olhar um mês antigo.
+
+Detalhes que não são estética: o arquivo viaja em **base64 pela entrada
+padrão**, e não como argumento do `ssh`, onde apareceria na lista de processos
+do servidor; o anterior fica em `.env.live.anterior`; e o modo 600 e o dono
+`painel` são reaplicados depois de escrever, porque `ProtectSystem=strict` só
+protege de fora.
+
 ### Atualizar depois de um commit
 
 ```bash

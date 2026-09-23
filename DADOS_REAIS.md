@@ -206,8 +206,35 @@ blocos não traz pedido nenhum — a busca é a Fase 4 (seção 9 do CLAUDE.md).
    você escreveu no bloco. A grafia precisa bater, com acento e maiúsculas — é
    por ela que o pedido acha o influencer (armadilha 9).
 
-**Não cole o segredo em conversa, e-mail ou print.** No servidor, edite com
-`nano /opt/painel/app/.env.live`, como as chaves da Nuvemshop.
+**Não cole o segredo em conversa, e-mail ou print.**
+
+### Levar as chaves para produção
+
+Quem preenche as chaves não acessa o servidor: elas são coladas no `.env.live`
+**local** e levadas por
+
+```bash
+npm run env:enviar               # só mostra o que mudaria
+npm run env:enviar -- --confirmar
+```
+
+Ele **mescla**, não copia por cima. Copiar o arquivo inteiro quebraria a
+produção de três maneiras de uma vez — o `DATABASE_URL` local aponta para o
+Postgres da máquina de quem edita, um `SESSAO_SECRET` diferente derruba todas
+as sessões abertas, e as senhas semeadas não são as mesmas. Por isso há uma
+lista de variáveis que **nunca** sobem (`NUNCA_ENVIAR`, em
+`scripts/enviar-env.mjs`), e variável que existe no servidor e não existe aqui
+nunca é removida.
+
+Sem `--confirmar` ele só mostra o resumo, e **é para ser lido**: na primeira
+execução ele pegou um `NUVEMSHOP_MESES=3` local contra os 13 do servidor, que
+teria derrubado a base de 278 mil pedidos para 41 mil. Valor sensível aparece
+mascarado, aqui e no resumo.
+
+O arquivo vai em base64 pela entrada padrão, e não na linha de comando do
+`ssh` — ali ele apareceria na lista de processos do servidor. O anterior fica
+em `/opt/painel/app/.env.live.anterior`, e o serviço é reiniciado e conferido
+no fim.
 
 O token de acesso **não** fica no `.env.live`: os três canais giram o token, e
 o que vale em execução é gravado em `.live-data/tokens-canais.json` (modo 600).
