@@ -12,10 +12,22 @@
  * Sem o catalogo da API: aqui o nome e o SKU saem das VENDAS. Quem quiser o
  * nome atual da loja e o aviso de item despublicado usa o botao da tela, que
  * chama `listarCatalogo`.
+ *
+ * Junto com o produto entra uma FICHA DE CUSTO PROVISORIA de 35% do preco
+ * medio pago, a mesma regra das 133 fichas de 17/09/2026 (secao 13) -- pedido
+ * do dono, para o painel ter base ate os custos reais chegarem. O valor inteiro
+ * vai em materia-prima e os outros tres componentes ficam em zero: e por ai que
+ * se acham depois as fichas que ainda sao chute.
  */
 
 import { obterFonteDePedidos, obterRepositorioCadastros } from "../src/data";
 import { produtosParaCadastrar } from "../src/lib/costing";
+import { pedidosRecebidos } from "../src/lib/metrics";
+import { chaveProduto } from "../src/types/produto";
+import { paraNumero } from "../src/types/nuvemshop";
+
+/** Fracao do preco de venda que vira custo provisorio (secao 13). */
+const CUSTO_PROVISORIO = 0.35;
 
 const brl = (n: number) =>
   n.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -60,6 +72,9 @@ async function main() {
     console.log(`  ${semDono} SEM DONO: a loja deles não tem influencer ativo`);
   }
 
+  console.log(
+    `\n  Cada um entra com ficha PROVISÓRIA de ${CUSTO_PROVISORIO * 100}% do preço médio pago.`,
+  );
   console.log(`\n  20 primeiros:`);
   for (const p of novos.slice(0, 20)) {
     console.log(
@@ -83,11 +98,76 @@ async function main() {
     await repositorio.salvarProduto(entrada);
     gravados++;
   }
-
   console.log(`\n${gravados} produto(s) cadastrado(s).`);
+
+  /*
+   * O preco medio PAGO de cada variante, e nao o de tabela: e o que entrou de
+   * verdade. So pedidos recebidos entram, pela mesma razao do CMV (5.7) --
+   * boleto nunca pago nao chegou a ser produzido.
+   */
+  const soma = new Map<string, { valor: number; unidades: number }>();
+  for (const pedido of pedidosRecebidos(pedidos)) {
+    for (const item of pedido.products) {
+      const chave = chaveProduto(item.product_id, item.variant_id);
+      const quantidade = Number(item.quantity ?? 0);
+      if (quantidade <= 0) continue;
+      const atual = soma.get(chave) ?? { valor: 0, unidades: 0 };
+      atual.valor += paraNumero(item.price) * quantidade;
+      atual.unidades += quantidade;
+      soma.set(chave, atual);
+    }
+  }
+
+  const custosExistentes = await repositorio.listarCustos();
+  const jaTemFicha = new Set(
+    custosExistentes.map((c) => chaveProduto(c.produtoId, c.varianteId ?? 0)),
+  );
+
+  let fichas = 0;
+  let semPreco = 0;
+
+  for (const entrada of novos) {
+    const chave = chaveProduto(entrada.produtoId, entrada.varianteId);
+    if (jaTemFicha.has(chave)) continue;
+
+    const vendas = soma.get(chave);
+    /*
+     * Sem preco nao ha o que estimar. Sao os brindes a R$ 0 e os itens que so
+     * sairam dentro de kit: inventar um custo para eles seria pior que a
+     * lacuna, porque a lacuna a tela declara e o numero inventado, nao.
+     */
+    if (!vendas || vendas.unidades === 0 || vendas.valor <= 0) {
+      semPreco++;
+      continue;
+    }
+
+    const precoMedio = vendas.valor / vendas.unidades;
+    await repositorio.salvarCusto({
+      produtoId: entrada.produtoId,
+      varianteId: entrada.varianteId,
+      sku: entrada.sku,
+      nome: entrada.nome,
+      // Tudo em materia-prima: e por ai que se acha o que ainda e chute.
+      custoMateriaPrima: Math.round(precoMedio * CUSTO_PROVISORIO * 100) / 100,
+      custoEmbalagem: 0,
+      custoMaoDeObra: 0,
+      custoIndireto: 0,
+    });
+    fichas++;
+  }
+
   console.log(
-    "Eles entram SEM ficha de custo: saem do aviso de 'sem cadastro fiscal' e\n" +
-      "passam para o de 'produto sem custo', na aba Custos. É lá que se completa.\n",
+    `${fichas} ficha(s) de custo provisória(s) a ${CUSTO_PROVISORIO * 100}% do preço médio pago.`,
+  );
+  if (semPreco > 0) {
+    console.log(
+      `${semPreco} ficaram SEM ficha por não terem preço (brinde a R$ 0 ou item que só sai em kit).`,
+    );
+  }
+  console.log(
+    "\nOs valores são PROVISÓRIOS: 35% do preço de venda, com tudo em\n" +
+      "matéria-prima e os outros três componentes em zero. É por aí que se\n" +
+      "acham na aba Custos para trocar pelos reais.\n",
   );
 }
 
