@@ -1,22 +1,55 @@
-import {
-  escalaAgradavel,
-  mesAno,
-  moedaCompacta,
-  percentual,
-  razaoSegura,
-} from "@/lib/format";
-import type { PontoEvolucao } from "@/lib/metrics";
+import { escalaAgradavel, mesAno, moedaCompacta } from "@/lib/format";
 
 /*
- * Duas linhas sobre seis pontos: bruto x recebido.
+ * Uma linha por influencer, mais a linha do total, sobre doze meses.
  *
- * A area sombreada entre elas e o ponto da secao -- mostra que a distancia
- * entre faturar e receber e estrutural, nao um mes ruim isolado.
+ * Ate 23/09/2026 eram duas linhas sobre seis pontos -- bruto x recebido --, e
+ * a area sombreada entre elas era o assunto. O dono trocou: ele quer comparar
+ * as marcas entre si e ver quem cresce e quem encolhe. A distancia entre
+ * faturar e receber continua contada, e com mais detalhe, na pizza da tela
+ * inicial (5.1); aqui ela sairia de qualquer jeito, porque nao ha como mostrar
+ * duas metricas de cinco marcas no mesmo desenho.
  *
- * SVG na mao em vez de biblioteca de grafico: para duas series de seis pontos
- * a geometria e trivial, e assim nao entra nenhuma dependencia que precise
- * baixar nada em tempo de execucao.
+ * SVG na mao em vez de biblioteca de grafico: a geometria de N polilinhas e
+ * trivial, e assim nao entra nenhuma dependencia que precise baixar algo em
+ * tempo de execucao.
  */
+
+export interface LinhaDaEvolucao {
+  /** Rotulo: o nome do influencer, ou o da marca quando nao ha contrato. */
+  nome: string;
+  valores: number[];
+}
+
+interface EvolucaoMensalProps {
+  meses: string[];
+  linhas: LinhaDaEvolucao[];
+  total: number[];
+}
+
+/*
+ * Paleta das series.
+ *
+ * Qualitativa, e nao um degrade: as marcas nao tem ordem natural, e uma escala
+ * continua sugeriria que a Ka esta "entre" a Tha e a Duale em alguma coisa.
+ * Sao matizes bem separados e todos escuros o bastante para uma linha de 2px
+ * ficar legivel sobre o fundo claro.
+ *
+ * O TOTAL nao entra na paleta: ele e preto e mais grosso, porque nao e mais
+ * uma marca -- e a soma de todas, e precisa se ler como outra categoria.
+ */
+const CORES = [
+  "#1849a9",
+  "#be185d",
+  "#047857",
+  "#b45309",
+  "#7c3aed",
+  "#0e7490",
+  "#a21caf",
+  "#4d7c0f",
+] as const;
+
+const corDaSerie = (i: number) => CORES[i % CORES.length]!;
 
 /*
  * O grafico existe em dois formatos, e a razao e de legibilidade, nao de gosto.
@@ -27,128 +60,115 @@ import type { PontoEvolucao } from "@/lib/metrics";
  *
  * Entao o formato estreito nao e o mesmo desenho menor -- e um desenho com
  * menos largura, menos margem e menos rotulo, para que a fonte chegue perto de
- * 11px reais. Os valores por ponto saem: com seis pontos em 294px eles se
- * sobrepoem antes de ficarem pequenos demais. Sobram os eixos e as duas
- * linhas, que e o que a secao precisa dizer.
+ * 11px reais.
  */
 interface Formato {
   largura: number;
   altura: number;
   margem: { topo: number; direita: number; baixo: number; esquerda: number };
   fonteEixo: number;
-  fontePonto: number;
-  /** Valor sobre cada ponto. Desligado no estreito: seis pares nao cabem. */
-  rotularPontos: boolean;
   /** Mostra so um rotulo de mes a cada N, para o eixo nao virar uma mancha. */
   passoDoMes: number;
+  /** Raio do ponto em cada mes. Zero desliga: com 12 meses e 6 linhas sao 72. */
+  raioDoPonto: number;
 }
 
 const FORMATO_LARGO: Formato = {
   largura: 1200,
-  altura: 360,
+  altura: 380,
   /*
-   * A margem esquerda e generosa de proposito: o rotulo do primeiro ponto e
-   * centrado nele e, com margem curta, invadia os valores do eixo. A direita
-   * idem, para o rotulo do ultimo ponto nao ser cortado pelo viewBox.
+   * A margem esquerda cabe "R$ 1.200,0 mil" na fonte 13. A direita cabe metade
+   * de "Set/26", que e centrado no ultimo ponto e por isso transborda o
+   * viewBox se a margem for curta.
    */
-  margem: { topo: 40, direita: 62, baixo: 64, esquerda: 132 },
+  margem: { topo: 28, direita: 62, baixo: 64, esquerda: 132 },
   fonteEixo: 13,
-  fontePonto: 14,
-  rotularPontos: true,
   passoDoMes: 1,
+  raioDoPonto: 3,
 };
 
 const FORMATO_ESTREITO: Formato = {
   largura: 380,
   altura: 300,
-  /*
-   * Margens do estreito medidas contra o texto, nao escolhidas no olho:
-   * a esquerda tem que caber "R$ 800,0 mil" na fonte 12, e a direita tem que
-   * caber metade de "Set/26", que e centrado no ultimo ponto e por isso
-   * transborda o viewBox se a margem for curta.
-   */
-  margem: { topo: 20, direita: 34, baixo: 38, esquerda: 88 },
+  margem: { topo: 16, direita: 34, baixo: 38, esquerda: 88 },
   fonteEixo: 12,
-  fontePonto: 12,
-  rotularPontos: false,
-  passoDoMes: 2,
+  /*
+   * Doze meses em ~294px dariam um rotulo a cada 21px: "Set/26" mede mais que
+   * isso e eles se sobrepoem. De tres em tres o eixo respira.
+   */
+  passoDoMes: 3,
+  raioDoPonto: 0,
 };
 
-export function EvolucaoMensal({ pontos }: { pontos: PontoEvolucao[] }) {
-  if (pontos.length === 0) {
+export function EvolucaoMensal({ meses, linhas, total }: EvolucaoMensalProps) {
+  if (meses.length === 0 || linhas.length === 0) {
     return <p className="text-sm text-tinta-media">Sem dados no período.</p>;
   }
 
-  const ultimo = pontos[pontos.length - 1]!;
-
   return (
     <div>
-      <div className="mb-4 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
-        <span className="flex items-center gap-2 font-medium text-tinta">
-          <span className="h-0.5 w-6 rounded bg-bruto" />
-          Faturamento bruto
+      <div className="mb-4 flex flex-wrap items-center gap-x-5 gap-y-2 text-sm">
+        <span className="flex items-center gap-2 font-semibold text-tinta">
+          <span className="h-1 w-6 rounded bg-tinta" />
+          Total
         </span>
-        <span className="flex items-center gap-2 font-medium text-tinta">
-          <span className="h-0.5 w-6 rounded bg-real" />
-          Recebido
-        </span>
-        <span className="text-tinta-media sm:ml-auto">
-          No mês mais recente, o recebido foi{" "}
-          <strong className="numerico font-semibold text-tinta">
-            {percentual(razaoSegura(ultimo.recebido, ultimo.bruto))}
-          </strong>{" "}
-          do faturado.
-        </span>
+        {linhas.map((linha, i) => (
+          <span key={linha.nome} className="flex items-center gap-2 font-medium text-tinta-media">
+            <span
+              className="h-0.5 w-6 rounded"
+              style={{ backgroundColor: corDaSerie(i) }}
+            />
+            {linha.nome}
+          </span>
+        ))}
       </div>
 
       {/* Um desenho por faixa de largura -- ver o comentario dos formatos. */}
       <div className="sm:hidden">
-        <Desenho pontos={pontos} formato={FORMATO_ESTREITO} />
+        <Desenho meses={meses} linhas={linhas} total={total} formato={FORMATO_ESTREITO} />
       </div>
       <div className="hidden sm:block">
-        <Desenho pontos={pontos} formato={FORMATO_LARGO} />
+        <Desenho meses={meses} linhas={linhas} total={total} formato={FORMATO_LARGO} />
       </div>
     </div>
   );
 }
 
-function Desenho({ pontos, formato }: { pontos: PontoEvolucao[]; formato: Formato }) {
+function Desenho({
+  meses,
+  linhas,
+  total,
+  formato,
+}: EvolucaoMensalProps & { formato: Formato }) {
   const { largura: LARGURA, altura: ALTURA, margem: MARGEM } = formato;
   const AREA_LARGURA = LARGURA - MARGEM.esquerda - MARGEM.direita;
   const AREA_ALTURA = ALTURA - MARGEM.topo - MARGEM.baixo;
 
-  // Sem folga manual: `escalaAgradavel` ja arredonda para cima do maximo.
-  const { topo: maximo, marcas: referencias } = escalaAgradavel(
-    Math.max(...pontos.map((p) => p.bruto)),
-  );
-  const passo = pontos.length > 1 ? AREA_LARGURA / (pontos.length - 1) : 0;
+  /*
+   * A escala sai do TOTAL, que e sempre o maior. As marcas menores ficam
+   * baixas no desenho, e isso e honesto: a Revenda faz mesmo uma fracao do que
+   * a Tha faz, e um eixo por marca esconderia justamente essa diferenca.
+   */
+  const { topo: maximo, marcas: referencias } = escalaAgradavel(Math.max(...total, 0));
+  const passo = meses.length > 1 ? AREA_LARGURA / (meses.length - 1) : 0;
 
   const x = (i: number) => MARGEM.esquerda + passo * i;
-  const y = (v: number) => MARGEM.topo + AREA_ALTURA - (v / maximo) * AREA_ALTURA;
+  const y = (v: number) =>
+    MARGEM.topo + AREA_ALTURA - (maximo > 0 ? (v / maximo) * AREA_ALTURA : 0);
 
-  const linha = (chave: "bruto" | "recebido") =>
-    pontos.map((p, i) => `${i === 0 ? "M" : "L"} ${x(i)} ${y(p[chave])}`).join(" ");
+  const caminho = (valores: number[]) =>
+    valores.map((v, i) => `${i === 0 ? "M" : "L"} ${x(i)} ${y(v)}`).join(" ");
 
-  // Poligono fechado entre as duas linhas: o "vazamento" do periodo.
-  const areaEntre = [
-    ...pontos.map((p, i) => `${i === 0 ? "M" : "L"} ${x(i)} ${y(p.bruto)}`),
-    ...pontos
-      .slice()
-      .reverse()
-      .map((p, i) => `L ${x(pontos.length - 1 - i)} ${y(p.recebido)}`),
-    "Z",
-  ].join(" ");
-
-  /* O ultimo mes sempre recebe rotulo: e o numero de que a frase acima fala. */
+  /* O ultimo mes sempre recebe rotulo: e o mes que a pessoa veio olhar. */
   const mostraMes = (i: number) =>
-    i === pontos.length - 1 || (pontos.length - 1 - i) % formato.passoDoMes === 0;
+    i === meses.length - 1 || (meses.length - 1 - i) % formato.passoDoMes === 0;
 
   return (
     <svg
       viewBox={`0 0 ${LARGURA} ${ALTURA}`}
       className="h-auto w-full"
       role="img"
-      aria-label="Evolução mensal do faturamento bruto comparado ao recebido."
+      aria-label="Faturamento bruto de cada influencer mês a mês, e o total da operação."
     >
       {referencias.map((valor) => (
         <g key={valor}>
@@ -173,71 +193,64 @@ function Desenho({ pontos, formato }: { pontos: PontoEvolucao[]; formato: Format
         </g>
       ))}
 
-      <path d={areaEntre} fill="var(--color-naopago)" opacity={0.08} />
-
-      <path
-        d={linha("bruto")}
-        fill="none"
-        stroke="var(--color-bruto)"
-        strokeWidth={3}
-        strokeLinejoin="round"
-        strokeLinecap="round"
-      />
-      <path
-        d={linha("recebido")}
-        fill="none"
-        stroke="var(--color-real)"
-        strokeWidth={3}
-        strokeLinejoin="round"
-        strokeLinecap="round"
-      />
-
-      {pontos.map((p, i) => (
-        <g key={p.mes}>
-          <circle cx={x(i)} cy={y(p.bruto)} r={4} fill="var(--color-bruto)" />
-          <circle cx={x(i)} cy={y(p.recebido)} r={4} fill="var(--color-real)" />
-
-          {formato.rotularPontos && (
-            <>
-              <text
-                x={x(i)}
-                y={y(p.bruto) - 14}
-                textAnchor="middle"
-                fontSize={formato.fontePonto}
-                fontWeight={600}
-                fill="var(--color-bruto)"
-                className="numerico"
-              >
-                {moedaCompacta(p.bruto)}
-              </text>
-              <text
-                x={x(i)}
-                y={y(p.recebido) + 24}
-                textAnchor="middle"
-                fontSize={formato.fontePonto}
-                fontWeight={600}
-                fill="var(--color-real)"
-                className="numerico"
-              >
-                {moedaCompacta(p.recebido)}
-              </text>
-            </>
-          )}
-
-          {mostraMes(i) && (
-            <text
-              x={x(i)}
-              y={ALTURA - 14}
-              textAnchor="middle"
-              fontSize={formato.fontePonto}
-              fontWeight={600}
-              fill="var(--color-tinta)"
-            >
-              {mesAno(p.mes)}
-            </text>
-          )}
-        </g>
+      {/* As marcas primeiro; o total por cima, porque e a linha de referencia. */}
+      {linhas.map((linha, i) => (
+        <path
+          key={linha.nome}
+          d={caminho(linha.valores)}
+          fill="none"
+          stroke={corDaSerie(i)}
+          strokeWidth={2}
+          strokeLinejoin="round"
+          strokeLinecap="round"
+        />
       ))}
+
+      <path
+        d={caminho(total)}
+        fill="none"
+        stroke="var(--color-tinta)"
+        strokeWidth={3.5}
+        strokeLinejoin="round"
+        strokeLinecap="round"
+      />
+
+      {formato.raioDoPonto > 0 &&
+        meses.map((mes, i) => (
+          <g key={mes}>
+            {linhas.map((linha, n) => (
+              <circle
+                key={linha.nome}
+                cx={x(i)}
+                cy={y(linha.valores[i] ?? 0)}
+                r={formato.raioDoPonto}
+                fill={corDaSerie(n)}
+              />
+            ))}
+            <circle
+              cx={x(i)}
+              cy={y(total[i] ?? 0)}
+              r={formato.raioDoPonto + 1}
+              fill="var(--color-tinta)"
+            />
+          </g>
+        ))}
+
+      {meses.map((mes, i) =>
+        mostraMes(i) ? (
+          <text
+            key={mes}
+            x={x(i)}
+            y={ALTURA - 14}
+            textAnchor="middle"
+            fontSize={formato.fonteEixo}
+            fontWeight={600}
+            fill="var(--color-tinta)"
+          >
+            {mesAno(mes)}
+          </text>
+        ) : null,
+      )}
     </svg>
   );
 }

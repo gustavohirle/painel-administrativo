@@ -322,11 +322,91 @@ export interface PontoEvolucao {
   receitaReal: number;
 }
 
+/** Uma linha do grafico de evolucao: uma marca, um valor por mes. */
+export interface SerieMensal {
+  marca: string;
+  /**
+   * Um valor por mes, na ordem de `EvolucaoPorMarca.meses`. Mes sem venda
+   * entra como ZERO, e nao como buraco: a linha precisa de um ponto em cada
+   * mes para nao "pular" por cima de um periodo em que a loja nao vendeu --
+   * que e exatamente o que aconteceu com as lojas novas (Duale e Revenda so
+   * tem venda a partir de julho/2026).
+   */
+  valores: number[];
+}
+
+export interface EvolucaoPorMarca {
+  /** Os meses do periodo, do mais antigo para o mais novo. */
+  meses: string[];
+  /** Uma serie por marca, da que mais faturou no periodo para a que menos. */
+  series: SerieMensal[];
+  /** Soma das marcas, mes a mes. E a mesma linha de `evolucaoMensal().bruto`. */
+  total: number[];
+}
+
+/**
+ * Faturamento bruto por marca, mes a mes.
+ *
+ * E a fonte do grafico de evolucao (5.5), que passou de duas linhas (bruto x
+ * recebido) para uma linha por influencer mais o total.
+ *
+ * A metrica e o BRUTO, e nao o recebido, por duas razoes: e o numero que a
+ * pessoa tem na cabeca ao comparar uma marca com a outra, e assim a linha do
+ * total continua sendo exatamente a linha de bruto que o grafico ja mostrava.
+ *
+ * Uma varredura so sobre os pedidos: com 278 mil deles, filtrar a base por
+ * marca dentro de um laco de meses releria tudo dezenas de vezes.
+ */
+export function evolucaoPorMarca(pedidos: Pedido[], meses = 12): EvolucaoPorMarca {
+  const porMarcaMes = new Map<string, Pedido[]>();
+  const mesesVistos = new Set<string>();
+  const marcasVistas = new Set<string>();
+
+  for (const pedido of pedidos) {
+    const mes = chaveMes(pedido.created_at);
+    mesesVistos.add(mes);
+    marcasVistas.add(pedido.marca);
+    const chave = `${pedido.marca}\u0000${mes}`;
+    const lista = porMarcaMes.get(chave);
+    if (lista) lista.push(pedido);
+    else porMarcaMes.set(chave, [pedido]);
+  }
+
+  const janela = [...mesesVistos].sort().slice(-meses);
+  const total = janela.map(() => 0);
+
+  const series: SerieMensal[] = [...marcasVistas]
+    .map((marca) => {
+      const valores = janela.map((mes, i) => {
+        const lista = porMarcaMes.get(`${marca}\u0000${mes}`);
+        const bruto = lista ? reconciliar(lista).bruto : 0;
+        total[i] = (total[i] ?? 0) + bruto;
+        return bruto;
+      });
+      return { marca, valores };
+    })
+    // Da maior para a menor: e a ordem da legenda, e a cor acompanha.
+    .sort((a, b) => soma(b.valores) - soma(a.valores));
+
+  return { meses: janela, series, total };
+}
+
+const soma = (valores: number[]) => valores.reduce((s, v) => s + v, 0);
+
 /** Chave de agrupamento mensal a partir do `created_at` (ISO 8601). */
 export function chaveMes(iso: string): string {
   return iso.slice(0, 7);
 }
 
+/**
+ * Bruto x recebido, mes a mes.
+ *
+ * NENHUMA TELA USA isto hoje: o grafico de evolucao passou a ser uma linha por
+ * influencer (`evolucaoPorMarca`) em 23/09/2026. Fica aqui, com teste, pelo
+ * mesmo motivo das funcoes de comissao da 5.2 -- e a unica forma mensal do
+ * recebido e da receita real, e o dia em que a distancia entre faturar e
+ * receber voltar a ser um grafico, e daqui que ela sai.
+ */
 export function evolucaoMensal(pedidos: Pedido[], meses = 6): PontoEvolucao[] {
   const grupos = new Map<string, Pedido[]>();
   for (const pedido of pedidos) {

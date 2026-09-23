@@ -686,7 +686,45 @@ pagamento de cada um. Explica de onde vem o vazamento.
 
 ### 5.5 Evolução
 
-Últimos 6 meses, bruto vs. recebido. Mostra que o gap é estrutural.
+**Últimos 12 meses, uma linha por influencer mais a linha do total**
+(23/09/2026, pedido do dono). Até então eram 6 meses e duas linhas — bruto vs.
+recebido —, com a área sombreada entre elas mostrando que o vazamento é
+estrutural. Ele trocou a pergunta: quer comparar as marcas entre si e ver quem
+cresce e quem encolhe.
+
+A distância entre faturar e receber **não sumiu do painel** — continua contada,
+com mais detalhe, na pizza da tela inicial (5.1). Ela sairia daqui de qualquer
+jeito: não há como mostrar duas métricas de cinco marcas no mesmo desenho sem
+virar dez linhas.
+
+Quatro decisões:
+
+1. **A métrica é o faturamento BRUTO.** É o número que a pessoa tem na cabeça
+   ao comparar uma marca com a outra, e assim a linha do total continua sendo
+   exatamente a linha de bruto que o gráfico já mostrava. Há teste exigindo que
+   `evolucaoPorMarca().total` seja igual ao `bruto` de `evolucaoMensal()` nos
+   mesmos meses — as duas leem `reconciliar`, e se um dia divergirem é porque
+   alguém passou a somar à mão num dos lados.
+2. **Mês sem venda é ZERO, não um buraco.** Duale e Revenda só vendem a partir
+   de julho/2026; sem o zero, a polilinha ligaria o último mês com venda ao
+   primeiro seguinte e passaria por cima do período em que a loja não existia.
+3. **Um eixo só, e a escala sai do total.** As marcas menores ficam baixas no
+   desenho, e isso é honesto: a Revenda faz mesmo uma fração do que a Tha faz,
+   e um eixo por marca esconderia justamente essa diferença.
+4. **O total é preto e mais grosso**, fora da paleta das marcas: ele não é mais
+   uma marca, é a soma de todas, e precisa se ler como outra categoria. A
+   paleta das séries é qualitativa e não um degradê — as marcas não têm ordem
+   natural, e uma escala contínua sugeriria que uma está "entre" as outras em
+   alguma coisa.
+
+Os valores sobre cada ponto saíram: com 12 meses e 6 linhas seriam 72 rótulos.
+No celular os pontos somem também e o eixo mostra um mês a cada três — doze
+rótulos em ~294px dariam 21px cada, e "Set/26" mede mais que isso. `npm run
+celular` mede a fonte resultante e é ela que segura essa conta (seção 2.1).
+
+`evolucaoMensal` continua em `metrics.ts`, com teste, mas **nenhuma tela a
+usa**: é a única forma mensal do recebido e da receita real, e é dela que sai o
+gráfico do vazamento no dia em que ele voltar. Mesmo critério da 5.2.
 
 ### 5.6 Sinais adicionais (rodapé, discreto)
 

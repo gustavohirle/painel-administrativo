@@ -32,7 +32,7 @@ import {
   agruparPorMarca,
   agruparPorMetodoPagamento,
   calcularSinaisAdicionais,
-  evolucaoMensal,
+  evolucaoPorMarca,
   filtrarPorMes,
   mesesDisponiveis,
   reconciliar,
@@ -87,7 +87,15 @@ export default async function PaginaPainel({
   const reconciliacao = reconciliar(pedidosDoMes);
   const marcas = agruparPorMarca(pedidosDoMes, PERCENTUAL_COMISSAO_PADRAO);
   const metodos = agruparPorMetodoPagamento(pedidosDoMes);
-  const evolucao = evolucaoMensal(todosOsPedidos, 6);
+  /*
+   * Doze meses, uma linha por influencer. O rotulo e o nome do influencer da
+   * marca -- e a marca, quando ela nao tem contrato ativo, para a linha nao
+   * ficar sem nome na legenda.
+   */
+  const evolucao = evolucaoPorMarca(todosOsPedidos, 12);
+  const nomeDaMarca = new Map(
+    influencers.filter((i) => i.ativo).map((i) => [i.marca, i.nome] as const),
+  );
   const sinais = calcularSinaisAdicionais(pedidosDoMes, carrinhos, todosOsPedidos);
   const impostos = apurarImpostos(
     pedidosDoMes,
@@ -225,10 +233,17 @@ export default async function PaginaPainel({
         </Cartao>
 
         <Cartao
-          titulo="Evolução dos últimos 6 meses"
-          descricao="A distância entre faturar e receber se repete mês a mês."
+          titulo="Evolução dos últimos 12 meses"
+          descricao="Faturamento bruto de cada influencer, mês a mês, e o total da operação."
         >
-          <EvolucaoMensal pontos={evolucao} />
+          <EvolucaoMensal
+            meses={evolucao.meses}
+            linhas={evolucao.series.map((s) => ({
+              nome: nomeDaMarca.get(s.marca) ?? s.marca,
+              valores: s.valores,
+            }))}
+            total={evolucao.total}
+          />
         </Cartao>
 
         <Cartao

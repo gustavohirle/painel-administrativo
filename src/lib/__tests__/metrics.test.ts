@@ -9,6 +9,7 @@ import {
   compararComissao,
   diaDeHoje,
   evolucaoMensal,
+  evolucaoPorMarca,
   filtrarPorDia,
   filtrarPorMes,
   mesesDisponiveis,
@@ -291,6 +292,69 @@ describe("agruparPorMetodoPagamento", () => {
     expect(boleto.participacao).toBeCloseTo(0.5, 6);
     expect(boleto.taxaNaoPagamento).toBeCloseTo(0.5, 6);
     expect(pix.taxaNaoPagamento).toBeCloseTo(0, 6);
+  });
+});
+
+describe("evolucaoPorMarca", () => {
+  const base = () => [
+    pedido({ marca: "Grande", created_at: "2026-07-05T10:00:00.000Z", total: "1000.00" }),
+    pedido({ marca: "Grande", created_at: "2026-08-05T10:00:00.000Z", total: "2000.00" }),
+    pedido({ marca: "Grande", created_at: "2026-09-05T10:00:00.000Z", total: "3000.00" }),
+    pedido({ marca: "Pequena", created_at: "2026-09-05T10:00:00.000Z", total: "500.00" }),
+  ];
+
+  it("uma serie por marca, e o total mes a mes", () => {
+    const e = evolucaoPorMarca(base());
+
+    expect(e.meses).toEqual(["2026-07", "2026-08", "2026-09"]);
+    expect(e.series.map((s) => s.marca)).toEqual(["Grande", "Pequena"]);
+    expect(e.total).toEqual([1000, 2000, 3500]);
+  });
+
+  it("mes sem venda vira ZERO, e nao um buraco na linha", () => {
+    /*
+     * As lojas novas (Duale e Revenda) so tem venda a partir de julho/2026.
+     * Sem o zero, a polilinha ligaria o ultimo mes com venda ao primeiro
+     * seguinte e passaria por cima do periodo em que a loja nao existia.
+     */
+    const e = evolucaoPorMarca(base());
+    const pequena = e.series.find((s) => s.marca === "Pequena")!;
+
+    expect(pequena.valores).toEqual([0, 0, 500]);
+    expect(pequena.valores).toHaveLength(e.meses.length);
+  });
+
+  it("ordena da marca que mais faturou no periodo para a que menos", () => {
+    const invertido = [
+      pedido({ marca: "A", created_at: "2026-09-05T10:00:00.000Z", total: "10.00" }),
+      pedido({ marca: "B", created_at: "2026-09-05T10:00:00.000Z", total: "90.00" }),
+    ];
+    expect(evolucaoPorMarca(invertido).series.map((s) => s.marca)).toEqual(["B", "A"]);
+  });
+
+  it("limita aos meses pedidos, mantendo os mais recentes", () => {
+    const e = evolucaoPorMarca(base(), 2);
+    expect(e.meses).toEqual(["2026-08", "2026-09"]);
+    expect(e.total).toEqual([2000, 3500]);
+    expect(e.series.find((s) => s.marca === "Grande")!.valores).toEqual([2000, 3000]);
+  });
+
+  it("o total bate com o bruto de `evolucaoMensal` nos mesmos meses", () => {
+    // As duas leem `reconciliar`; se um dia divergirem, e porque alguem passou
+    // a somar a mao num dos lados.
+    const pedidos = base();
+    const porMarca = evolucaoPorMarca(pedidos);
+    const geral = evolucaoMensal(pedidos, 12);
+
+    expect(porMarca.meses).toEqual(geral.map((p) => p.mes));
+    expect(porMarca.total).toEqual(geral.map((p) => p.bruto));
+  });
+
+  it("sem pedidos devolve vazio, sem quebrar", () => {
+    const e = evolucaoPorMarca([]);
+    expect(e.meses).toEqual([]);
+    expect(e.series).toEqual([]);
+    expect(e.total).toEqual([]);
   });
 });
 
