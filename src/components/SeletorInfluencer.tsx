@@ -9,8 +9,12 @@ export interface CartaoDeInfluencer {
   ativo: boolean;
   /** "30% sobre o faturamento bruto", pronto para exibir. */
   contrato: string;
-  /** Comissao + despesas do mes. */
-  custoNoMes: number;
+  /** Faturamento bruto da marca no mes: todo pedido criado, com frete. */
+  receitaBruta: number;
+  /** Comissao do contrato no mes. */
+  comissao: number;
+  /** Despesas do mes, com a parte dele nas compartilhadas. */
+  despesas: number;
 }
 
 interface SeletorInfluencerProps {
@@ -23,9 +27,14 @@ interface SeletorInfluencerProps {
  * Escolha do influencer.
  *
  * Cartoes com link, e nao um <select>: o nome sozinho nao ajuda a escolher, e
- * o cartao ja responde a primeira pergunta -- quanto esse influencer custou no
- * mes -- antes do clique. Sao poucos contratos; cabem na tela e no celular
- * empilham.
+ * o cartao ja responde a primeira pergunta antes do clique. Sao poucos
+ * contratos; cabem na tela e no celular empilham.
+ *
+ * O cartao mostra TRES numeros, nao um (23/09/2026). Ate aqui era so o custo
+ * -- comissao e despesas somadas --, e um custo sem a receita ao lado nao diz
+ * se e caro ou barato: R$ 50 mil e pouco em cima de R$ 800 mil e muito em cima
+ * de R$ 100 mil. E comissao e despesa somadas escondiam qual das duas mexer.
+ * Por isso: receita bruta da marca, comissao e despesas, lado a lado.
  *
  * A escolha mora na URL (?influencer=), como os filtros do relatorio: o
  * detalhe de um influencer vira um link que da para mandar, e o seletor de mes
@@ -86,10 +95,28 @@ export function SeletorInfluencer({ influencers, selecionadoId, mes }: SeletorIn
             </div>
             <p className="text-sm text-tinta-media">{influencer.marca}</p>
             <p className="mt-2 text-xs text-tinta-fraca">{influencer.contrato}</p>
-            <p className="numerico mt-1 text-lg font-semibold text-tinta">
-              {moeda(influencer.custoNoMes)}
+
+            {/* A receita bruta e o numero grande: e a escala contra a qual os
+                outros dois se leem. */}
+            <p className="numerico mt-2 text-lg font-semibold text-tinta">
+              {moeda(influencer.receitaBruta)}
             </p>
-            <p className="text-xs text-tinta-fraca">custo no mês</p>
+            <p className="text-xs text-tinta-fraca">receita bruta da marca</p>
+
+            <dl className="mt-2 flex gap-4 border-t border-borda pt-2">
+              <div>
+                <dt className="text-xs text-tinta-fraca">comissão</dt>
+                <dd className="numerico text-sm font-semibold text-tinta-media">
+                  {moeda(influencer.comissao)}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-xs text-tinta-fraca">despesas</dt>
+                <dd className="numerico text-sm font-semibold text-tinta-media">
+                  {moeda(influencer.despesas)}
+                </dd>
+              </div>
+            </dl>
           </Link>
         );
       })}

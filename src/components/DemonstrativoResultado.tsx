@@ -4,7 +4,7 @@ import { moeda, moedaRedonda, percentual, razaoSegura } from "@/lib/format";
 import type { DemonstrativoResultado as DRE } from "@/lib/costing";
 import { INTERMEDIARIO_FRETE } from "@/lib/config";
 import { fecharMes, type MesFechado } from "@/lib/fechamento";
-import { idDeOrigem } from "@/types/dominio";
+import { idDeOrigem, type CategoriaDespesa } from "@/types/dominio";
 
 import { BotaoResultado, Oculto, VALOR_OCULTO } from "./ResultadoOculto";
 
@@ -27,9 +27,19 @@ interface Linha {
 
 function montarLinhas(dre: DRE, fechado: MesFechado): Linha[] {
   const r = dre.reconciliacao;
-  // Uma compartilhada chega aqui dividida em uma parte por influencer; conta
-  // como uma despesa so, que e o que foi cadastrado.
-  const despesasCadastradas = new Set(dre.despesasInfluencers.map(idDeOrigem)).size;
+  /*
+   * As despesas vem em duas linhas, como vem em duas fatias na pizza: sem
+   * isso o raio-x diria "despesas" num numero so e a pizza mostraria dois --
+   * duas versoes da mesma verdade na mesma tela.
+   *
+   * Uma compartilhada chega aqui dividida em uma parte por influencer;
+   * `idDeOrigem` faz as partes contarem como a despesa unica que foi
+   * cadastrada.
+   */
+  const contarCategoria = (categoria: CategoriaDespesa) =>
+    new Set(
+      dre.despesasInfluencers.filter((d) => d.categoria === categoria).map(idDeOrigem),
+    ).size;
 
   return [
     {
@@ -116,12 +126,21 @@ function montarLinhas(dre: DRE, fechado: MesFechado): Linha[] {
       tipo: "deducao",
     },
     {
-      rotulo: "Despesas com influencers",
+      rotulo: "Marketing",
       explicacao:
-        despesasCadastradas > 0
-          ? `${despesasCadastradas} despesa(s) cadastrada(s) no mês, incluindo as compartilhadas`
-          : "Nenhuma despesa cadastrada no mês",
-      valor: -dre.totalDespesasInfluencers,
+        contarCategoria("marketing") > 0
+          ? `${contarCategoria("marketing")} despesa(s) de marketing no mês, incluindo as compartilhadas`
+          : "Nenhuma despesa de marketing no mês",
+      valor: -dre.totalDespesasMarketing,
+      tipo: "deducao",
+    },
+    {
+      rotulo: "Outras despesas com influencers",
+      explicacao:
+        contarCategoria("outros") > 0
+          ? `${contarCategoria("outros")} despesa(s) no mês, incluindo as compartilhadas`
+          : "Nenhuma outra despesa cadastrada no mês",
+      valor: -dre.totalDespesasOutras,
       tipo: "deducao",
     },
     {

@@ -705,7 +705,7 @@ function despesa(parcial: Partial<DespesaInfluencer> = {}): DespesaInfluencer {
     id: "d1",
     influencerId: "i1",
     data: "2026-09-15",
-    categoria: "viagem",
+    categoria: "outros",
     descricao: "Passagem",
     valor: 50,
     atualizadoEm: "2026-09-15T00:00:00.000Z",
@@ -795,6 +795,60 @@ describe("montarDemonstrativo com despesas de influencer", () => {
       dre.totalInfluencers + dre.participacaoSocios + dre.lucroOperacional;
 
     expect(soma).toBeCloseTo(r.bruto, 6);
+  });
+
+  it("separa marketing das outras despesas, e as duas fecham no total", () => {
+    const dre = montarDemonstrativo(pedidos(), [custo()], [influencer({ percentual: 10 })], {
+      despesasInfluencers: [
+        despesa({ id: "d1", categoria: "marketing", descricao: "Tha Beauty - Marketing", valor: 120 }),
+        despesa({ id: "d2", categoria: "marketing", descricao: "Anúncio", valor: 30 }),
+        despesa({ id: "d3", categoria: "outros", descricao: "Passagem", valor: 35 }),
+      ],
+    });
+
+    expect(dre.totalDespesasMarketing).toBeCloseTo(150, 6);
+    expect(dre.totalDespesasOutras).toBeCloseTo(35, 6);
+    expect(dre.totalDespesasMarketing + dre.totalDespesasOutras).toBeCloseTo(
+      dre.totalDespesasInfluencers,
+      6,
+    );
+  });
+
+  it("a pizza fecha com as TRES fatias de influencer no lugar de uma", () => {
+    /*
+     * A fatia unica virou comissao + marketing + outras (23/09/2026). Se uma
+     * das tres ficasse de fora, ou se `totalDespesasOutras` deixasse de ser o
+     * resto, a soma nao bateria no bruto -- e a pizza e o primeiro lugar onde
+     * isso apareceria.
+     */
+    const dre = montarDemonstrativo(pedidos(), [custo()], [influencer({ percentual: 10 })], {
+      despesasInfluencers: [
+        despesa({ id: "d1", categoria: "marketing", descricao: "Marketing", valor: 120 }),
+        despesa({ id: "d2", categoria: "outros", descricao: "Folha", valor: 35 }),
+      ],
+    });
+    const r = dre.reconciliacao;
+    const soma =
+      r.naoPago + r.cancelado + r.reembolsado + r.frete +
+      dre.totalImpostos + dre.totalTaxasPlataforma + dre.cmv.cmv +
+      dre.totalComissoes + dre.totalDespesasMarketing + dre.totalDespesasOutras +
+      dre.participacaoSocios + dre.lucroOperacional;
+
+    expect(soma).toBeCloseTo(r.bruto, 6);
+  });
+
+  it("categoria fora das duas cai em 'outras', e a soma continua fechando", () => {
+    // O repositorio ja normaliza na leitura, mas a DRE nao pode depender
+    // disso: `totalDespesasOutras` e o RESTO, nao uma segunda soma.
+    const dre = montarDemonstrativo(pedidos(), [custo()], [influencer({ percentual: 10 })], {
+      despesasInfluencers: [
+        despesa({ id: "d1", categoria: "viagem" as never, descricao: "Viagem", valor: 40 }),
+      ],
+    });
+
+    expect(dre.totalDespesasMarketing).toBe(0);
+    expect(dre.totalDespesasOutras).toBeCloseTo(40, 6);
+    expect(dre.totalDespesasInfluencers).toBeCloseTo(40, 6);
   });
 });
 

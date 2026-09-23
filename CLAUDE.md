@@ -325,11 +325,11 @@ frete           = soma de shipping_cost_customer dos pedidos recebidos
 receita real    = recebido − frete
 ```
 
-Exibida como **gráfico de pizza**, com onze fatias (doze na loja real, com a
-Intelipost). É o herói da tela.
+Exibida como **gráfico de pizza**, com treze fatias (catorze na loja real, com
+a Intelipost). É o herói da tela.
 
 A cascata foi tentada e descartada: com a cadeia completa (ver 5.8) ela vira
-onze barras em degrau, com os rótulos em alturas diferentes e os textos de
+treze barras em degrau, com os rótulos em alturas diferentes e os textos de
 apoio se sobrepondo. Ilegível justamente numa tela de reunião, que é onde ela
 precisa funcionar.
 
@@ -338,11 +338,24 @@ A pizza só fecha porque as parcelas **somam exatamente** o bruto:
 ```
 bruto = não pago + cancelado + reembolsado + frete da transportadora + Intelipost
       + impostos + DIFAL + taxas (Nuvemshop, cartão e pix) + fabricação
-      + influencers + sócios + lucro operacional
+      + comissão de influencers + marketing + outras despesas
+      + sócios + lucro operacional
 ```
 
-A fatia **Influencers** é comissão **mais** despesas cadastradas (5.16). As duas
-saem do lucro, então a fatia precisa carregar as duas para a pizza fechar.
+**O custo dos influencers vem em TRÊS fatias**, e não em uma (23/09/2026).
+Antes era uma fatia só, "Influencers", com comissão e despesas dentro. Ela
+escondia a pergunta que o dono faz: quanto disso é comissão — que se renegocia
+no contrato —, quanto é mídia paga — que se liga e desliga no mês — e quanto é
+o resto da estrutura. São três decisões diferentes, e uma fatia só não separava
+nenhuma delas. As três somam `dre.totalInfluencers`, então a pizza continua
+fechando; há teste.
+
+Marketing e "Outras despesas" **somem quando são zero** (`opcional`), como a
+Intelipost: na demonstração a única despesa semeada é o operacional, e uma
+fatia de R$ 0,00 na legenda diria que existe uma linha de marketing rendendo
+nada. O raio-x (5.8) quebra a mesma linha em duas, pelo mesmo motivo — pizza
+mostrando dois números e raio-x mostrando um seriam duas versões da mesma
+verdade na mesma tela.
 
 Se mexer nessa conta, a pizza deixa de fechar — e é o primeiro lugar onde o
 erro aparece.
@@ -721,7 +734,8 @@ faturamento bruto
 − CMV
 = margem de contribuição
 − comissões dos contratos cadastrados
-− despesas com influencers (5.16)
+− marketing (5.16)
+− outras despesas com influencers (5.16)
 − participação dos sócios (6% do recebido)
 = lucro operacional
 ```
@@ -1591,11 +1605,24 @@ antigo `/comissoes` redireciona, com os parâmetros). A pergunta mudou de "quant
 de comissão cada contrato gera" para "quanto cada influencer custa".
 
 No topo, **Vendas de hoje** (`VendasDeHoje`) — ver 5.16.1. Abaixo dele, o
-**seletor de cartões** — um por contrato, com o custo do mês já escrito —
-e a "Visão geral" com os totais e o cadastro de contratos. Cartão e não
-`<select>`: o nome sozinho não ajuda a escolher, e o cartão responde a primeira
-pergunta antes do clique. A escolha mora na URL (`?influencer=`), como os
-filtros do relatório, e o seletor de mês do cabeçalho a preserva.
+**seletor de cartões** — um por contrato — e a "Visão geral" com os totais e o
+cadastro de contratos. Cartão e não `<select>`: o nome sozinho não ajuda a
+escolher, e o cartão responde a primeira pergunta antes do clique. A escolha
+mora na URL (`?influencer=`), como os filtros do relatório, e o seletor de mês
+do cabeçalho a preserva.
+
+**O cartão traz três números, não um** (23/09/2026): **receita bruta da marca**
+em cima, e **comissão** e **despesas** separadas embaixo. Era só o custo — a
+comissão somada às despesas —, e isso falhava duas vezes. Custo sem a receita
+ao lado não diz se é caro ou barato (R$ 50 mil é pouco sobre R$ 800 mil e muito
+sobre R$ 100 mil), e comissão somada com despesa esconde qual das duas mexer:
+uma se renegocia no contrato, a outra se corta. A ordem dos cartões continua
+sendo pelo custo (comissão + despesas), que é a ordem em que a conversa
+acontece.
+
+O bruto por marca sai de uma varredura só sobre os pedidos do mês
+(`brutoPorMarca`), e não de um `reconciliar` por contrato dentro do `map` —
+que releria os pedidos uma vez por influencer.
 
 Escolhido um influencer, aparece primeiro o **contrato dele** (marca,
 percentual, base, regime, estado e situação), com "Editar contrato", que abre o
@@ -1608,11 +1635,43 @@ mês**:
    contrato (5.2). Não se edita na grade e **não é gravada**: gravar faria a
    grade mostrar um número velho quando as vendas mudassem. Para mudar a
    comissão, muda-se o contrato.
-2. **As linhas de baixo são despesas**: operacional, produto enviado, viagem,
-   cachê, anúncio, outros. Despesa é avulsa e pertence ao mês pela data. Cachê
-   fixo mensal se cadastra uma vez por mês — recorrência automática foi
-   descartada para a grade mostrar exatamente o que foi gasto, sem regra
+2. **As linhas de baixo são despesas**, em **duas categorias e só duas**:
+   **Marketing** e **Outras despesas**. Despesa é avulsa e pertence ao mês pela
+   data. Cachê fixo mensal se cadastra uma vez por mês — recorrência automática
+   foi descartada para a grade mostrar exatamente o que foi gasto, sem regra
    escondida.
+
+#### Duas categorias, e por quê (23/09/2026)
+
+Eram seis: operacional, produto enviado, viagem, cachê, anúncio e outros. Na
+prática ninguém escolhia entre elas — os lançamentos vêm do plano de contas da
+contabilidade, com o nome já escrito ("Tha Beauty - Marketing", "Folha de
+pagamento"), e a categoria antiga tinha sido preenchida no palpite da
+importação. A categoria só importa por causa da **pizza** (5.1), onde a
+pergunta é uma só: quanto do custo do influencer é mídia paga e quanto é o
+resto. Seis fatias responderiam uma pergunta que ninguém faz.
+
+**A regra é o NOME**, não a categoria antiga: `categoriaPelaDescricao`
+(`types/dominio.ts`) devolve `marketing` quando a descrição contém a palavra, e
+`outros` no resto. Só a caixa é normalizada — acento não entra na conta porque
+não precisa: "marketing" se escreve sem nenhum, inclusive dentro de "Automação
+de Marketing".
+
+Ela é usada em três lugares, e o terceiro é o que segura a conversão:
+
+1. `scripts/despesas-duas-categorias.sql`, que converteu os lançamentos já
+   gravados. Rodar duas vezes não muda nada;
+2. o formulário, cujo padrão passou a ser "Outras despesas";
+3. **a leitura dos dois repositórios.** Categoria de fora da lista — uma das
+   cinco antigas, ou algo escrito direto no banco — volta a ser decidida pelo
+   nome, e não empurrada para `outros` em silêncio. Sem isso, um "Ka Beauty -
+   Marketing" que escapasse da conversão sumiria da fatia de marketing sem
+   ninguém ver. O arquivo da demonstração não se refaz depois de editado, então
+   ele precisa da mesma normalização que o Postgres.
+
+Na produção a conversão mexeu em **15 de 88 lançamentos** (R$ 258.035,05 de
+R$ 837.378,07): os sete nomes com "Marketing" das cinco marcas, mais
+"Marketing e Publicidade" e "Softwares de CRM Automação de Marketing".
 
 **Despesa compartilhada.** O formulário tem a marcação "Despesa compartilhada".
 Marcada, a despesa é gravada **uma vez, sem dono** (`influencerId: null`) e com
@@ -1639,10 +1698,17 @@ O raio-x conta a compartilhada como uma despesa só (`idDeOrigem`), não uma por
 influencer.
 
 **Despesa sai do lucro operacional.** Antes dela o painel só enxergava a
-comissão, e o lucro saía maior que o verdadeiro. A DRE (5.8) ganhou a linha
-"Despesas com influencers", e a fatia da pizza virou **Influencers**. O campo
-`totalComissoes` continua sendo **só** a comissão — o simulador e a métrica de
-comissão do relatório dependem disso; o total somado é `totalInfluencers`.
+comissão, e o lucro saía maior que o verdadeiro. A DRE (5.8) e a pizza (5.1)
+ganharam **duas linhas**, "Marketing" e "Outras despesas com influencers", ao
+lado da comissão — `totalDespesasMarketing` e `totalDespesasOutras`.
+
+Três campos que não se confundem: `totalComissoes` é **só** a comissão (o
+simulador e a métrica de comissão do relatório dependem disso),
+`totalDespesasInfluencers` é só a despesa, e `totalInfluencers` é a soma dos
+dois — é ele que a aba Influencers e o relatório usam.
+`totalDespesasOutras` sai **por subtração**, e não por uma segunda soma: assim
+as duas parcelas fecham no total mesmo se um dia aparecer categoria nova no
+banco. Há teste.
 
 **Quais despesas entram é decidido em `despesasQueCabem`**, e a DRE aplica isso
 sozinha: recebe *todas* as despesas e fica com as do mês dos pedidos e das

@@ -1067,7 +1067,7 @@ export function despesasInfluencerIniciais(): DespesaInfluencer[] {
       id: `despesa-operacional-${data.slice(0, 7)}`,
       influencerId: null,
       data,
-      categoria: "operacional" as const,
+      categoria: "outros" as const,
       descricao: "Operacional",
       valor: OPERACIONAL_MENSAL,
       atualizadoEm: agora,

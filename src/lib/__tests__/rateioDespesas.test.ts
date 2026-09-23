@@ -34,7 +34,7 @@ function despesa(parcial: Partial<DespesaInfluencer> = {}): DespesaInfluencer {
     id: "d1",
     influencerId: null,
     data: "2026-09-01",
-    categoria: "operacional",
+    categoria: "outros",
     descricao: "Operacional",
     valor: 60_000,
     atualizadoEm: "2026-09-01T00:00:00.000Z",

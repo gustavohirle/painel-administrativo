@@ -46,6 +46,11 @@
   --color-difal: #4c1d95;
   --color-custo: #0369a1;
   --color-comissao: #be185d;
+  /* As outras duas parcelas do custo de influencer, vizinhas da comissao na
+     pizza: mesma familia rosa/roxa, uma mais clara e outra mais escura, porque
+     as tres sao o mesmo dinheiro repartido em tres decisoes. */
+  --color-marketing: #db2777;
+  --color-despesa: #831843;
   /* Taxa de plataforma: laranja queimado, para nao se confundir com imposto. */
   --color-taxa: #b45309;
   /* Participacao dos socios: dourado escuro, entre a comissao (rosa) e o

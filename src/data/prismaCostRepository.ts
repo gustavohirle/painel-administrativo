@@ -21,7 +21,7 @@ import type {
   EntradaInfluencer,
   Influencer,
 } from "@/types/dominio";
-import { CATEGORIAS_DESPESA } from "@/types/dominio";
+import { CATEGORIAS_DESPESA, categoriaPelaDescricao } from "@/types/dominio";
 import type {
   AliquotaEstado,
   AnexoSimples,
@@ -761,7 +761,14 @@ function mapearDespesa(linha: {
     id: linha.id,
     influencerId: linha.influencerId,
     data: linha.data.toISOString().slice(0, 10),
-    categoria: CATEGORIAS_DESPESA.find((c) => c === linha.categoria) ?? "outros",
+    /*
+     * Categoria de fora da lista volta a ser decidida pelo NOME, e nao
+     * empurrada para "outros": e o que segura uma linha que tenha escapado da
+     * conversao para duas categorias (ver `categoriaPelaDescricao`).
+     */
+    categoria:
+      CATEGORIAS_DESPESA.find((c) => c === linha.categoria) ??
+      categoriaPelaDescricao(linha.descricao),
     descricao: linha.descricao,
     valor: decimalParaNumero(linha.valor),
     atualizadoEm: linha.atualizadoEm.toISOString(),

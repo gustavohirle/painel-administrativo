@@ -22,6 +22,7 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
 
+import { CATEGORIAS_DESPESA, categoriaPelaDescricao } from "@/types/dominio";
 import type {
   CustoProduto,
   DespesaInfluencer,
@@ -294,9 +295,21 @@ export class RepositorioDemonstracao implements RepositorioCadastros {
   async listarDespesasInfluencer(): Promise<DespesaInfluencer[]> {
     const estado = await carregar();
     // Mais recente primeiro; no mesmo dia, a ultima alterada em cima.
-    return [...(estado.despesasInfluencer ?? [])].sort(
-      (a, b) => b.data.localeCompare(a.data) || b.atualizadoEm.localeCompare(a.atualizadoEm),
-    );
+    return [...(estado.despesasInfluencer ?? [])]
+      .map((despesa) => ({
+        /*
+         * O arquivo pode ter sido gravado com uma das cinco categorias
+         * antigas, e ele nao se refaz sozinho depois de editado. A mesma
+         * normalizacao do repositorio do Postgres, pelo mesmo motivo.
+         */
+        ...despesa,
+        categoria:
+          CATEGORIAS_DESPESA.find((c) => c === despesa.categoria) ??
+          categoriaPelaDescricao(despesa.descricao),
+      }))
+      .sort(
+        (a, b) => b.data.localeCompare(a.data) || b.atualizadoEm.localeCompare(a.atualizadoEm),
+      );
   }
 
   async salvarDespesaInfluencer(

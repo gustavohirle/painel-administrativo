@@ -96,9 +96,37 @@ function montarFatias(dre: DemonstrativoResultado, fechado: MesFechado): Fatia[]
       cor: "var(--color-taxa)",
     },
     { rotulo: "Fabricação", valor: dre.cmv.cmv, cor: "var(--color-custo)" },
-    // Comissao + despesas cadastradas. A pizza so fecha se a fatia carregar as
-    // duas, porque as duas saem do lucro.
-    { rotulo: "Influencers", valor: dre.totalInfluencers, cor: "var(--color-comissao)" },
+    /*
+     * O custo dos influencers em TRES fatias, e nao numa so (23/09/2026). As
+     * tres somam `dre.totalInfluencers`, entao a pizza continua fechando.
+     *
+     * Antes era uma fatia "Influencers" com tudo dentro, e ela escondia a
+     * pergunta que o dono faz: quanto disso e comissao (que se renegocia no
+     * contrato), quanto e midia paga (que se liga e desliga no mes) e quanto e
+     * o resto da estrutura. Sao tres decisoes diferentes, e uma fatia so nao
+     * separava nenhuma delas.
+     *
+     * Marketing e "outras" somem quando sao zero: na demonstracao a unica
+     * despesa semeada e o operacional, e uma fatia de R$ 0,00 na legenda diria
+     * que existe uma linha de marketing rendendo nada.
+     */
+    {
+      rotulo: "Comissão de influencers",
+      valor: dre.totalComissoes,
+      cor: "var(--color-comissao)",
+    },
+    {
+      rotulo: "Marketing",
+      valor: dre.totalDespesasMarketing,
+      cor: "var(--color-marketing)",
+      opcional: true,
+    },
+    {
+      rotulo: "Outras despesas",
+      valor: dre.totalDespesasOutras,
+      cor: "var(--color-despesa)",
+      opcional: true,
+    },
     // Custo fixo sobre o recebido; sai antes do lucro, entao tem fatia propria.
     { rotulo: "Sócios", valor: dre.participacaoSocios, cor: "var(--color-socios)" },
     // Com prejuizo o valor fica negativo -- e por isso nao entra no desenho

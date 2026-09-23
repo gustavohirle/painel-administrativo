@@ -327,7 +327,8 @@ model DespesaInfluencer {
   /// sai do lucro.
   data DateTime @db.Date
 
-  /// "operacional" | "produto_enviado" | "viagem" | "cache" | "anuncio" | "outros"
+  /// "marketing" | "outros". Eram seis ate 23/09/2026; a leitura de um valor
+  /// antigo cai em `categoriaPelaDescricao`, que decide pelo nome da despesa.
   categoria String
   descricao String
   valor     Decimal @db.Decimal(12, 2)

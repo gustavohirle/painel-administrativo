@@ -145,25 +145,44 @@ export type EntradaInfluencer = Omit<Influencer, "id" | "atualizadoEm">;
  * cadastrado uma vez em cada mes. Recorrencia automatica foi descartada de
  * proposito: o que esta na grade e o que foi gasto, sem regra escondida.
  */
-export const CATEGORIAS_DESPESA = [
-  "operacional",
-  "produto_enviado",
-  "viagem",
-  "cache",
-  "anuncio",
-  "outros",
-] as const;
+export const CATEGORIAS_DESPESA = ["marketing", "outros"] as const;
 
 export type CategoriaDespesa = (typeof CATEGORIAS_DESPESA)[number];
 
 export const ROTULO_CATEGORIA_DESPESA: Record<CategoriaDespesa, string> = {
-  operacional: "Operacional",
-  produto_enviado: "Produto enviado",
-  viagem: "Viagem e hospedagem",
-  cache: "Cachê",
-  anuncio: "Anúncio impulsionado",
-  outros: "Outros",
+  marketing: "Marketing",
+  outros: "Outras despesas",
 };
+
+/*
+ * DUAS categorias, e so duas, por decisao do cliente em 23/09/2026.
+ *
+ * Eram seis (operacional, produto enviado, viagem, cache, anuncio, outros).
+ * Na pratica ninguem escolhia entre elas: o lancamento vem do plano de contas
+ * da contabilidade, com o nome ja escrito ("Tha Beauty - Marketing", "Folha de
+ * pagamento"), e a categoria so importa por causa da PIZZA -- onde a pergunta
+ * e uma so: quanto do que o influencer custa e midia paga, e quanto e o resto.
+ * Seis fatias responderiam uma pergunta que ninguem faz.
+ */
+
+/**
+ * A categoria pelo NOME da despesa: "marketing" quando o nome traz a palavra,
+ * "outros" no resto.
+ *
+ * E a regra que converteu os lancamentos ja gravados, e continua valendo na
+ * leitura: despesa com categoria de fora da lista (as cinco antigas, ou um
+ * valor que alguem escreveu direto no banco) volta a ser classificada pelo
+ * nome, e nao empurrada para "outros" em silencio -- senao um "Ka Beauty -
+ * Marketing" que escapasse da conversao sumiria da fatia de marketing sem
+ * ninguem ver.
+ *
+ * So a caixa e normalizada. Acento nao entra na conta porque nao precisa:
+ * "marketing" se escreve sem nenhum, inclusive dentro de "Automação de
+ * Marketing" -- o acento esta na outra palavra.
+ */
+export function categoriaPelaDescricao(descricao: string): CategoriaDespesa {
+  return descricao.toLowerCase().includes("marketing") ? "marketing" : "outros";
+}
 
 export interface DespesaInfluencer {
   id: string;

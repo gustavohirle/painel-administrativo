@@ -26,6 +26,7 @@ import { apurarTaxasPlataforma } from "@/lib/plataforma";
 import { mesDaTela } from "@/lib/mesDaTelaServidor";
 import { exigirArea } from "@/lib/sessao";
 import { idDeOrigem, mesDaDespesa, ROTULO_BASE } from "@/types/dominio";
+import { paraNumero } from "@/types/nuvemshop";
 
 export const dynamic = "force-dynamic";
 
@@ -108,6 +109,15 @@ export default async function PaginaInfluencers({
   const contratoEmTexto = (i: (typeof influencers)[number]) =>
     `${i.percentual.toLocaleString("pt-BR")}% sobre ${ROTULO_BASE[i.baseComissao].toLowerCase()}`;
 
+  /*
+   * Faturamento bruto por marca, numa varredura so. `reconciliar` por marca
+   * dentro do `map` releria os pedidos do mes uma vez por contrato.
+   */
+  const brutoPorMarca = new Map<string, number>();
+  for (const pedido of pedidosDoMes) {
+    brutoPorMarca.set(pedido.marca, (brutoPorMarca.get(pedido.marca) ?? 0) + paraNumero(pedido.total));
+  }
+
   // Ativos primeiro, do mais caro para o mais barato: e a ordem em que a
   // conversa sobre custo acontece.
   const cartoes: CartaoDeInfluencer[] = influencers
@@ -117,10 +127,15 @@ export default async function PaginaInfluencers({
       marca: i.marca,
       ativo: i.ativo,
       contrato: contratoEmTexto(i),
-      custoNoMes:
-        (comissaoPorId.get(i.id)?.valorComissao ?? 0) + (despesasPorInfluencer.get(i.id) ?? 0),
+      receitaBruta: brutoPorMarca.get(i.marca) ?? 0,
+      comissao: comissaoPorId.get(i.id)?.valorComissao ?? 0,
+      despesas: despesasPorInfluencer.get(i.id) ?? 0,
     }))
-    .sort((a, b) => Number(b.ativo) - Number(a.ativo) || b.custoNoMes - a.custoNoMes);
+    .sort(
+      (a, b) =>
+        Number(b.ativo) - Number(a.ativo) ||
+        b.comissao + b.despesas - (a.comissao + a.despesas),
+    );
 
   const selecionado = influencerPedido
     ? (influencers.find((i) => i.id === influencerPedido) ?? null)

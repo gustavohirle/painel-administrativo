@@ -389,7 +389,7 @@ function FormularioDespesa({
           <input
             name="descricao"
             defaultValue={despesa?.descricao ?? ""}
-            placeholder="Operacional, kit enviado para gravação, passagem, cachê..."
+            placeholder="Marketing, operacional, kit enviado para gravação, cachê..."
             className="w-full rounded-lg border border-borda-forte px-3 py-2 text-sm"
           />
         </label>
@@ -398,7 +398,7 @@ function FormularioDespesa({
           <span className="mb-1 block text-sm font-medium text-tinta">Categoria</span>
           <select
             name="categoria"
-            defaultValue={despesa?.categoria ?? "produto_enviado"}
+            defaultValue={despesa?.categoria ?? "outros"}
             className="w-full rounded-lg border border-borda-forte bg-superficie px-3 py-2 text-sm text-tinta"
           >
             {CATEGORIAS_DESPESA.map((categoria) => (

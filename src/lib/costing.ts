@@ -11,6 +11,7 @@
 
 import {
   mesDaDespesa,
+  type CategoriaDespesa,
   type DespesaAtribuida,
   type DespesaInfluencer,
 } from "@/types/dominio";
@@ -454,9 +455,20 @@ export interface DemonstrativoResultado {
   despesasInfluencers: DespesaInfluencer[];
   totalDespesasInfluencers: number;
   /**
+   * As despesas quebradas nas duas categorias (`CategoriaDespesa`). Somadas,
+   * dao `totalDespesasInfluencers`.
+   *
+   * A quebra existe porque a pizza pede TRES fatias, e nao uma: comissao,
+   * marketing e o resto. Sao tres conversas diferentes -- a comissao se
+   * renegocia no contrato, o marketing e midia paga que se liga e desliga, e o
+   * resto e custo de estrutura. Uma fatia so escondia as tres.
+   */
+  totalDespesasMarketing: number;
+  totalDespesasOutras: number;
+  /**
    * totalComissoes + totalDespesasInfluencers: tudo que os influencers
-   * custaram. E o valor da fatia da pizza -- ela so fecha se carregar os dois,
-   * porque os dois saem do lucro.
+   * custaram. Continua existindo porque e o numero da aba Influencers e do
+   * relatorio; a pizza usa as tres parcelas.
    */
   totalInfluencers: number;
 
@@ -547,6 +559,9 @@ export function montarDemonstrativo(
   const total = totalComissoes(comissoes);
   const despesas = despesasQueCabem(opcoes.despesasInfluencers ?? [], pedidos, influencers);
   const totalDespesas = despesas.reduce((soma, d) => soma + d.valor, 0);
+  const somarCategoria = (categoria: CategoriaDespesa) =>
+    despesas.reduce((soma, d) => (d.categoria === categoria ? soma + d.valor : soma), 0);
+  const totalDespesasMarketing = somarCategoria("marketing");
 
   const impostos = opcoes.impostos ?? null;
   const totalImpostos = impostos?.totalSobreVenda ?? 0;
@@ -566,6 +581,10 @@ export function montarDemonstrativo(
     totalComissoes: total,
     despesasInfluencers: despesas,
     totalDespesasInfluencers: totalDespesas,
+    totalDespesasMarketing,
+    // Por subtracao, e nao por uma segunda soma: assim as duas parcelas fecham
+    // no total mesmo se um dia aparecer categoria nova no banco.
+    totalDespesasOutras: totalDespesas - totalDespesasMarketing,
     totalInfluencers: total + totalDespesas,
     impostos,
     totalImpostos,
