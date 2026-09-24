@@ -1965,7 +1965,64 @@ ontem com a manhã de hoje.
 
 Fica no topo da aba Influencers, em três números: **vendas hoje** (quantidade),
 **valor de hoje** e **já pago hoje**. Sem influencer escolhido, é a operação
-inteira, com uma linha por marca abaixo; escolhido um, é só a marca dele.
+inteira, com uma linha por marca abaixo — vendas, valor e já pago, em colunas —;
+escolhido um, é só a marca dele.
+
+**Só aparece com o mês atual no cabeçalho** (24/09/2026, pedido do dono).
+Antes ficava na tela olhando qualquer mês, com uma frase dizendo que "não segue
+o mês escolhido" — mas "hoje" olhando julho não responde pergunta nenhuma.
+
+#### Vendas por dia
+
+Logo abaixo, e **em qualquer mês**, um gráfico de colunas com cada dia do mês
+escolhido (`VendasPorDia`, dados de `vendasPorDia` em `metrics.ts`). A altura
+da coluna é o valor vendido; a parte de baixo, em verde, o que já entrou; a de
+cima, em cinza, o que não entrou. É a mesma dupla do quadro de hoje, e a mesma
+tese da seção 1.
+
+Decisões, a maioria vinda de olhar a tela renderizada e não o código:
+
+1. **HTML e não SVG.** Texto de SVG encolhe com o `viewBox` e obriga a dois
+   formatos (2.1); aqui o texto é texto de verdade, e a mesma marcação serve do
+   celular à reunião. Continua sem biblioteca.
+2. **Nenhuma conta nova**: cada dia é `reconciliar` sobre os pedidos dele. Há
+   teste exigindo que o dia de hoje no gráfico bata com o quadro acima.
+3. **Todos os dias do mês entram**, com zero onde não houve venda — pular o dia
+   juntaria o 9 com o 11 como vizinhos. **Dia futuro não tem barra**, mesmo com
+   pedido: a demonstração gera o mês inteiro (seção 12), e uma barra no dia 30
+   com hoje sendo 24 afirmaria venda que não existiu.
+4. **Destaque e o resto em cinza.** O verde é o `--color-real` do "Já pago
+   hoje"; o cinza (`#8a94a6`) é sem cor de propósito, para a leitura cair no que
+   entrou. Validado com o `validate_palette` da skill de gráficos: contraste de
+   3:1 contra o branco (o `borda-forte` não passava) e 13 pontos de separação
+   para daltonismo. O único "reprovado" é o croma do cinza, que é o próprio
+   papel dele.
+5. **A leitura no topo é a etiqueta**: sem dia apontado, o mês inteiro; tocando
+   ou passando o mouse numa coluna, aquele dia. Um valor sobre cada coluna
+   seriam 30 números, e o celular não tem "passar o mouse". A coluna inteira,
+   na altura toda, é o alvo do toque — num dia fraco a barra tem 3px. A leitura
+   tem **altura reservada**: o texto troca entre o mês e o dia, e sem a reserva
+   o gráfico subia e descia a cada toque.
+6. **Tabela gêmea**, recolhida em "Ver os números dia a dia": todo número da
+   leitura está ali sem precisar apontar nada.
+
+Três defeitos que só apareceram na foto, e valem de aviso para o próximo
+gráfico em HTML:
+
+- **Rótulo posicionado por `bottom` centraliza com `translate-y-1/2`
+  positivo.** O `-translate-y-1/2` é o par de `top`; com `bottom` ele sobe meia
+  altura, e cada valor do eixo ficava ~16px acima da sua linha — o "R$ 0"
+  boiando sobre a base.
+- **Rótulo escondido no eixo fica `invisible`, não `hidden`.** Com `hidden`, os
+  que sobram se espalham pela largura e deixam de ficar embaixo do dia deles.
+- **"R$ 90,0 mil" quebra em duas linhas** numa coluna estreita. O eixo usa
+  formato próprio e curto ("R$ 90 mil"), com `whitespace-nowrap`.
+
+`npm run celular` ganhou `--foto <prefixo>`, `--foto-altura` e
+`--clicar '<seletor>'` para isso: a auditoria mede, mas não vê. **Rodando o
+script direto com `node`, passe `--env-file-if-exists=.env`** — sem ele o
+cookie de sessão sai assinado com o segredo embutido e a foto é da tela de
+login (aconteceu, e uma conferência "ok" em 1400px foi feita contra o login).
 
 Quatro decisões:
 
@@ -1976,9 +2033,8 @@ Quatro decisões:
    live o `created_at` já vem em `-03:00` da borda, então o corte cai exato. Na
    demonstração as datas são UTC e o corte fica 3 horas deslocado, a mesma
    aproximação que o agrupamento por mês já tinha.
-2. **Não segue o mês do cabeçalho.** Hoje é hoje, mesmo com julho na tela, e a
-   descrição do cartão diz isso — senão o quadro pareceria contradizer o resto
-   da página.
+2. **Só com o mês atual no cabeçalho** — ver acima. Nos outros meses, só o
+   gráfico de vendas por dia.
 3. **O número grande é o BRUTO do dia, com o já pago ao lado.** No dia em que o
    pedido nasce quase nada está pago: boleto e pix levam horas. Só o bruto
    exagera o dia; só o recebido faria parecer que ninguém comprou. A tese da

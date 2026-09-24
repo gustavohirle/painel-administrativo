@@ -446,6 +446,77 @@ export function filtrarPorMes(pedidos: Pedido[], mes: string): Pedido[] {
 // ---------------------------------------------------------------------------
 
 /** Chave de agrupamento diario "2026-09-18", pelo mesmo corte de `chaveMes`. */
+/** Um dia do grafico de vendas por dia. */
+export interface DiaDeVenda {
+  /** "2026-09-24". */
+  dia: string;
+  quantidade: number;
+  /** Tudo que foi vendido no dia, pago ou nao -- o `bruto` de `reconciliar`. */
+  bruto: number;
+  /** O que ja entrou -- o `recebido` de `reconciliar`. */
+  recebido: number;
+}
+
+export interface VendasDoMes {
+  mes: string;
+  /** Um item por dia do mes, do dia 1 ao ultimo, com zero onde nao houve venda. */
+  dias: DiaDeVenda[];
+  /** O mes inteiro, pela mesma `reconciliar`. E a soma dos dias. */
+  total: { quantidade: number; bruto: number; recebido: number };
+}
+
+/**
+ * Vendas de cada dia de um mes: quantidade, valor vendido e o que ja entrou.
+ *
+ * E o grafico de barras da aba Influencers (5.16.1), pedido pelo dono em
+ * 24/09/2026: o quadro "Vendas de hoje" nao faz sentido olhando um mes que nao
+ * e o atual, e ali ele quer ver o mes dia a dia.
+ *
+ * Nenhuma conta nova: cada dia e `reconciliar` sobre os pedidos dele, a mesma
+ * funcao do quadro de hoje e da tela inicial. Por isso o dia de hoje no grafico
+ * bate exatamente com o numero grande do quadro acima dele -- ha teste.
+ *
+ * TODOS os dias do mes entram, inclusive os sem venda e os que ainda nao
+ * chegaram: uma barra ausente no meio da serie diz "nao vendeu", e pular o dia
+ * juntaria o dia 9 com o 11 como se fossem vizinhos.
+ */
+export function vendasPorDia(pedidos: Pedido[], mes: string): VendasDoMes {
+  const [ano, numeroMes] = mes.split("-").map(Number) as [number, number];
+  // Dia 0 do mes seguinte e o ultimo deste. Em UTC, para o fuso da maquina nao
+  // mexer na conta.
+  const ultimoDia = new Date(Date.UTC(ano, numeroMes, 0)).getUTCDate();
+
+  const porDia = new Map<string, Pedido[]>();
+  const doMes: Pedido[] = [];
+  for (const pedido of pedidos) {
+    if (chaveMes(pedido.created_at) !== mes) continue;
+    doMes.push(pedido);
+    const dia = chaveDia(pedido.created_at);
+    const lista = porDia.get(dia);
+    if (lista) lista.push(pedido);
+    else porDia.set(dia, [pedido]);
+  }
+
+  const dias: DiaDeVenda[] = [];
+  for (let d = 1; d <= ultimoDia; d++) {
+    const dia = `${mes}-${String(d).padStart(2, "0")}`;
+    const lista = porDia.get(dia);
+    if (!lista) {
+      dias.push({ dia, quantidade: 0, bruto: 0, recebido: 0 });
+      continue;
+    }
+    const r = reconciliar(lista);
+    dias.push({ dia, quantidade: r.quantidade.total, bruto: r.bruto, recebido: r.recebido });
+  }
+
+  const r = reconciliar(doMes);
+  return {
+    mes,
+    dias,
+    total: { quantidade: r.quantidade.total, bruto: r.bruto, recebido: r.recebido },
+  };
+}
+
 export function chaveDia(iso: string): string {
   return iso.slice(0, 10);
 }

@@ -10,6 +10,7 @@ import {
   diaDeHoje,
   evolucaoMensal,
   evolucaoPorMarca,
+  vendasPorDia,
   filtrarPorDia,
   filtrarPorMes,
   mesesDisponiveis,
@@ -292,6 +293,64 @@ describe("agruparPorMetodoPagamento", () => {
     expect(boleto.participacao).toBeCloseTo(0.5, 6);
     expect(boleto.taxaNaoPagamento).toBeCloseTo(0.5, 6);
     expect(pix.taxaNaoPagamento).toBeCloseTo(0, 6);
+  });
+});
+
+describe("vendasPorDia", () => {
+  const base = () => [
+    pedido({ created_at: "2026-09-01T10:00:00-03:00", total: "100.00" }),
+    pedido({ created_at: "2026-09-01T15:00:00-03:00", total: "50.00", payment_status: "pending", paid_at: null }),
+    pedido({ created_at: "2026-09-03T10:00:00-03:00", total: "200.00" }),
+    // De outro mes: nao entra.
+    pedido({ created_at: "2026-08-31T23:00:00-03:00", total: "999.00" }),
+  ];
+
+  it("traz TODOS os dias do mes, com zero onde nao houve venda", () => {
+    // Pular o dia sem venda juntaria o dia 1 com o 3 como se fossem vizinhos.
+    const v = vendasPorDia(base(), "2026-09");
+    expect(v.dias).toHaveLength(30);
+    expect(v.dias[0]!.dia).toBe("2026-09-01");
+    expect(v.dias[29]!.dia).toBe("2026-09-30");
+    expect(v.dias[1]).toEqual({ dia: "2026-09-02", quantidade: 0, bruto: 0, recebido: 0 });
+  });
+
+  it("separa o vendido do que ja entrou, pela mesma reconciliar", () => {
+    const v = vendasPorDia(base(), "2026-09");
+    expect(v.dias[0]).toEqual({ dia: "2026-09-01", quantidade: 2, bruto: 150, recebido: 100 });
+    expect(v.dias[2]).toEqual({ dia: "2026-09-03", quantidade: 1, bruto: 200, recebido: 200 });
+  });
+
+  it("o total do mes e a soma dos dias -- e nao conta pedido de outro mes", () => {
+    const v = vendasPorDia(base(), "2026-09");
+    const soma = v.dias.reduce(
+      (s, d) => ({ q: s.q + d.quantidade, b: s.b + d.bruto, r: s.r + d.recebido }),
+      { q: 0, b: 0, r: 0 },
+    );
+    expect(v.total).toEqual({ quantidade: soma.q, bruto: soma.b, recebido: soma.r });
+    expect(v.total.bruto).toBe(350);
+  });
+
+  it("o dia de hoje no grafico bate com o quadro de vendas de hoje", () => {
+    // Os dois leem `reconciliar`; se um dia divergirem, alguem passou a somar
+    // a mao num dos lados.
+    const pedidos = base();
+    const dia = vendasPorDia(pedidos, "2026-09").dias[0]!;
+    const quadro = reconciliar(filtrarPorDia(pedidos, "2026-09-01"));
+    expect(dia.bruto).toBe(quadro.bruto);
+    expect(dia.recebido).toBe(quadro.recebido);
+    expect(dia.quantidade).toBe(quadro.quantidade.total);
+  });
+
+  it("sabe quantos dias tem cada mes, inclusive fevereiro bissexto", () => {
+    expect(vendasPorDia([], "2026-02").dias).toHaveLength(28);
+    expect(vendasPorDia([], "2028-02").dias).toHaveLength(29);
+    expect(vendasPorDia([], "2026-07").dias).toHaveLength(31);
+  });
+
+  it("mes sem venda devolve os dias zerados e total zero", () => {
+    const v = vendasPorDia([], "2026-09");
+    expect(v.total).toEqual({ quantidade: 0, bruto: 0, recebido: 0 });
+    expect(v.dias.every((d) => d.quantidade === 0)).toBe(true);
   });
 });
 

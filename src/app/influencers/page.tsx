@@ -5,6 +5,7 @@ import { GestaoDespesasInfluencer } from "@/components/GestaoDespesasInfluencer"
 import { RodapeDemonstracao } from "@/components/RodapeDemonstracao";
 import { SeletorInfluencer, type CartaoDeInfluencer } from "@/components/SeletorInfluencer";
 import { VendasDeHoje } from "@/components/VendasDeHoje";
+import { VendasPorDia } from "@/components/VendasPorDia";
 
 import { obterFonteDePedidos, obterRepositorioCadastros } from "@/data";
 import { lojasNuvemshop, modoDemonstracao } from "@/lib/config";
@@ -21,6 +22,7 @@ import {
   filtrarPorMes,
   mesesDisponiveis,
   reconciliar,
+  vendasPorDia,
 } from "@/lib/metrics";
 import { apurarTaxasPlataforma } from "@/lib/plataforma";
 import { mesDaTela } from "@/lib/mesDaTelaServidor";
@@ -79,10 +81,14 @@ export default async function PaginaInfluencers({
   const mesSelecionado = await mesDaTela(meses, mesPedido);
   const pedidosDoMes = filtrarPorMes(todosOsPedidos, mesSelecionado);
 
-  // Hoje NAO segue o mes do cabecalho: o quadro de vendas do dia vale mesmo
-  // com julho aberto na tela.
   const hoje = diaDeHoje();
   const pedidosDeHoje = filtrarPorDia(todosOsPedidos, hoje);
+  /*
+   * O quadro "Vendas de hoje" so aparece com o mes ATUAL no cabecalho (24/09/
+   * 2026, pedido do dono): olhando julho, "hoje" nao faz sentido nenhum na
+   * tela. O grafico de vendas por dia aparece sempre, do mes escolhido.
+   */
+  const noMesAtual = mesSelecionado === hoje.slice(0, 7);
 
   const reconciliacao = reconciliar(pedidosDoMes);
   // A base "o que cai na conta" desconta a mesma taxa que a DRE desconta.
@@ -176,16 +182,38 @@ export default async function PaginaInfluencers({
           </p>
         </div>
 
-        <VendasDeHoje
-          pedidos={
+        {noMesAtual && (
+          <VendasDeHoje
+            pedidos={
+              selecionado
+                ? pedidosDeHoje.filter((p) => p.marca === selecionado.marca)
+                : pedidosDeHoje
+            }
+            dia={hoje}
+            marca={selecionado?.marca ?? null}
+            porMarca={!selecionado}
+          />
+        )}
+
+        <Cartao
+          titulo={`Vendas por dia — ${mesAnoLongo(mesSelecionado)}`}
+          descricao={
             selecionado
-              ? pedidosDeHoje.filter((p) => p.marca === selecionado.marca)
-              : pedidosDeHoje
+              ? `Só a ${selecionado.marca}. Toque ou passe o mouse numa coluna para ver o dia.`
+              : "A operação inteira. Toque ou passe o mouse numa coluna para ver o dia."
           }
-          dia={hoje}
-          marca={selecionado?.marca ?? null}
-          porMarca={!selecionado}
-        />
+        >
+          <VendasPorDia
+            vendas={vendasPorDia(
+              selecionado
+                ? pedidosDoMes.filter((p) => p.marca === selecionado.marca)
+                : pedidosDoMes,
+              mesSelecionado,
+            )}
+            hoje={noMesAtual ? hoje : null}
+            marca={selecionado?.marca ?? null}
+          />
+        </Cartao>
 
         <Cartao
           titulo="Escolha o influencer"

@@ -2,7 +2,8 @@
  * Auditoria de celular: abre cada rota numa largura de telefone e mede o que
  * quebra sem aparecer no HTML.
  *
- *   node scripts/celular.mjs [--largura 390] [--rota /relatorios]
+ *   node scripts/celular.mjs [--largura 390] [--rota /relatorios] [--foto prefixo]
+ *                            [--foto-altura 1200] [--clicar 'seletor css']
  *
  * Existe porque as tres armadilhas da secao 2.1 do CLAUDE.md sao invisiveis
  * em leitura de codigo e em teste unitario:
@@ -254,6 +255,53 @@ for (const rota of rotas) {
   const m = JSON.parse(
     (await cdp("Runtime.evaluate", { expression: MEDIDA, returnByValue: true })).result.value,
   );
+
+  /*
+   * `--foto <prefixo>` grava a pagina inteira em PNG, antes de clicar em
+   * "Editar". A auditoria mede, mas nao ve: sobreposicao de rotulo, eixo
+   * desalinhado e cor apagada so aparecem olhando. Um PNG por rota.
+   */
+  /*
+   * `--clicar <seletor>` clica no primeiro elemento que casar, antes da foto.
+   * A foto da pagina parada nao mostra o que acontece ao tocar -- e grafico
+   * com leitura por toque so se confere tocando.
+   */
+  const clicar = argumento("clicar", null);
+  if (clicar) {
+    const achou = await cdp("Runtime.evaluate", {
+      expression: `(() => { const e = document.querySelector(${JSON.stringify(clicar)}); if (!e) return false; e.click(); return true; })()`,
+      returnByValue: true,
+    });
+    if (!achou.result.value) console.log(`     clicar: nada casou com ${clicar}`);
+    await new Promise((r) => setTimeout(r, 300));
+  }
+
+  const foto = argumento("foto", null);
+  if (foto) {
+    const { writeFileSync } = await import("node:fs");
+    const altura = await cdp("Runtime.evaluate", {
+      expression: "document.documentElement.scrollHeight",
+      returnByValue: true,
+    });
+    await cdp("Emulation.setDeviceMetricsOverride", {
+      width: LARGURA,
+      // `--foto-altura` corta a pagina: no celular a pagina inteira reduzida
+      // fica pequena demais para se ler um rotulo de eixo.
+      height: Math.min(
+        Number(altura.result.value) || 900,
+        Number(argumento("foto-altura", "6000")),
+      ),
+      deviceScaleFactor: 1,
+      mobile: LARGURA < 640,
+    });
+    await new Promise((r) => setTimeout(r, 400));
+    const png = await cdp("Page.captureScreenshot", { format: "png" });
+    // So letra, numero e hifen: `?` e `=` de uma rota com parametro nao cabem
+    // em nome de arquivo no Windows.
+    const arquivo = `${foto}-${LARGURA}${rota.replace(/[^a-zA-Z0-9-]/g, "_") || "_raiz"}.png`;
+    writeFileSync(arquivo, Buffer.from(png.data, "base64"));
+    console.log(`     foto: ${arquivo}`);
+  }
 
   const edicao = JSON.parse(
     (

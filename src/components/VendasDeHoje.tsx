@@ -23,8 +23,10 @@ interface VendasDeHojeProps {
  *
  * Tres decisoes:
  *
- * 1. **Nao segue o mes do cabecalho.** Hoje e hoje mesmo olhando julho. A
- *    descricao diz isso, senao o quadro pareceria contradizer a tela.
+ * 1. **So aparece com o mes ATUAL no cabecalho** (24/09/2026, pedido do dono).
+ *    Ate entao ele ficava na tela olhando qualquer mes, com uma frase dizendo
+ *    que "nao segue o mes escolhido" -- mas "hoje" olhando julho nao responde
+ *    pergunta nenhuma. Nos outros meses fica so o grafico de vendas por dia.
  * 2. **O valor grande e o BRUTO do dia**, com o que ja foi pago ao lado. As
  *    duas coisas, porque no dia em que o pedido nasce quase nada esta pago
  *    ainda: boleto e pix levam horas. So o bruto exagera o dia; so o recebido
@@ -59,7 +61,7 @@ export function VendasDeHoje({ pedidos, dia, marca, porMarca = false }: VendasDe
   return (
     <Cartao
       titulo={marca ? `Vendas de hoje — ${marca}` : "Vendas de hoje"}
-      descricao={`Pedidos criados desde a meia-noite de ${dataCalendario(dia)}, no horário de Brasília. Este quadro não segue o mês escolhido no topo.`}
+      descricao={`Pedidos criados desde a meia-noite de ${dataCalendario(dia)}, no horário de Brasília.`}
     >
       <div className="grid gap-4 sm:grid-cols-3">
         <NumeroDestaque
