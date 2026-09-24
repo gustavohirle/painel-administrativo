@@ -5,7 +5,7 @@ import { z } from "zod";
 
 import { obterFonteDePedidos, obterRepositorioCadastros } from "@/data";
 import { aplicarDonosPelaLoja } from "@/data/donosPelaLoja";
-import { produtosParaCadastrar } from "@/lib/costing";
+import { CUSTO_PROVISORIO, fichasProvisorias, produtosParaCadastrar } from "@/lib/costing";
 import { donoPelaLoja, lojasParaCompletar, lojasPorChave } from "@/lib/donoProduto";
 import { exigirArea } from "@/lib/sessao";
 import { chaveProduto } from "@/types/produto";
@@ -204,11 +204,12 @@ export async function trazerProdutosDaNuvemshop(
   try {
     const repositorio = await obterRepositorioCadastros();
     const fonte = obterFonteDePedidos();
-    const [pedidos, produtos, impostos, influencers] = await Promise.all([
+    const [pedidos, produtos, impostos, influencers, custos] = await Promise.all([
       fonte.listarPedidos(),
       repositorio.listarProdutos(),
       repositorio.listarImpostos(),
       repositorio.listarInfluencers(),
+      repositorio.listarCustos(),
     ]);
 
     let catalogo: Awaited<ReturnType<typeof fonte.listarCatalogo>> = [];
@@ -226,6 +227,17 @@ export async function trazerProdutosDaNuvemshop(
     const semLoja = lojasParaCompletar(produtos, lojasPorChave(pedidos, catalogo));
 
     for (const entrada of novos) await repositorio.salvarProduto(entrada);
+
+    /*
+     * Cada produto novo entra com a ficha PROVISORIA de 35% do preco medio
+     * pago -- a regra do dono para o lucro nao sair inflado por produto de
+     * custo zero. So os NOVOS desta leva: produto que ja estava no cadastro sem
+     * ficha pode estar assim de proposito (na demonstracao, quatro estao, para
+     * mostrar o aviso de cobertura), e nao e este botao que decide isso.
+     */
+    const fichas = fichasProvisorias(pedidos, novos, custos);
+    for (const ficha of fichas) await repositorio.salvarCusto(ficha);
+
     for (const { produto, marca } of semLoja) {
       const { id, atualizadoEm: _atualizadoEm, ...entrada } = produto;
       await repositorio.salvarProduto({ ...entrada, marca }, id);
@@ -246,8 +258,13 @@ export async function trazerProdutosDaNuvemshop(
     revalidatePath("/impostos");
     revalidatePath("/");
 
+    const semFicha = novos.length - fichas.length;
     const partes = [
       novos.length > 0 ? `${novos.length} produto(s) trazido(s) da Nuvemshop` : null,
+      fichas.length > 0
+        ? `${fichas.length} com custo provisório de ${CUSTO_PROVISORIO * 100}% do preço médio pago`
+        : null,
+      semFicha > 0 ? `${semFicha} sem custo, por não ter venda paga com preço` : null,
       semLoja.length > 0 ? `${semLoja.length} produto(s) já cadastrado(s) ganharam a loja de origem` : null,
       comDonoNovo > 0 ? `${comDonoNovo} produto(s) passaram para o influencer da sua loja` : null,
     ].filter(Boolean);

@@ -1270,6 +1270,25 @@ cadastro cobre (`produtosParaCadastrar`, em `costing.ts`). Na loja real, em
 4. **Não é replicar catálogo** (seção 8): o registro guarda só o que a
    Nuvemshop não sabe (dono, NCM, kit, impostos); nome e SKU vão junto porque a
    tela precisa de um rótulo.
+5. **Cada produto novo já entra com custo provisório de 35%** do preço médio
+   pago (`fichasProvisorias` e `CUSTO_PROVISORIO`, em `costing.ts`), com o
+   valor inteiro em matéria-prima e os outros três componentes em zero. É a
+   regra do dono para o lucro não sair inflado por produto de custo zero.
+
+   **A regra mora em `costing.ts` porque viveu no lugar errado.** Até
+   24/09/2026 ela existia só no script `produtos:trazer`, que eu rodei uma vez;
+   o botão "Trazer da Nuvemshop" cadastrava o produto e **não criava ficha
+   nenhuma**. Todo produto trazido pela tela entrava com custo zero, e o dono
+   percebeu pelos produtos novos chegando sem custo. Regra que só existe num
+   script vale só enquanto alguém lembra de rodar o script.
+
+   A função **nunca sobrescreve** ficha que já existe (da variante ou do
+   produto inteiro), usa **só pedido pago** na média, e **não cria ficha sem
+   preço** — brinde a R$ 0 continua sem custo, porque a lacuna a tela declara
+   (5.7) e o número inventado não. E o botão aplica a regra **só aos produtos
+   novos daquela leva**: produto que já estava no cadastro sem ficha pode estar
+   assim de propósito — na demonstração, quatro estão, para mostrar o aviso de
+   cobertura —, e não é o botão que decide isso.
 
 ### 5.11.1 Aba Kits
 

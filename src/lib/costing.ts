@@ -22,6 +22,7 @@ import {
   custoUnitarioTotal,
   type BaseComissao,
   type CustoProduto,
+  type EntradaCustoProduto,
   type Influencer,
 } from "@/types/dominio";
 import {
@@ -887,6 +888,92 @@ export function catalogoVendido(
  * Nome e SKU sao os da venda mais recente, porque o produto pode ter sido
  * renomeado na loja. Maior receita primeiro.
  */
+/**
+ * Fracao do preco medio PAGO que vira custo provisorio de fabricacao.
+ *
+ * Regra do dono (16-17/09/2026): ate os custos reais chegarem, todo produto
+ * entra com 35% do preco de venda como custo, para o lucro da tela nao sair
+ * inflado por produto de custo zero. A ficha e PROVISORIA e se reconhece pelo
+ * formato: valor inteiro em materia-prima, os outros tres componentes em zero.
+ */
+export const CUSTO_PROVISORIO = 0.35;
+
+/**
+ * As fichas de custo provisorias para uma lista de produtos: uma por produto
+ * que ainda nao tem ficha e que teve venda paga com preco.
+ *
+ * Mora aqui, e nao no script nem na action, porque os DOIS precisam dela. Ate
+ * 24/09/2026 a regra vivia so no script `produtos:trazer`; o botao "Trazer da
+ * Nuvemshop" da aba Produtos cadastrava o produto e nao criava ficha nenhuma,
+ * e todo produto trazido pela tela entrava com custo zero -- o dono percebeu
+ * pelos produtos novos chegando sem custo.
+ *
+ * Tres decisoes:
+ *
+ * 1. **O preco e o medio PAGO, e nao o de tabela**: e o que entrou de verdade.
+ *    So pedido recebido entra, pela mesma razao do CMV (5.7) -- boleto nunca
+ *    pago nao chegou a ser produzido.
+ * 2. **Nunca sobrescreve.** Produto com ficha -- da propria variante ou do
+ *    produto inteiro (`varianteId: null`, que vale para todas) -- fica como
+ *    esta. Uma ficha real trocada por um chute seria o pior erro possivel
+ *    aqui.
+ * 3. **Sem preco, sem ficha.** Brinde a R$ 0 e item que so sai dentro de kit
+ *    ficam de fora: inventar custo para eles seria pior que a lacuna, porque
+ *    a lacuna a tela declara (5.7) e o numero inventado, nao.
+ */
+export function fichasProvisorias(
+  pedidos: Pedido[],
+  produtos: Array<Pick<EntradaProduto, "produtoId" | "varianteId" | "sku" | "nome">>,
+  custos: CustoProduto[],
+  fracao: number = CUSTO_PROVISORIO,
+): EntradaCustoProduto[] {
+  const vendas = new Map<string, { valor: number; unidades: number }>();
+  for (const pedido of pedidosRecebidos(pedidos)) {
+    for (const item of pedido.products) {
+      const quantidade = Number(item.quantity ?? 0);
+      if (!Number.isFinite(quantidade) || quantidade <= 0) continue;
+      const chave = chaveProduto(item.product_id, item.variant_id);
+      const atual = vendas.get(chave) ?? { valor: 0, unidades: 0 };
+      atual.valor += paraNumero(item.price) * quantidade;
+      atual.unidades += quantidade;
+      vendas.set(chave, atual);
+    }
+  }
+
+  // Ficha do produto inteiro vale para todas as variantes (5.7): quem a tem
+  // ja tem custo, mesmo sem ficha da variante.
+  const comFicha = new Set(custos.map((c) => chaveProduto(c.produtoId, c.varianteId)));
+  const temFicha = (produtoId: number, varianteId: number | null) =>
+    comFicha.has(chaveProduto(produtoId, varianteId)) ||
+    comFicha.has(chaveProduto(produtoId, null));
+
+  const fichas: EntradaCustoProduto[] = [];
+  const jaGerada = new Set<string>();
+
+  for (const produto of produtos) {
+    const chave = chaveProduto(produto.produtoId, produto.varianteId);
+    if (jaGerada.has(chave) || temFicha(produto.produtoId, produto.varianteId)) continue;
+
+    const venda = vendas.get(chave);
+    if (!venda || venda.unidades === 0 || venda.valor <= 0) continue;
+
+    fichas.push({
+      produtoId: produto.produtoId,
+      varianteId: produto.varianteId,
+      sku: produto.sku,
+      nome: produto.nome,
+      // Tudo em materia-prima: e por ai que se acha o que ainda e chute.
+      custoMateriaPrima: Math.round((venda.valor / venda.unidades) * fracao * 100) / 100,
+      custoEmbalagem: 0,
+      custoMaoDeObra: 0,
+      custoIndireto: 0,
+    });
+    jaGerada.add(chave);
+  }
+
+  return fichas;
+}
+
 export function produtosParaCadastrar(
   pedidos: Pedido[],
   cadastro: Produto[],

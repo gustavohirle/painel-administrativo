@@ -8,8 +8,10 @@ import {
   catalogoVendido,
   calcularComissoesPorInfluencer,
   cruzarMarcasComContratos,
+  CUSTO_PROVISORIO,
   custoUnitarioDe,
   despesasQueCabem,
+  fichasProvisorias,
   indexarCustos,
   montarDemonstrativo,
   rentabilidadePorProduto,
@@ -874,5 +876,72 @@ describe("brinde a R$ 0", () => {
 
   it("produto vendido com preço e sem ficha continua sendo apontado", () => {
     expect(calcularCMV(pedidos, []).produtosSemCusto).toBe(1);
+  });
+});
+
+describe("fichasProvisorias", () => {
+  /*
+   * A regra dos 35% (secao 13). Ate 24/09/2026 ela vivia so num script; o
+   * botao "Trazer da Nuvemshop" cadastrava o produto sem ficha nenhuma, e o
+   * dono viu os produtos novos chegando com custo zero.
+   */
+  const produtoA = { produtoId: 1001, varianteId: 100101, sku: "A-1", nome: "Produto A" };
+  const item = (price: string, quantity = 1) => ({
+    id: 1,
+    product_id: 1001,
+    variant_id: 100101,
+    name: "Produto A",
+    price,
+    quantity,
+    sku: "A-1",
+  });
+
+  it("vale 35% do preço médio PAGO, tudo em matéria-prima", () => {
+    // Dois pedidos pagos: 1 un a R$ 100 e 3 un a R$ 80 -> média R$ 85.
+    const pedidos = [
+      pedido({ products: [item("100.00", 1)] }),
+      pedido({ products: [item("80.00", 3)] }),
+    ];
+    const [ficha] = fichasProvisorias(pedidos, [produtoA], []);
+
+    expect(CUSTO_PROVISORIO).toBe(0.35);
+    expect(ficha!.custoMateriaPrima).toBeCloseTo(29.75, 2); // 35% de 85
+    expect(ficha!.custoEmbalagem).toBe(0);
+    expect(ficha!.custoMaoDeObra).toBe(0);
+    expect(ficha!.custoIndireto).toBe(0);
+  });
+
+  it("pedido não pago não entra na média", () => {
+    // Boleto nunca pago nao chegou a ser produzido (5.7).
+    const pedidos = [
+      pedido({ products: [item("100.00")] }),
+      pedido({ payment_status: "pending", paid_at: null, products: [item("10.00", 50)] }),
+    ];
+    const [ficha] = fichasProvisorias(pedidos, [produtoA], []);
+    expect(ficha!.custoMateriaPrima).toBeCloseTo(35, 2);
+  });
+
+  it("NUNCA sobrescreve uma ficha que já existe", () => {
+    // Uma ficha real trocada por um chute seria o pior erro possivel aqui.
+    const pedidos = [pedido({ products: [item("100.00")] })];
+    expect(fichasProvisorias(pedidos, [produtoA], [custo()])).toEqual([]);
+  });
+
+  it("ficha do produto inteiro conta como ficha da variante", () => {
+    const pedidos = [pedido({ products: [item("100.00")] })];
+    const doProdutoInteiro = custo({ varianteId: null });
+    expect(fichasProvisorias(pedidos, [produtoA], [doProdutoInteiro])).toEqual([]);
+  });
+
+  it("sem venda paga com preço, sem ficha", () => {
+    // Brinde a R$ 0: inventar custo seria pior que a lacuna, que a tela declara.
+    const brinde = [pedido({ products: [item("0.00", 5)] })];
+    expect(fichasProvisorias(brinde, [produtoA], [])).toEqual([]);
+    expect(fichasProvisorias([], [produtoA], [])).toEqual([]);
+  });
+
+  it("o mesmo produto repetido na lista gera uma ficha só", () => {
+    const pedidos = [pedido({ products: [item("100.00")] })];
+    expect(fichasProvisorias(pedidos, [produtoA, produtoA], [])).toHaveLength(1);
   });
 });
