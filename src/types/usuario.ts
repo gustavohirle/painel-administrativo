@@ -10,14 +10,29 @@
 export type PerfilUsuario = "dono" | "estoque";
 
 /**
- * Minimo para senha de painel financeiro exposto na internet.
+ * Minimo de caracteres da senha. **Oito**, por decisao do dono em 23/09/2026.
+ *
+ * Era 10, escolhido por mim sem perguntar quando o cadastro de usuarios foi
+ * feito -- e isso cobrou caro: ele trocou a senha para uma de 8, a tela
+ * RECUSOU a troca, ele nao viu a mensagem, e ficou trancado do lado de fora
+ * tentando entrar com uma senha que nunca chegou a ser gravada.
+ *
+ * Vale a licao, e nao so o numero: uma regra de seguranca que o dono nao
+ * escolheu ele nao defende, e quando ela o atrapalha o efeito nao e uma senha
+ * mais forte -- e um chamado, uma redefinicao pelo banco, e a proxima senha
+ * escolhida com raiva. Se for para subir de novo, pergunte antes.
+ *
+ * As outras travas de `problemaNaSenha` continuam e valem mais que o
+ * comprimento: nada de senha publicada aqui, nada igual ao login, nada so de
+ * numeros. A do `prisma/seed.ts` e outra conta -- ali sao 12, porque a senha
+ * inicial nasce num arquivo de ambiente e ninguem a digita.
  *
  * Mora aqui, e nao em `lib/usuarios.ts`, porque o formulario e componente de
  * NAVEGADOR: importar de la traria `data/seeds` junto, e com ele o
  * `node:crypto` -- o build quebra com "Reading from node:util is not handled".
  * Tipo e constante sem dependencia viajam para os dois lados.
  */
-export const TAMANHO_MINIMO_SENHA = 10;
+export const TAMANHO_MINIMO_SENHA = 8;
 
 export interface Usuario {
   id: string;

@@ -1398,8 +1398,24 @@ nada:
    mundo o acesso ao cadastro, para sempre: só mexendo no banco na mão.
 2. **Ninguém se remove nem se rebaixa.** O caminho é outra pessoa fazer, e o
    engano continua reversível.
-3. **Senha de pelo menos 10 caracteres**, nunca uma das publicadas aqui
+3. **Senha de pelo menos 8 caracteres**, nunca uma das publicadas aqui
    (`dono123`, `estoque123`), nunca igual ao login, nunca só números.
+
+   **Era 10, e o 10 era meu — escolhido sem perguntar, e cobrou caro**
+   (23/09/2026). O dono trocou a senha para uma de oito, a tela **recusou a
+   troca**, ele não viu a mensagem e passou a tentar entrar com uma senha que
+   nunca chegou a ser gravada. Ficou trancado do lado de fora do próprio
+   painel, e só saiu de lá com uma redefinição pelo banco.
+
+   O mínimo **não** bloqueia o login — só a gravação —, o que torna o sintoma
+   pior: a senha antiga continua valendo e ninguém liga uma coisa à outra. A
+   lição não é o número: **regra de segurança que o dono não escolheu ele não
+   defende**, e quando ela o atrapalha o efeito não é uma senha mais forte — é
+   um chamado, uma redefinição na unha e a próxima senha escolhida com raiva.
+   Se for para subir de novo, pergunte antes.
+
+   A do `prisma/seed.ts` continua em 12, e é outra conta: ali a senha inicial
+   nasce num arquivo de ambiente e ninguém a digita.
 4. **Trocar a própria senha exige a senha atual.** Computador deixado aberto na
    fábrica, sem isso, é conta tomada.
 

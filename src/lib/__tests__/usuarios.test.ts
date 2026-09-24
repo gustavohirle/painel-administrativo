@@ -41,12 +41,23 @@ describe("login", () => {
 
 describe("senha", () => {
   it("exige tamanho e recusa as senhas publicadas na documentação", () => {
-    expect(problemaNaSenha("curta", "ana")).toContain("pelo menos 10");
-    expect(problemaNaSenha("dono123", "dono")).toContain("pelo menos 10");
+    expect(problemaNaSenha("curta", "ana")).toContain("pelo menos 8");
+    expect(problemaNaSenha("dono123", "dono")).toContain("pelo menos 8");
     expect(problemaNaSenha("estoque123", "estoque")).toContain("demonstração");
     expect(problemaNaSenha("12345678901", "ana")).toContain("letras também");
     expect(problemaNaSenha("anaanaanaana", "anaanaanaana")).toContain("igual ao login");
     expect(problemaNaSenha("chuva-de-verao-26", "ana")).toBeNull();
+  });
+
+  it("aceita oito caracteres com letra, número e símbolo", () => {
+    /*
+     * O mínimo caiu de 10 para 8 em 23/09/2026. O 10 era meu, escolhido sem
+     * perguntar, e trancou o dono do lado de fora: ele trocou a senha para uma
+     * de oito, a tela recusou, ele não viu a mensagem e passou a tentar entrar
+     * com uma senha que nunca foi gravada.
+     */
+    expect(problemaNaSenha("Meg@1234", "valmir")).toBeNull();
+    expect(problemaNaSenha("Meg@123", "valmir")).toContain("pelo menos 8");
   });
 });
 
