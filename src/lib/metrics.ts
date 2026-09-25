@@ -462,16 +462,61 @@ export function filtrarPorMes(pedidos: Pedido[], mes: string): Pedido[] {
 // O dia de hoje (5.16, "Vendas de hoje")
 // ---------------------------------------------------------------------------
 
-/** Chave de agrupamento diario "2026-09-18", pelo mesmo corte de `chaveMes`. */
-/** Um dia do grafico de vendas por dia. */
+/** Uma marca dentro de um dia de vendas. */
+export interface VendaDaMarca {
+  marca: string;
+  quantidade: number;
+  bruto: number;
+  recebido: number;
+}
+
+/**
+ * As vendas de um dia: o quadro "Vendas de hoje" e o de qualquer dia clicado no
+ * grafico de vendas por dia (5.16.1).
+ */
 export interface DiaDeVenda {
   /** "2026-09-24". */
   dia: string;
   quantidade: number;
+  /** Quantos desses pedidos ja foram pagos -- `quantidade.recebido`. */
+  quantidadePaga: number;
   /** Tudo que foi vendido no dia, pago ou nao -- o `bruto` de `reconciliar`. */
   bruto: number;
   /** O que ja entrou -- o `recebido` de `reconciliar`. */
   recebido: number;
+  /** Uma linha por marca, da que mais vendeu para a que menos. */
+  porMarca: VendaDaMarca[];
+}
+
+/**
+ * Resume os pedidos de UM dia, ja filtrados.
+ *
+ * E a unica conta dos dois quadros de dia -- o de hoje, no topo da aba, e o do
+ * dia clicado no grafico. Se cada um somasse do seu jeito, clicar no dia de
+ * hoje abriria um numero diferente do que esta logo acima.
+ */
+export function resumirDia(dia: string, pedidos: Pedido[]): DiaDeVenda {
+  const porMarca = new Map<string, Pedido[]>();
+  for (const pedido of pedidos) {
+    const lista = porMarca.get(pedido.marca);
+    if (lista) lista.push(pedido);
+    else porMarca.set(pedido.marca, [pedido]);
+  }
+
+  const r = reconciliar(pedidos);
+  return {
+    dia,
+    quantidade: r.quantidade.total,
+    quantidadePaga: r.quantidade.recebido,
+    bruto: r.bruto,
+    recebido: r.recebido,
+    porMarca: [...porMarca]
+      .map(([marca, dela]) => {
+        const m = reconciliar(dela);
+        return { marca, quantidade: m.quantidade.total, bruto: m.bruto, recebido: m.recebido };
+      })
+      .sort((a, b) => b.bruto - a.bruto),
+  };
 }
 
 export interface VendasDoMes {
@@ -489,9 +534,10 @@ export interface VendasDoMes {
  * 24/09/2026: o quadro "Vendas de hoje" nao faz sentido olhando um mes que nao
  * e o atual, e ali ele quer ver o mes dia a dia.
  *
- * Nenhuma conta nova: cada dia e `reconciliar` sobre os pedidos dele, a mesma
- * funcao do quadro de hoje e da tela inicial. Por isso o dia de hoje no grafico
- * bate exatamente com o numero grande do quadro acima dele -- ha teste.
+ * Cada dia ja vem resumido por `resumirDia`, com a quebra por marca: clicar
+ * numa coluna abre o quadro do dia (25/09/2026), e ele abre na hora, sem
+ * voltar ao servidor. Sao ~30 dias x 5 marcas de numeros agregados -- nenhum
+ * pedido vai para o navegador (secao 3).
  *
  * TODOS os dias do mes entram, inclusive os sem venda e os que ainda nao
  * chegaram: uma barra ausente no meio da serie diz "nao vendeu", e pular o dia
@@ -517,13 +563,7 @@ export function vendasPorDia(pedidos: Pedido[], mes: string): VendasDoMes {
   const dias: DiaDeVenda[] = [];
   for (let d = 1; d <= ultimoDia; d++) {
     const dia = `${mes}-${String(d).padStart(2, "0")}`;
-    const lista = porDia.get(dia);
-    if (!lista) {
-      dias.push({ dia, quantidade: 0, bruto: 0, recebido: 0 });
-      continue;
-    }
-    const r = reconciliar(lista);
-    dias.push({ dia, quantidade: r.quantidade.total, bruto: r.bruto, recebido: r.recebido });
+    dias.push(resumirDia(dia, porDia.get(dia) ?? []));
   }
 
   const r = reconciliar(doMes);
@@ -534,6 +574,7 @@ export function vendasPorDia(pedidos: Pedido[], mes: string): VendasDoMes {
   };
 }
 
+/** Chave de agrupamento diario "2026-09-18", pelo mesmo corte de `chaveMes`. */
 export function chaveDia(iso: string): string {
   return iso.slice(0, 10);
 }

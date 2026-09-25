@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
+import { NumerosDoDia } from "@/components/NumerosDoDia";
 import { escalaAgradavel, inteiro, mesAnoLongo, moedaRedonda, percentual, razaoSegura } from "@/lib/format";
 import type { DiaDeVenda, VendasDoMes } from "@/lib/metrics";
 
@@ -17,6 +18,11 @@ import type { DiaDeVenda, VendasDoMes } from "@/lib/metrics";
  * com o viewBox, e por isso cada grafico SVG do painel precisa de dois
  * formatos (2.1). Aqui o texto e texto de verdade, em px de tela, e a mesma
  * marcacao serve do celular a tela da reuniao. Continua sem biblioteca.
+ *
+ * Tocar ou clicar numa coluna abre, abaixo do grafico, o quadro daquele dia --
+ * o mesmo de "Vendas de hoje", com a lista por marca (25/09/2026, pedido do
+ * dono). Os numeros ja vem prontos do servidor, dia a dia, e por isso o quadro
+ * abre na hora.
  *
  * As cores seguem a regra "destaque e o resto em cinza": o verde e o mesmo do
  * "Ja pago hoje", e o cinza e o que nao entrou -- sem cor de proposito, para
@@ -39,7 +45,37 @@ function rotuloDoDia(dia: string): string {
   return `${semana}, ${String(d).padStart(2, "0")}/${String(m).padStart(2, "0")}`;
 }
 
+const DIAS_POR_EXTENSO = [
+  "domingo",
+  "segunda-feira",
+  "terça-feira",
+  "quarta-feira",
+  "quinta-feira",
+  "sexta-feira",
+  "sábado",
+];
+
+/** "quarta-feira, 24/09" -- o titulo do quadro do dia escolhido. */
+function rotuloLongoDoDia(dia: string): string {
+  const [a, m, d] = dia.split("-").map(Number) as [number, number, number];
+  const semana = DIAS_POR_EXTENSO[new Date(Date.UTC(a, m - 1, d)).getUTCDay()];
+  return `${semana}, ${String(d).padStart(2, "0")}/${String(m).padStart(2, "0")}`;
+}
+
 const numeroDoDia = (dia: string) => Number(dia.slice(8, 10));
+
+/**
+ * Quanto um dia disputa o numero no eixo do celular: o escolhido, depois hoje,
+ * depois o 1 e os multiplos de 5; os outros, nada. Um numero colado num vizinho
+ * de prioridade maior sai -- em ~10px por coluna, "24" e "25" lado a lado viram
+ * "2425".
+ */
+function prioridadeNoEixo(dia: string, hoje: string | null, escolhido: string | null): number {
+  if (dia === escolhido) return 3;
+  if (dia === hoje) return 2;
+  const n = numeroDoDia(dia);
+  return n === 1 || n % 5 === 0 ? 1 : 0;
+}
 
 /**
  * Valor do eixo, curto: "R$ 90 mil", "R$ 7,5 mil", "R$ 1,2 mi".
@@ -68,7 +104,21 @@ interface VendasPorDiaProps {
 }
 
 export function VendasPorDia({ vendas, hoje, marca }: VendasPorDiaProps) {
+  // Dois estados, e nao um: `ativo` segue o mouse (a leitura do topo) e some
+  // quando ele sai; `escolhido` e o dia clicado, cujo quadro fica aberto ate
+  // ser fechado ou trocado.
   const [ativo, setAtivo] = useState<string | null>(null);
+  const [escolhido, setEscolhido] = useState<string | null>(null);
+  const quadro = useRef<HTMLDivElement>(null);
+
+  /*
+   * O quadro abre abaixo do grafico, e no celular isso e fora da tela: sem
+   * rolar, o toque pareceria nao ter feito nada. `nearest` rola o minimo; o
+   * `scroll-mt` do quadro desconta o cabecalho grudado no topo.
+   */
+  useEffect(() => {
+    if (escolhido) quadro.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }, [escolhido]);
 
   const { dias, total } = vendas;
   const maiorDia = Math.max(0, ...dias.map((d) => d.bruto));
@@ -84,7 +134,9 @@ export function VendasPorDia({ vendas, hoje, marca }: VendasPorDiaProps) {
     );
   }
 
-  const diaAtivo = ativo ? (dias.find((d) => d.dia === ativo) ?? null) : null;
+  const foco = ativo ?? escolhido;
+  const diaAtivo = foco ? (dias.find((d) => d.dia === foco) ?? null) : null;
+  const diaEscolhido = escolhido ? (dias.find((d) => d.dia === escolhido) ?? null) : null;
   const passados = dias.filter((d) => !hoje || d.dia <= hoje);
 
   /*
@@ -170,34 +222,40 @@ export function VendasPorDia({ vendas, hoje, marca }: VendasPorDiaProps) {
                   dia={d}
                   altura={altura}
                   futuro={hoje !== null && d.dia > hoje}
-                  apagado={ativo !== null && ativo !== d.dia}
+                  apagado={foco !== null && foco !== d.dia}
+                  escolhido={escolhido === d.dia}
                   aoApontar={() => setAtivo(d.dia)}
+                  // Clicar no dia aberto fecha o quadro.
+                  aoEscolher={() => setEscolhido((atual) => (atual === d.dia ? null : d.dia))}
                 />
               ))}
             </div>
           </div>
 
           {/*
-            Eixo dos dias. No celular, de 5 em 5 e o dia de hoje; da tela media
-            para cima, todos -- trinta rotulos em ~290px nao cabem.
+            Eixo dos dias. No celular, de 5 em 5, o dia de hoje e o escolhido;
+            da tela media para cima, todos -- trinta rotulos em ~290px nao
+            cabem (`prioridadeNoEixo`).
 
             O rotulo escondido fica INVISIVEL, e nao fora do fluxo: com
             `hidden`, os que sobram se espalham pela largura e deixam de ficar
-            embaixo do dia deles. E o multiplo de 5 colado no dia de hoje sai,
-            senao "24" e "25" se encostam e viram "2425".
+            embaixo do dia deles.
           */}
           <div className="mt-1 flex gap-[2px]" aria-hidden>
-            {dias.map((d) => {
+            {dias.map((d, i) => {
               const n = numeroDoDia(d.dia);
-              const ehHoje = d.dia === hoje;
-              const colado = hoje !== null && Math.abs(n - numeroDoDia(hoje)) === 1;
-              const sempre = ehHoje || ((n === 1 || n % 5 === 0) && !colado);
+              const destaque = d.dia === hoje || d.dia === escolhido;
+              const prioridade = prioridadeNoEixo(d.dia, hoje, escolhido);
+              const vizinhoMaior = [dias[i - 1], dias[i + 1]].some(
+                (v) => v !== undefined && prioridadeNoEixo(v.dia, hoje, escolhido) > prioridade,
+              );
+              const noCelular = prioridade > 0 && !vizinhoMaior;
               return (
                 <span
                   key={d.dia}
                   className={`numerico min-w-0 flex-1 text-center text-[11px] ${
-                    ehHoje ? "font-bold text-tinta" : "text-tinta-fraca"
-                  } ${sempre ? "" : "invisible md:visible"} ${
+                    destaque ? "font-bold text-tinta" : "text-tinta-fraca"
+                  } ${noCelular ? "" : "invisible md:visible"} ${
                     hoje !== null && d.dia > hoje ? "opacity-50" : ""
                   }`}
                 >
@@ -208,6 +266,35 @@ export function VendasPorDia({ vendas, hoje, marca }: VendasPorDiaProps) {
           </div>
         </div>
       </div>
+
+      {diaEscolhido && (
+        <div
+          ref={quadro}
+          className="mt-5 scroll-mt-32 rounded-lg border border-borda-forte px-4 py-4 sm:px-5"
+        >
+          <div className="mb-4 flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-base font-semibold text-tinta">
+                {diaEscolhido.dia === hoje
+                  ? "Vendas de hoje"
+                  : `Vendas de ${rotuloLongoDoDia(diaEscolhido.dia)}`}
+                {marca ? ` — ${marca}` : ""}
+              </p>
+              <p className="mt-0.5 text-sm text-tinta-media">
+                Pedidos criados no dia, da meia-noite às 23h59, no horário de Brasília.
+              </p>
+            </div>
+            <button
+              type="button"
+              className="shrink-0 rounded-md border border-borda px-2.5 py-1 text-sm text-tinta-media hover:border-borda-forte hover:text-tinta"
+              onClick={() => setEscolhido(null)}
+            >
+              Fechar
+            </button>
+          </div>
+          <NumerosDoDia resumo={diaEscolhido} hoje={diaEscolhido.dia === hoje} />
+        </div>
+      )}
 
       {/* A tabela e o gemeo do grafico: todo numero que a leitura mostra ao
           apontar tambem esta aqui, sem precisar apontar nada. */}
@@ -247,13 +334,17 @@ function Coluna({
   altura,
   futuro,
   apagado,
+  escolhido,
   aoApontar,
+  aoEscolher,
 }: {
   dia: DiaDeVenda;
   altura: (valor: number) => number;
   futuro: boolean;
   apagado: boolean;
+  escolhido: boolean;
   aoApontar: () => void;
+  aoEscolher: () => void;
 }) {
   /*
    * Dia que ainda nao chegou nao tem barra, mesmo que tenha pedido. Em
@@ -274,16 +365,19 @@ function Coluna({
      * A coluna inteira e o alvo -- a altura toda do grafico, e nao so a barra
      * pintada. Num dia de venda baixa a barra tem 3px; ninguem acerta isso com
      * o dedo.
+     *
+     * O dia escolhido ganha uma faixa de fundo na coluna inteira: com o mouse
+     * passeando pelos outros dias, e ela que diz de qual dia e o quadro aberto.
      */
     <button
       type="button"
-      className={`flex h-full min-w-0 flex-1 flex-col items-center justify-end transition-opacity ${
+      className={`flex h-full min-w-0 flex-1 cursor-pointer flex-col items-center justify-end rounded-t-[4px] transition-opacity ${
         apagado ? "opacity-40" : ""
-      }`}
+      } ${escolhido ? "bg-fundo" : ""}`}
       onPointerEnter={aoApontar}
       onFocus={aoApontar}
-      onClick={aoApontar}
-      disabled={futuro}
+      onClick={aoEscolher}
+      aria-pressed={escolhido}
       aria-label={`${rotuloDoDia(dia.dia)}: ${inteiro(dia.quantidade)} vendas, ${moedaRedonda(dia.bruto)} vendidos, ${moedaRedonda(dia.recebido)} já pagos`}
     >
       {/* Barra de no maximo 24px: o espaco que sobra no dia e ar, nao barra. */}

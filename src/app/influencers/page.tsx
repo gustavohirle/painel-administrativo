@@ -191,7 +191,6 @@ export default async function PaginaInfluencers({
             }
             dia={hoje}
             marca={selecionado?.marca ?? null}
-            porMarca={!selecionado}
           />
         )}
 
@@ -199,8 +198,8 @@ export default async function PaginaInfluencers({
           titulo={`Vendas por dia — ${mesAnoLongo(mesSelecionado)}`}
           descricao={
             selecionado
-              ? `Só a ${selecionado.marca}. Toque ou passe o mouse numa coluna para ver o dia.`
-              : "A operação inteira. Toque ou passe o mouse numa coluna para ver o dia."
+              ? `Só a ${selecionado.marca}. Toque ou clique numa coluna para abrir as vendas do dia.`
+              : "A operação inteira. Toque ou clique numa coluna para abrir as vendas do dia."
           }
         >
           <VendasPorDia

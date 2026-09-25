@@ -2052,6 +2052,28 @@ Decisões, a maioria vinda de olhar a tela renderizada e não o código:
    o gráfico subia e descia a cada toque.
 6. **Tabela gêmea**, recolhida em "Ver os números dia a dia": todo número da
    leitura está ali sem precisar apontar nada.
+7. **Clicar numa coluna abre o quadro daquele dia** (25/09/2026, pedido do
+   dono), abaixo do gráfico: o mesmo de "Vendas de hoje" — vendas, valor, já
+   pago e a lista por marca. É o **mesmo componente** (`NumerosDoDia`) e a
+   **mesma conta** (`resumirDia`, em `metrics.ts`): clicar no dia de hoje tem
+   que abrir exatamente o número que está no quadro acima, e há teste. Cinco
+   detalhes:
+   - **Abre na hora, sem voltar ao servidor.** Cada dia já chega resumido, com
+     a quebra por marca — ~30 dias × 5 marcas de números agregados, nenhum
+     pedido no navegador (seção 3). Por isso o dia escolhido não vai para a
+     URL.
+   - **Passar o mouse e clicar são estados diferentes.** O mouse muda a
+     leitura do topo e some ao sair; o clique fixa o dia até "Fechar" ou até
+     clicar nele de novo. A coluna escolhida ganha uma faixa de fundo, que é o
+     que diz de qual dia é o quadro enquanto o mouse passeia pelos outros.
+   - **O quadro rola para a vista** (`scrollIntoView`, `nearest`, com
+     `scroll-mt` para o cabeçalho grudado): no celular ele abre fora da tela,
+     e sem rolar o toque pareceria não ter feito nada.
+   - **No eixo do celular o dia escolhido ganha número**, com prioridade sobre
+     hoje e sobre os múltiplos de 5 (`prioridadeNoEixo`); o vizinho de
+     prioridade menor sai, senão "24" e "25" viram "2425".
+   - **"O resto ainda pode entrar" só no dia de hoje.** Num dia que já passou,
+     o que não entrou quase sempre já expirou ou foi cancelado.
 
 Três defeitos que só apareceram na foto, e valem de aviso para o próximo
 gráfico em HTML:
