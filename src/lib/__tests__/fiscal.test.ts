@@ -307,6 +307,30 @@ describe("apurarImpostos", () => {
     expect(marca.simples?.valorDAS).toBeCloseTo(169, 6); // 8,45% de 2000
   });
 
+  it("cancelado e reembolsado ficam FORA da base do imposto, mas dentro do RBT12", () => {
+    // Decisao do dono em 25/09/2026 (5.1.1): venda que nao aconteceu nao paga
+    // imposto. O RBT12 segue o faturado inteiro, porque e com ele que o do
+    // contador bate (5.10.1).
+    const pedidos = [
+      pedido({ total: "1000.00" }),
+      pedido({ total: "1000.00", payment_status: "pending" }),
+      pedido({ total: "1000.00", status: "cancelled" }),
+      pedido({ total: "1000.00", payment_status: "refunded" }),
+    ];
+    const icms = imposto({ id: "icms", sigla: "ICMS", aliquota: 4, regimes: ["lucro_presumido"], ativo: true });
+    const cadastro = [produto({ impostosIds: ["icms"] })];
+
+    const noSimples = apurarImpostos(pedidos, pedidos, [], [], [influencer()]).porInfluencer[0]!;
+    expect(noSimples.baseReceita).toBe(2000);
+    expect(noSimples.rbt12.valor).toBeCloseTo(4000 * 12, 6);
+
+    const noPresumido = apurarImpostos(pedidos, pedidos, cadastro, [icms], [
+      influencer({ regime: "lucro_presumido" }),
+    ]).porInfluencer[0]!;
+    expect(noPresumido.baseReceita).toBe(2000);
+    expect(noPresumido.linhas.find((l) => l.sigla === "ICMS")!.base).toBe(2000);
+  });
+
   it("o frete cobrado do cliente entra na base de TODO tributo", () => {
     // Decisao do dono em 18/09/2026: na legislacao o frete cobrado do
     // destinatario integra a base do ICMS, do PIS/COFINS e a receita bruta do

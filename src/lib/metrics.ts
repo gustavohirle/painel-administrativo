@@ -51,6 +51,27 @@ export function pedidosRecebidos(pedidos: Pedido[]): Pedido[] {
   return pedidos.filter((p) => classificarPedido(p) === "recebido");
 }
 
+/**
+ * Pedido sobre o qual incide imposto e DIFAL: todo pedido criado, MENOS o
+ * cancelado e o reembolsado (5.1.1, decisao do dono em 25/09/2026).
+ *
+ * Venda cancelada ou devolvida nao aconteceu, e nao se paga imposto de venda
+ * que nao aconteceu. O NAO PAGO continua na base: e pix ou boleto ainda em
+ * aberto, que pode ser pago -- e, quando expira, a Nuvemshop o cancela, e ai
+ * ele sai sozinho.
+ *
+ * Mesma precedencia de `classificarPedido`: pedido cancelado E reembolsado
+ * sai uma vez so.
+ */
+export function ehTributavel(pedido: Pedido): boolean {
+  const categoria = classificarPedido(pedido);
+  return categoria !== "cancelado" && categoria !== "reembolsado";
+}
+
+export function pedidosTributaveis(pedidos: Pedido[]): Pedido[] {
+  return pedidos.filter(ehTributavel);
+}
+
 // ---------------------------------------------------------------------------
 // 5.1 Reconciliacao de faturamento (o grafico principal)
 // ---------------------------------------------------------------------------
@@ -100,6 +121,11 @@ export interface Reconciliacao {
   freteTotal: number;
   /** bruto - freteTotal: o faturamento de produto, sem o frete. */
   brutoSemFrete: number;
+  /**
+   * bruto - cancelado - reembolsado, COM frete: a base de imposto e DIFAL
+   * (`ehTributavel`, 5.1.1). E o recebido mais o que ainda nao foi pago.
+   */
+  faturadoTributavel: number;
   /** Contagens, para a leitura em quantidade de pedidos. */
   quantidade: {
     total: number;
@@ -180,6 +206,7 @@ export function reconciliar(pedidos: Pedido[]): Reconciliacao {
     receitaReal: recebido - frete,
     freteTotal,
     brutoSemFrete: bruto - freteTotal,
+    faturadoTributavel: recebido + naoPago,
     quantidade,
   };
 }

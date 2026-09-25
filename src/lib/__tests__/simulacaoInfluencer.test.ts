@@ -141,10 +141,13 @@ describe("estimarInfluencer", () => {
     const pequena = estimarInfluencer(referencia, { percentual: 30, faturamento: 50_000, regime: "simples_nacional" });
     const media = estimarInfluencer(referencia, { percentual: 30, faturamento: 300_000, regime: "simples_nacional" });
 
-    // A guia sai do FATURADO, com frete e com o nao pago (5.1.1, 18/09/2026).
-    // O faturado e o proprio RBT12 projetado dividido por 12.
-    const faturado = pequena.rbt12Projetado / 12;
-    expect(pequena.impostos).toBeCloseTo(apurarSimples(pequena.rbt12Projetado, faturado).valorDAS, 6);
+    // A guia sai do faturado SEM cancelados e reembolsados, com frete e com o
+    // nao pago (5.1.1, 25/09/2026); a faixa, do RBT12, que segue o faturado
+    // inteiro.
+    const tributavel = 50_000 * referencia.fracaoTributavel;
+    expect(referencia.fracaoTributavel).toBeLessThan(referencia.fracaoFaturado);
+    expect(pequena.impostos).toBeCloseTo(apurarSimples(pequena.rbt12Projetado, tributavel).valorDAS, 6);
+    expect(pequena.rbt12Projetado).toBeCloseTo(50_000 * referencia.fracaoFaturado * 12, 6);
     // O frete soma no que o cliente paga, e tambem na base do imposto.
     expect(pequena.recebido).toBeCloseTo(pequena.receitaReal + pequena.frete, 6);
     expect(pequena.difal).toBe(0);

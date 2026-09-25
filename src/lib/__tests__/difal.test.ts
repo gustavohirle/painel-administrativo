@@ -251,16 +251,29 @@ describe("apurarDifal", () => {
     expect(r.total).toBeCloseTo(((1100 - 132) / 0.82) * 0.06, 6);
   });
 
-  it("conta TODO pedido criado, pago ou nao", () => {
-    // Decisao do dono em 18/09/2026: a base e o faturado. Boleto nao pago e
-    // pedido cancelado entram, embora normalmente nao gerem nota -- a
-    // ressalva esta registrada em 5.1.1 e no topo de difal.ts.
+  it("conta o nao pago, mas nao o cancelado nem o reembolsado", () => {
+    // Decisao do dono em 25/09/2026 (5.1.1): venda cancelada ou devolvida nao
+    // paga DIFAL. O pix ou boleto em aberto continua: ainda pode ser pago.
     const pedidos = [
       pedido("SP"),
       pedido("SP", { payment_status: "pending" }),
       pedido("SP", { status: "cancelled" }),
+      pedido("SP", { payment_status: "refunded" }),
+      pedido("SP", { payment_status: "voided" }),
     ];
-    expect(apurarDifal(pedidos, TODAS, "GO").baseInterestadual).toBe(3000);
+    const r = apurarDifal(pedidos, TODAS, "GO");
+    expect(r.baseInterestadual).toBe(2000);
+    expect(r.porEstado.find((e) => e.uf === "SP")!.pedidos).toBe(2);
+  });
+
+  it("so cancelados e reembolsados: nada de DIFAL", () => {
+    const r = apurarDifal(
+      [pedido("SP", { status: "cancelled" }), pedido("SP", { payment_status: "refunded" })],
+      TODAS,
+      "GO",
+    );
+    expect(r.total).toBe(0);
+    expect(r.porEstado).toEqual([]);
   });
 
   it("declara os pedidos sem estado identificado", () => {

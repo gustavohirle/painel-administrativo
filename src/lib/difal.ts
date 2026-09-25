@@ -16,15 +16,19 @@
  *    o STF suspendeu a exigencia na ADI 5464. Como o regime aqui e por
  *    influencer, isso sai de graca: marca no Simples fica fora da conta.
  *
- * 3. A base e o FATURADO: o valor de TODO pedido criado, com o frete cobrado
- *    do cliente, pago ou nao. Decisao do dono em 18/09/2026, a mesma dos
- *    demais tributos (5.1.1) -- DAS, PIS, COFINS, ICMS, IRPJ e CSLL usam esta
- *    base. Fora dela fica so a COMISSAO do influencer, que segue sobre o que
- *    cai na conta sem frete (5.1.2).
+ * 3. A base e o FATURADO SEM CANCELADOS E REEMBOLSADOS: o valor de todo
+ *    pedido criado, com o frete cobrado do cliente, menos os cancelados e os
+ *    reembolsados (`ehTributavel`). A mesma base dos demais tributos (5.1.1).
+ *    Fora dela fica so a COMISSAO do influencer, que segue sobre o que cai na
+ *    conta sem frete (5.1.2).
  *
- *    Isso inclui pedido cancelado e boleto nunca pago, que normalmente nao
- *    geram nota nem saida de mercadoria: o numero fica acima do devido nessa
- *    medida. A ressalva foi dita ao dono, que manteve a decisao.
+ *    Ate 25/09/2026 os cancelados entravam, por decisao do dono em 18/09; ele
+ *    os tirou em 25/09. O demonstrativo de agosto para AL, abaixo, fechava
+ *    COM eles -- o painel passa a sair abaixo do contador nessa medida, e
+ *    isso esta dito na secao 5.10.2.
+ *
+ *    O filtro mora AQUI, e nao so em quem chama: DIFAL de venda cancelada
+ *    nao existe, e toda chamada fica certa sem precisar lembrar disso.
  *
  * 4. A base e DUPLA: o imposto entra na propria base de calculo ("por
  *    dentro"). O painel nao fazia esse gross-up e por isso saia abaixo do
@@ -57,13 +61,14 @@ import { paraNumero, type Pedido } from "@/types/nuvemshop";
 import type { AliquotaEstado } from "@/types/fiscal";
 import { aliquotaInterestadual, nomeDoEstado, normalizarUF } from "@/types/estados";
 import { razaoSegura } from "@/lib/format";
+import { ehTributavel } from "@/lib/metrics";
 
 export interface LinhaEstado {
   uf: string;
   nome: string;
-  /** Quantos pedidos criados foram para este estado, pagos ou nao. */
+  /** Quantos pedidos tributaveis foram para este estado (sem cancelados e reembolsados). */
   pedidos: number;
-  /** Valor da operacao: o total dos pedidos criados, COM o frete. */
+  /** Valor da operacao: o total dos pedidos tributaveis, COM o frete. */
   base: number;
   /**
    * A base depois do gross-up -- o "Base de Calculo" do demonstrativo fiscal.
@@ -130,7 +135,8 @@ export function apurarDifal(
   ufOrigem: string,
   recolheDifal = true,
 ): ResultadoDifal {
-  if (pedidos.length === 0) return VAZIO(ufOrigem);
+  const tributaveis = pedidos.filter(ehTributavel);
+  if (tributaveis.length === 0) return VAZIO(ufOrigem);
 
   const porUF = new Map(aliquotas.map((a) => [a.uf.toUpperCase(), a]));
   const origem = ufOrigem.toUpperCase();
@@ -144,8 +150,8 @@ export function apurarDifal(
   let baseSemEstado = 0;
   let pedidosSemEstado = 0;
 
-  for (const pedido of pedidos) {
-    // O total do pedido, COM o frete, pago ou nao (regra 3 no topo).
+  for (const pedido of tributaveis) {
+    // O total do pedido, COM o frete, menos cancelado e reembolsado (regra 3).
     const valor = paraNumero(pedido.total);
     const uf = normalizarUF(pedido.shipping_address?.province);
 

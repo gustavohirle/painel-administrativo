@@ -9,21 +9,24 @@
  *
  * Tres decisoes que valem ser lidas antes de mexer aqui:
  *
- * 1. A base e o FATURADO: o valor de TODO pedido criado no mes, com o frete
- *    cobrado do cliente, pago ou nao. Vale para TODO tributo -- DAS, PIS,
- *    COFINS, ICMS, IRPJ, CSLL e DIFAL -- e para o RBT12, entao a faixa do
- *    Simples acompanha.
+ * 1. A base e o FATURADO SEM CANCELADOS E REEMBOLSADOS: o valor de todo
+ *    pedido criado no mes, com o frete cobrado do cliente, menos os
+ *    cancelados e os reembolsados (`pedidosTributaveis`). Vale para TODO
+ *    tributo -- DAS, PIS, COFINS, ICMS, IRPJ, CSLL e DIFAL.
  *
- *    Duas decisoes do dono, no mesmo dia (18/09/2026): primeiro o frete
- *    entrou na base (na legislacao o frete cobrado do destinatario integra a
- *    base do ICMS, do PIS/COFINS e a receita bruta do Simples), depois a base
- *    passou do recebido para o faturado.
+ *    Tres decisoes do dono. Em 18/09/2026, primeiro o frete entrou na base (na
+ *    legislacao o frete cobrado do destinatario integra a base do ICMS, do
+ *    PIS/COFINS e a receita bruta do Simples), depois a base passou do
+ *    recebido para o faturado inteiro. Em 25/09/2026 o cancelado e o
+ *    reembolsado sairam: venda que nao aconteceu nao paga imposto. O nao pago
+ *    (pix ou boleto em aberto) continua.
  *
- *    RESSALVA REGISTRADA: pedido cancelado e boleto nunca pago normalmente
- *    nao geram nota nem saida de mercadoria, e tributa-los cobra imposto de
- *    venda que nao aconteceu. O painel passa a superestimar o imposto nessa
- *    medida. Foi dito ao dono e ele manteve a decisao -- so mude de volta se
- *    ele pedir.
+ *    O RBT12 NAO acompanhou -- continua com o faturado inteiro. E o unico
+ *    ponto em que os documentos do contador dao um lado: o RBT12 dele da Ka
+ *    (R$ 1,91 mi, competencia 08/2026, 5.10.1) bate com o faturado COM
+ *    cancelados (R$ 1,86 mi) e ficaria R$ 350 mil acima do faturado sem eles
+ *    (R$ 1,56 mi) -- que jogaria a empresa da 5a para a 4a faixa, abaixo da
+ *    que ele apura. Ver `calcularRBT12`.
  *
  *    A COMISSAO do influencer NAO acompanhou: ela continua sobre o que cai na
  *    conta, sem frete (5.1.2). Sao decisoes separadas, e mexer numa nao
@@ -53,7 +56,7 @@ import { REGIME_SEM_INFLUENCER } from "@/lib/config";
 import { chaveProduto, type ChaveProduto, type Produto } from "@/types/produto";
 import { razaoSegura } from "@/lib/format";
 import { apurarDifal, somarDifal, type ResultadoDifal } from "@/lib/difal";
-import { chaveMes, reconciliar } from "@/lib/metrics";
+import { chaveMes, pedidosTributaveis, reconciliar } from "@/lib/metrics";
 import {
   apurarSimples,
   monitorarTeto,
@@ -406,7 +409,7 @@ function receitaPorImposto(
 ): Map<string, number> {
   const mapa = new Map<string, number>();
 
-  // TODO pedido criado, pago ou nao: a base e o faturado (decisao 1).
+  // Quem chama ja passa so os tributaveis (decisao 1): o filtro nao se repete.
   for (const pedido of pedidos) {
     for (const { item, base } of basesDosItens(pedido)) {
       const produto = produtoDoItem(indice, item.product_id, item.variant_id);
@@ -441,11 +444,11 @@ function apurarGrupo(
    */
   rbt12DoGrupo: ResultadoRBT12 | null,
 ): ApuracaoDeUmInfluencer {
-  // Faturado: todo pedido criado, com o frete (decisao 1 no topo).
-  const r = reconciliar(pedidosDoMes);
-  const baseReceita = r.bruto;
+  // Faturado sem cancelados e reembolsados, com o frete (decisao 1 no topo).
+  const tributaveis = pedidosTributaveis(pedidosDoMes);
+  const baseReceita = reconciliar(tributaveis).bruto;
   const doRegime = impostosDoRegime(impostos, fiscal.regime);
-  const porImposto = receitaPorImposto(pedidosDoMes, indice);
+  const porImposto = receitaPorImposto(tributaveis, indice);
 
   const noSimples = fiscal.regime === "simples_nacional";
   /*
@@ -460,7 +463,7 @@ function apurarGrupo(
    * exigencia na ADI 5464. A apuracao roda mesmo assim, com valor zerado, para
    * a tela poder mostrar a distribuicao por estado das marcas do Simples.
    */
-  const difal = apurarDifal(pedidosDoMes, aliquotasEstaduais, fiscal.uf, !noSimples);
+  const difal = apurarDifal(tributaveis, aliquotasEstaduais, fiscal.uf, !noSimples);
   const simples = noSimples ? apurarSimples(rbt12.valor, baseReceita) : null;
   const monitorTeto = noSimples ? monitorarTeto(rbt12.valor) : null;
 
@@ -743,10 +746,10 @@ export function apurarImpostos(
   let receitaComCadastro = 0;
   const semCadastro = new Set<number>();
 
-  // Mesma base do tributo por produto -- todo pedido criado, frete rateado
+  // Mesma base do tributo por produto -- os pedidos tributaveis, frete rateado
   // incluido: senao a "receita sem cadastro fiscal" declararia uma lacuna
-  // menor do que a real.
-  for (const pedido of pedidosDoMes) {
+  // diferente da real.
+  for (const pedido of pedidosTributaveis(pedidosDoMes)) {
     for (const { item, base } of basesDosItens(pedido)) {
       const produto = produtoDoItem(indice, item.product_id, item.variant_id);
 

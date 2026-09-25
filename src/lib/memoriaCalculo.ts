@@ -10,7 +10,7 @@
  * Funcoes puras.
  */
 
-import { reconciliar } from "@/lib/metrics";
+import { pedidosTributaveis, reconciliar } from "@/lib/metrics";
 import type { ApuracaoDeUmInfluencer, ResultadoImpostos } from "@/lib/impostos";
 import type { Imposto, RegimeTributario } from "@/types/fiscal";
 import type { Pedido } from "@/types/nuvemshop";
@@ -63,8 +63,11 @@ export interface MemoriaDaMarca {
   semInfluencer: boolean;
   bruto: number;
   recebido: number;
+  /** Cancelado e reembolsado: faturados, mas fora da base (5.1.1). */
+  foraDaBase: number;
+  /** Frete que esta dentro da base: o dos pedidos tributaveis. */
   frete: number;
-  /** Base de todo tributo: o FATURADO -- todo pedido criado, com frete (5.1.1). */
+  /** Base de todo tributo: o faturado sem cancelados e reembolsados, com frete (5.1.1). */
   baseDoImposto: number;
   passos: PassoDoImposto[];
   /** Tributos do regime fora da conta (inativos ou com aliquota zero). */
@@ -94,6 +97,9 @@ export function memoriaDosImpostos(
 
   const marcas = resultado.porInfluencer.map((apuracao): MemoriaDaMarca => {
     const r = reconciliar(pedidosDoMes.filter((p) => p.marca === apuracao.marca));
+    const tributavel = reconciliar(
+      pedidosTributaveis(pedidosDoMes.filter((p) => p.marca === apuracao.marca)),
+    );
     // Os produtos da marca: os do dono e, sem dono, os que vieram da loja.
     const daMarca = produtos.filter((p) =>
       apuracao.influencerId !== null
@@ -149,8 +155,9 @@ export function memoriaDosImpostos(
       semInfluencer: apuracao.influencerId === null,
       bruto: r.bruto,
       recebido: r.recebido,
-      // Frete de TODO pedido criado, que e o que esta dentro da base.
-      frete: r.freteTotal,
+      foraDaBase: r.cancelado + r.reembolsado,
+      // O frete que esta dentro da base: o dos pedidos tributaveis.
+      frete: tributavel.freteTotal,
       baseDoImposto: apuracao.baseReceita,
       passos,
       foraDaConta: apuracao.inativosDoRegime.map((i) => i.sigla),

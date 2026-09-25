@@ -143,8 +143,8 @@ export default async function PaginaCalculo({
             )}
             apoio={
               item === "difal"
-                ? `Venda para fora de ${resultado.difal.ufOrigem}, com frete, paga ou não`
-                : "O faturado das marcas, com o frete e com o não pago"
+                ? `Venda para fora de ${resultado.difal.ufOrigem}, com frete, sem cancelados e reembolsados`
+                : "O faturado das marcas, com o frete, menos cancelados e reembolsados"
             }
           />
         </div>
@@ -180,15 +180,13 @@ function MarcaImpostos({ marca }: { marca: MemoriaDaMarca }) {
       titulo={`${marca.marca} — ${moeda(marca.total)}`}
       descricao={`${marca.semInfluencer ? "Sem influencer cadastrado" : marca.nome} · ${ROTULO_REGIME[marca.regime]}`}
     >
-      {/* A base do imposto e o faturado inteiro; as duas linhas da direita
-          dizem o que esta dentro dele e costuma surpreender. */}
-      <dl className="grid gap-x-6 gap-y-3 text-sm sm:grid-cols-4">
-        <Par rotulo="Base do imposto: faturamento bruto" valor={moeda(marca.baseDoImposto)} forte />
+      {/* A base do imposto e o faturado menos cancelado e reembolsado (5.1.1).
+          A linha do frete diz o que esta dentro dela e costuma surpreender. */}
+      <dl className="grid gap-x-6 gap-y-3 text-sm sm:grid-cols-3 lg:grid-cols-5">
+        <Par rotulo="Faturamento bruto" valor={moeda(marca.bruto)} />
+        <Par rotulo="− cancelado e reembolsado" valor={moeda(marca.foraDaBase)} />
+        <Par rotulo="= Base do imposto" valor={moeda(marca.baseDoImposto)} forte />
         <Par rotulo="dos quais, frete" valor={moeda(marca.frete)} />
-        <Par
-          rotulo="dos quais, não pago ou cancelado"
-          valor={moeda(marca.bruto - marca.recebido)}
-        />
         <Par rotulo="Recebido (referência)" valor={moeda(marca.recebido)} />
       </dl>
 
@@ -252,17 +250,19 @@ function ComoABase({ passo }: { passo: PassoDoImposto }) {
   if (o.tipo === "das") {
     return (
       <>
-        Guia única do Simples sobre o faturado do mês, com frete. Alíquota efetiva pela receita de 12
+        Guia única do Simples sobre o faturado do mês, com frete e sem cancelados e reembolsados.
+        Alíquota efetiva pela receita de 12
         meses {o.rbt12Compartilhado ? "da empresa inteira — todas as lojas no Simples somadas — " : ""}
         ({moeda(o.rbt12)}
-        {o.rbt12Projetado ? ", projetada" : ""}): faixa {o.faixa}, nominal {aliquota(o.aliquotaNominal)}.
+        {o.rbt12Projetado ? ", projetada" : ""}, com os cancelados, como a do contador): faixa{" "}
+        {o.faixa}, nominal {aliquota(o.aliquotaNominal)}.
       </>
     );
   }
   if (o.tipo === "lucro") {
     return (
       <>
-        Lucro presumido: {aliquota(o.presuncao)} × faturado {moeda(o.baseDoImposto)}
+        Lucro presumido: {aliquota(o.presuncao)} × faturado sem cancelados {moeda(o.baseDoImposto)}
         {o.deducao > 0 ? ` − dedução de ${moeda(o.deducao)} por mês` : ""}. Vale para a marca
         inteira, não por produto.
       </>

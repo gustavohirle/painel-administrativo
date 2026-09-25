@@ -92,6 +92,12 @@ export interface ReferenciaInfluencers {
    * base.
    */
   fracaoFaturado: number;
+  /**
+   * faturado SEM cancelados e reembolsados, com frete / faturado sem frete: a
+   * base do imposto e do DIFAL (5.1.1). O RBT12 segue o faturado inteiro
+   * (`fracaoFaturado`), como na apuracao.
+   */
+  fracaoTributavel: number;
   /** taxa da plataforma / recebido (valor pago, com frete) */
   cargaTaxas: number;
   /** CMV extrapolado pela cobertura / receita real */
@@ -176,6 +182,7 @@ export function montarReferencia(entrada: EntradaReferencia): ReferenciaInfluenc
     fracaoReceitaReal: razaoSegura(r.receitaReal, r.brutoSemFrete),
     fracaoFrete: razaoSegura(r.frete, r.receitaReal),
     fracaoFaturado: razaoSegura(r.bruto, r.brutoSemFrete),
+    fracaoTributavel: razaoSegura(r.faturadoTributavel, r.brutoSemFrete),
     cargaTaxas: razaoSegura(taxas.total, r.recebido),
     cmvSobreReceitaReal: razaoSegura(cmvEstimado, r.receitaReal),
     coberturaCusto: cmv.cobertura,
@@ -264,10 +271,11 @@ export function estimarInfluencer(
   // O frete e cobrado do cliente POR FORA: soma no que ele paga, nao na receita.
   const frete = receitaReal * referencia.fracaoFrete;
   const recebido = receitaReal + frete;
-  // O imposto incide sobre o FATURADO com frete (5.1.1): todo pedido criado,
-  // pago ou nao. E essa a base do RBT12 e da guia.
+  // O RBT12 segue o FATURADO inteiro, com frete, como na apuracao; o imposto
+  // e o DIFAL incidem sobre o faturado sem cancelados e reembolsados (5.1.1).
   const faturado = bruto * referencia.fracaoFaturado;
   const rbt12Projetado = faturado * 12;
+  const tributavel = bruto * referencia.fracaoTributavel;
 
   let impostos: number;
   let difal = 0;
@@ -275,12 +283,12 @@ export function estimarInfluencer(
 
   if (entrada.regime === "simples_nacional") {
     // Simples nao recolhe DIFAL como remetente (secao 5.10.1).
-    impostos = apurarSimples(rbt12Projetado, faturado).valorDAS;
+    impostos = apurarSimples(rbt12Projetado, tributavel).valorDAS;
   } else if (referencia.presumido) {
-    impostos = faturado * referencia.presumido.cargaImpostos;
-    difal = faturado * referencia.presumido.cargaDifal;
+    impostos = tributavel * referencia.presumido.cargaImpostos;
+    difal = tributavel * referencia.presumido.cargaDifal;
   } else {
-    impostos = faturado * referencia.cargaGeral;
+    impostos = tributavel * referencia.cargaGeral;
     semReferenciaDoRegime = true;
   }
 

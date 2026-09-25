@@ -421,10 +421,11 @@ Precedência obrigatória para não contar o mesmo pedido duas vezes:
 `cancelado > reembolsado/estornado > não pago > recebido`. Está implementada em
 `classificarPedido()` e documentada lá.
 
-### 5.1.1 A base do imposto é o FATURADO; a da comissão não
+### 5.1.1 A base do imposto é o FATURADO sem cancelados; a da comissão não
 
-**O imposto incide sobre o faturado, com frete. A comissão, não.** São duas
-decisões do cliente, tomadas em datas diferentes, e é fácil confundi-las numa só:
+**O imposto incide sobre o faturado, com frete, menos os cancelados e os
+reembolsados. A comissão, não.** São decisões do cliente, tomadas em datas
+diferentes, e é fácil confundi-las numa só:
 
 - o frete é cobrado **por fora** — num produto de R$ 100 com R$ 19 de frete o
   cliente paga R$ 119 — e os R$ 19 vão para a transportadora. Não é venda do
@@ -436,20 +437,53 @@ decisões do cliente, tomadas em datas diferentes, e é fácil confundi-las numa
   frete cobrado do destinatário integra a base do ICMS, do PIS/COFINS e a
   receita bruta do Simples), depois a base saiu do recebido para o faturado.
 
-**Ressalva registrada, e mantida pelo dono:** pedido cancelado e boleto nunca
-pago normalmente **não geram nota fiscal nem saída de mercadoria**, e tributá-los
-cobra imposto de venda que não aconteceu. O painel passa a **superestimar** o
-imposto nessa medida — o contrário do que acontecia antes. Foi dito a ele antes
-de implementar; ele manteve. Só volte atrás se ele pedir.
+**Em 25/09/2026 o cancelado e o reembolsado saíram da base** — de imposto e de
+DIFAL —, a pedido do dono: "os impostos e DIFAL não devem ser aplicados em
+pedidos cancelados ou reembolsados". Era a ressalva registrada desde 18/09
+(venda cancelada normalmente não gera nota nem saída de mercadoria), e ele a
+tirou quando o simulador mostrou o peso dela no TikTok: lá 31% do valor de
+agosto foi cancelado, e o imposto rateado pelas vendas pagas saía 1,44 vez o
+nominal. O **não pago** continua na base: é pix ou boleto em aberto, que ainda
+pode ser pago — e, quando expira, a Nuvemshop o cancela e ele sai sozinho.
+
+Um filtro só decide isso para todo tributo: `ehTributavel` /
+`pedidosTributaveis`, em `metrics.ts`, com a precedência de
+`classificarPedido`. `apurarGrupo` o aplica às bases, e `apurarDifal` o aplica
+de novo por conta própria — DIFAL de venda cancelada não existe, e toda chamada
+fica certa sem precisar lembrar. `Reconciliacao.faturadoTributavel` é o mesmo
+número (recebido + não pago), para quem precisa dele sem refazer a apuração: o
+simulador de influencer e a memória de cálculo.
+
+**O RBT12 NÃO acompanhou, e é de propósito.** Ele continua com o faturado
+inteiro, porque é o único ponto em que o contador dá um lado: o RBT12 dele da
+Ka para a competência 08/2026 é **R$ 1,91 mi**; o faturado de jan–jul **com**
+cancelados é R$ 1,86 mi (a diferença é o marketplace, 5.10.1), e **sem** eles
+seria **R$ 1,56 mi** — R$ 350 mil abaixo, e na 4ª faixa em vez da 5ª que ele
+apura. Tirar os cancelados do RBT12 baixaria a alíquota do DAS abaixo da que a
+empresa paga. A tela da memória de cálculo diz "com os cancelados, como a do
+contador".
+
+**Dois avisos para a conversa com o contador**, porque os documentos dele
+apontam para o outro lado:
+
+1. o DIFAL de agosto para AL (5.10.2) fechou a R$ 170 do nosso total **com**
+   cancelados e a R$ 1.797 do total sem eles. Com a regra nova, o DIFAL do
+   painel sai **abaixo** do dele nessa medida;
+2. o RBT12 da Ka, acima.
+
+Ou ele está tributando venda cancelada — e aí há imposto pago a mais para
+recuperar —, ou pedido que a Nuvemshop marca como cancelado gera nota mesmo
+assim. Vale perguntar qual dos dois.
 
 | Conta | Base | Onde |
 |---|---|---|
 | Comissão, base "bruto" | faturamento **sem frete** (`brutoSemFrete`, todos os pedidos) | `calcularComissoesPorInfluencer` |
 | Comissão, base "recebido" / "receita real" | receita real (recebido − frete) — as duas passam a dar o mesmo valor | idem |
 | **Comissão, base "o que cai na conta"** (`liquido`, a praticada) | receita real − taxas da Nuvemshop e do pagamento (`porMarca` de `apurarTaxasPlataforma`) | idem |
-| **Impostos, DAS, Presumido, RBT12** | **faturado: todo pedido criado, com frete** | `apurarGrupo`, `calcularRBT12` |
-| **Tributo por produto (PIS, COFINS, ICMS marcados)** | preço × quantidade **+ a parte do frete**, rateada pelo valor | `basesDosItens` |
-| **DIFAL** | valor de todo pedido criado, **com** frete | `apurarDifal` |
+| **Impostos, DAS, Presumido** | **faturado com frete, sem cancelados e reembolsados** (`pedidosTributaveis`) | `apurarGrupo` |
+| **RBT12 (faixa do Simples)** | faturado **inteiro**, com frete e com os cancelados — é com ele que o do contador bate | `calcularRBT12` |
+| **Tributo por produto (PIS, COFINS, ICMS marcados)** | preço × quantidade **+ a parte do frete**, rateada pelo valor, nos pedidos tributáveis | `basesDosItens` |
+| **DIFAL** | valor do pedido **com** frete, sem cancelados e reembolsados | `apurarDifal` |
 | Divisão das despesas compartilhadas | faturamento sem frete | `ratearDespesas` |
 | Taxa do meio de pagamento | valor pago **com** frete | o gateway cobra sobre o total |
 | Participação dos sócios | recebido, **com** frete | definição do cliente: "do valor recebido" |
@@ -595,9 +629,9 @@ base: quantos produtos da marca marcaram o tributo, qual presunção e qual
 dedução entraram, e a faixa e o RBT12 do Simples. Teste: a soma da tela bate
 com as fatias da pizza, e cada passo é base × alíquota.
 
-- **Impostos**, por marca: a base é o **faturamento bruto**, e ao lado dela a
-  tela abre o que está dentro — quanto é frete e quanto é pedido não pago ou
-  cancelado —, mais o recebido como referência. Depois uma tabela Tributo |
+- **Impostos**, por marca: a tela monta a base na frente de quem lê —
+  faturamento bruto, − cancelado e reembolsado, = base do imposto — e diz
+  quanto dela é frete, mais o recebido como referência (5.1.1, 25/09/2026). Depois uma tabela Tributo |
   Como a base foi formada | Base × Alíquota = Valor. Três origens de base:
   produtos marcados (5.10), lucro presumido (presunção × faturado − dedução) e
   DAS (alíquota efetiva pelo RBT12). O DIFAL fica fora, porque tem fatia e aba
@@ -870,7 +904,7 @@ No Simples:
 RBT12          = faturamento dos últimos 12 meses (todo pedido, COM frete — 5.1.1)
                  somado de TODAS as marcas do regime — ver 5.10.1
 alíquota efetiva = (RBT12 × nominal da faixa − parcela a deduzir) / RBT12
-DAS do mês     = alíquota efetiva × faturado do mês (com frete)
+DAS do mês     = alíquota efetiva × faturado do mês (com frete, sem cancelados e reembolsados)
 ```
 
 A fórmula da alíquota efetiva foi **conferida contra a memória de cálculo do
@@ -1100,7 +1134,7 @@ origem, e a diferença entre a **interna do destino** e a interestadual vai para
 o estado de destino. Essa diferença é o DIFAL.
 
 ```
-ICMS origem = valor do pedido, com frete, pago ou não × alíquota interestadual
+ICMS origem = valor do pedido, com frete, sem cancelado e reembolsado × alíquota interestadual
 base dupla  = (valor − ICMS origem) ÷ (1 − alíquota interna do destino)
 DIFAL       = base dupla × (alíquota interna do destino − interestadual)
 ```
@@ -1160,11 +1194,13 @@ Três leituras, e as três mudaram alguma coisa:
    dele, que aplica a **diferença** sobre a base dupla; a outra leitura corrente
    — base × interna menos o ICMS de origem sobre o valor cheio — daria mais, e
    não é a dele.
-3. **Os cancelados NÃO saem da conta.** O valor contábil dele (R$ 9.681,52) está
-   a R$ 170 do nosso total **com** cancelados e **com** frete (R$ 9.851,41), e a
-   R$ 1.797 do total sem cancelados. Foi o que derrubou a hipótese do dono de
-   que o erro estava aí — e corroborou as duas decisões de 5.1.1 (frete na base,
-   faturado em vez de recebido).
+3. **Os cancelados NÃO saíam da conta dele.** O valor contábil dele
+   (R$ 9.681,52) está a R$ 170 do nosso total **com** cancelados e **com** frete
+   (R$ 9.851,41), e a R$ 1.797 do total sem cancelados. Na época isso derrubou a
+   hipótese do dono de que o erro estava aí e corroborou as duas decisões de
+   5.1.1. **Em 25/09/2026 o dono tirou os cancelados mesmo assim** (5.1.1): o
+   DIFAL do painel passa a sair abaixo do demonstrativo nessa medida, e é um
+   ponto para conversar com o contador.
 
 **Resíduo conhecido:** com a mesma alíquota, a base dele saiu ~2% abaixo da
 nossa (fator 1,0654 contra 1,0864 da fórmula legal). Provavelmente o "valor
@@ -2190,9 +2226,9 @@ preço mínimo      = (fabricação + frete × (impostos + DIFAL + taxa + sócio
 da marca, medida pelas funções do painel (`apurarImpostos`,
 `apurarTaxasPlataforma`). Os três são fração do **recebido** e se aplicam ao
 preço **mais o frete**, porque desde 18/09/2026 o frete integra a base de todo
-tributo (5.1.1). Como o imposto passou a incidir sobre o **faturado**, essa
-fração embute o imposto dos pedidos que nunca foram pagos, rateado pelas vendas
-que entraram — que é o que a venda precisa cobrir para a operação fechar, e é o
+tributo (5.1.1). Como o imposto incide sobre o **faturado** (sem os cancelados e
+reembolsados desde 25/09/2026), essa fração embute o imposto dos pedidos ainda
+não pagos, rateado pelas vendas que entraram — que é o que a venda precisa cobrir para a operação fechar, e é o
 mesmo espírito da escolha 1 sobre a comissão. O teste que
 segura isso: simular o preço e o custo médios de cada marca reproduz o lucro
 operacional da DRE dela, a menos **exatamente** da comissão e das despesas que

@@ -300,7 +300,7 @@ function Resultado({
   const linhas: Array<{ rotulo: string; detalhe: string; valor: number; cor: string }> = [
     {
       rotulo: `Impostos (${ROTULO_REGIME[perfil.regime]})`,
-      detalhe: `Média de ${percentual(perfil.cargaImpostos)} do valor pago${resultado.frete > 0 ? ", com frete" : ""} — inclui o imposto dos pedidos que não foram pagos`,
+      detalhe: `Média de ${percentual(perfil.cargaImpostos)} do valor pago${resultado.frete > 0 ? ", com frete" : ""} — inclui o imposto dos pedidos ainda não pagos; cancelados e reembolsados não pagam`,
       valor: resultado.impostos,
       cor: "var(--color-imposto)",
     },
