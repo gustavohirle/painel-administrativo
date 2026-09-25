@@ -471,8 +471,8 @@ export interface VendaDaMarca {
 }
 
 /**
- * As vendas de um dia: o quadro "Vendas de hoje" e o de qualquer dia clicado no
- * grafico de vendas por dia (5.16.1).
+ * As vendas de um dia: o quadro abaixo do grafico de vendas por dia (5.16.1),
+ * que no mes atual abre em hoje e troca de dia com um clique.
  */
 export interface DiaDeVenda {
   /** "2026-09-24". */
@@ -491,9 +491,8 @@ export interface DiaDeVenda {
 /**
  * Resume os pedidos de UM dia, ja filtrados.
  *
- * E a unica conta dos dois quadros de dia -- o de hoje, no topo da aba, e o do
- * dia clicado no grafico. Se cada um somasse do seu jeito, clicar no dia de
- * hoje abriria um numero diferente do que esta logo acima.
+ * Nenhuma conta nova: e `reconciliar` sobre os pedidos do dia, e de novo sobre
+ * os de cada marca -- a mesma funcao da tela inicial.
  */
 export function resumirDia(dia: string, pedidos: Pedido[]): DiaDeVenda {
   const porMarca = new Map<string, Pedido[]>();
@@ -531,11 +530,10 @@ export interface VendasDoMes {
  * Vendas de cada dia de um mes: quantidade, valor vendido e o que ja entrou.
  *
  * E o grafico de barras da aba Influencers (5.16.1), pedido pelo dono em
- * 24/09/2026: o quadro "Vendas de hoje" nao faz sentido olhando um mes que nao
- * e o atual, e ali ele quer ver o mes dia a dia.
+ * 24/09/2026 para ver o mes dia a dia.
  *
  * Cada dia ja vem resumido por `resumirDia`, com a quebra por marca: clicar
- * numa coluna abre o quadro do dia (25/09/2026), e ele abre na hora, sem
+ * numa coluna troca o quadro do dia (25/09/2026), e ele troca na hora, sem
  * voltar ao servidor. Sao ~30 dias x 5 marcas de numeros agregados -- nenhum
  * pedido vai para o navegador (secao 3).
  *

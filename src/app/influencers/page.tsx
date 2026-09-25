@@ -4,7 +4,6 @@ import { ContratoDoInfluencer, GestaoComissoes } from "@/components/GestaoComiss
 import { GestaoDespesasInfluencer } from "@/components/GestaoDespesasInfluencer";
 import { RodapeDemonstracao } from "@/components/RodapeDemonstracao";
 import { SeletorInfluencer, type CartaoDeInfluencer } from "@/components/SeletorInfluencer";
-import { VendasDeHoje } from "@/components/VendasDeHoje";
 import { VendasPorDia } from "@/components/VendasPorDia";
 
 import { obterFonteDePedidos, obterRepositorioCadastros } from "@/data";
@@ -18,7 +17,6 @@ import {
 import { mesAnoLongo, moedaRedonda, percentual, razaoSegura } from "@/lib/format";
 import {
   diaDeHoje,
-  filtrarPorDia,
   filtrarPorMes,
   mesesDisponiveis,
   reconciliar,
@@ -82,11 +80,10 @@ export default async function PaginaInfluencers({
   const pedidosDoMes = filtrarPorMes(todosOsPedidos, mesSelecionado);
 
   const hoje = diaDeHoje();
-  const pedidosDeHoje = filtrarPorDia(todosOsPedidos, hoje);
   /*
-   * O quadro "Vendas de hoje" so aparece com o mes ATUAL no cabecalho (24/09/
-   * 2026, pedido do dono): olhando julho, "hoje" nao faz sentido nenhum na
-   * tela. O grafico de vendas por dia aparece sempre, do mes escolhido.
+   * Com o mes ATUAL no cabecalho, o quadro do dia abaixo do grafico abre em
+   * hoje -- e o "Vendas de hoje" (5.16.1). Olhando julho, "hoje" nao faz
+   * sentido na tela, e o quadro so abre com um clique numa coluna.
    */
   const noMesAtual = mesSelecionado === hoje.slice(0, 7);
 
@@ -182,27 +179,19 @@ export default async function PaginaInfluencers({
           </p>
         </div>
 
-        {noMesAtual && (
-          <VendasDeHoje
-            pedidos={
-              selecionado
-                ? pedidosDeHoje.filter((p) => p.marca === selecionado.marca)
-                : pedidosDeHoje
-            }
-            dia={hoje}
-            marca={selecionado?.marca ?? null}
-          />
-        )}
-
         <Cartao
           titulo={`Vendas por dia — ${mesAnoLongo(mesSelecionado)}`}
-          descricao={
-            selecionado
-              ? `Só a ${selecionado.marca}. Toque ou clique numa coluna para abrir as vendas do dia.`
-              : "A operação inteira. Toque ou clique numa coluna para abrir as vendas do dia."
-          }
+          descricao={`${selecionado ? `Só a ${selecionado.marca}.` : "A operação inteira."} ${
+            noMesAtual
+              ? "Abaixo do gráfico, as vendas de hoje; toque ou clique numa coluna para ver outro dia."
+              : "Toque ou clique numa coluna para abrir as vendas do dia."
+          }`}
         >
+          {/* A chave pelo mes recomeca o quadro ao trocar de mes (em hoje, no
+              mes atual). Trocar de influencer mantem o dia aberto: "e so da
+              Tha, nesse mesmo dia?" e a pergunta seguinte natural. */}
           <VendasPorDia
+            key={mesSelecionado}
             vendas={vendasPorDia(
               selecionado
                 ? pedidosDoMes.filter((p) => p.marca === selecionado.marca)

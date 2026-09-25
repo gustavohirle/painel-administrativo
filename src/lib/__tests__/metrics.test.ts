@@ -356,9 +356,9 @@ describe("vendasPorDia", () => {
     expect(v.total.bruto).toBe(350);
   });
 
-  it("o dia de hoje no grafico bate com o quadro de vendas de hoje", () => {
-    // O quadro de hoje e `resumirDia` sobre os pedidos do dia, e o dia clicado
-    // no grafico tambem: clicar em hoje tem que abrir o numero que esta acima.
+  it("cada dia do grafico e `resumirDia` dos pedidos daquele dia", () => {
+    // E o quadro do dia (o "Vendas de hoje", no mes atual) que sai dai: a
+    // coluna e o quadro nao podem dizer numeros diferentes do mesmo dia.
     const pedidos = base();
     const dia = vendasPorDia(pedidos, "2026-09").dias[0]!;
     expect(dia).toEqual(resumirDia("2026-09-01", filtrarPorDia(pedidos, "2026-09-01")));

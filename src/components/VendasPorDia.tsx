@@ -3,26 +3,26 @@
 import { useEffect, useRef, useState } from "react";
 
 import { NumerosDoDia } from "@/components/NumerosDoDia";
-import { escalaAgradavel, inteiro, mesAnoLongo, moedaRedonda, percentual, razaoSegura } from "@/lib/format";
+import { dataCalendario, escalaAgradavel, inteiro, mesAnoLongo, moedaRedonda, percentual, razaoSegura } from "@/lib/format";
 import type { DiaDeVenda, VendasDoMes } from "@/lib/metrics";
 
 /*
  * Vendas por dia do mes, em colunas (5.16.1).
  *
  * Cada coluna e um dia; a altura e o valor vendido, e a parte de baixo, em
- * verde, e o que ja entrou. A mesma dupla do quadro "Vendas de hoje" acima --
- * valor e ja pago --, e a mesma tese da secao 1: o que se vendeu nao e o que
- * se recebeu.
+ * verde, e o que ja entrou -- valor e ja pago, a tese da secao 1: o que se
+ * vendeu nao e o que se recebeu.
  *
  * HTML em vez de SVG, e isso e de proposito. Texto dentro de SVG encolhe junto
  * com o viewBox, e por isso cada grafico SVG do painel precisa de dois
  * formatos (2.1). Aqui o texto e texto de verdade, em px de tela, e a mesma
  * marcacao serve do celular a tela da reuniao. Continua sem biblioteca.
  *
- * Tocar ou clicar numa coluna abre, abaixo do grafico, o quadro daquele dia --
- * o mesmo de "Vendas de hoje", com a lista por marca (25/09/2026, pedido do
- * dono). Os numeros ja vem prontos do servidor, dia a dia, e por isso o quadro
- * abre na hora.
+ * Abaixo do grafico fica o QUADRO DO DIA: vendas, valor, ja pago e a lista por
+ * marca. No mes atual ele abre no dia de hoje -- e o antigo "Vendas de hoje",
+ * que era um cartao separado no topo e duplicava este quadro (25/09/2026,
+ * pedido do dono). Tocar ou clicar numa coluna troca o dia. Os numeros ja vem
+ * prontos do servidor, dia a dia, e por isso o quadro troca na hora.
  *
  * As cores seguem a regra "destaque e o resto em cinza": o verde e o mesmo do
  * "Ja pago hoje", e o cinza e o que nao entrou -- sem cor de proposito, para
@@ -105,20 +105,35 @@ interface VendasPorDiaProps {
 
 export function VendasPorDia({ vendas, hoje, marca }: VendasPorDiaProps) {
   // Dois estados, e nao um: `ativo` segue o mouse (a leitura do topo) e some
-  // quando ele sai; `escolhido` e o dia clicado, cujo quadro fica aberto ate
-  // ser fechado ou trocado.
+  // quando ele sai; `escolhido` e o dia do quadro. No mes atual ele comeca em
+  // hoje, e voltar a ele e "voltar para hoje"; nos outros meses comeca vazio,
+  // e o quadro so aparece com um clique.
   const [ativo, setAtivo] = useState<string | null>(null);
-  const [escolhido, setEscolhido] = useState<string | null>(null);
+  const [escolhido, setEscolhido] = useState<string | null>(hoje);
   const quadro = useRef<HTMLDivElement>(null);
+  const rolarAoTrocar = useRef(false);
 
   /*
-   * O quadro abre abaixo do grafico, e no celular isso e fora da tela: sem
+   * O quadro fica abaixo do grafico, e no celular isso e fora da tela: sem
    * rolar, o toque pareceria nao ter feito nada. `nearest` rola o minimo; o
-   * `scroll-mt` do quadro desconta o cabecalho grudado no topo.
+   * `scroll-mt` do quadro desconta o cabecalho grudado no topo. So depois de um
+   * clique -- ao carregar a pagina, rolar ate o dia de hoje empurraria a tela
+   * para baixo sozinha.
    */
   useEffect(() => {
-    if (escolhido) quadro.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    if (!rolarAoTrocar.current) return;
+    rolarAoTrocar.current = false;
+    quadro.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
   }, [escolhido]);
+
+  // Clicar no dia que ja esta aberto devolve o quadro ao comeco: hoje, no mes
+  // atual; fechado, nos outros.
+  const escolher = (dia: string) => {
+    const proximo = escolhido === dia ? hoje : dia;
+    if (proximo === escolhido) return;
+    rolarAoTrocar.current = proximo !== null;
+    setEscolhido(proximo);
+  };
 
   const { dias, total } = vendas;
   const maiorDia = Math.max(0, ...dias.map((d) => d.bruto));
@@ -134,8 +149,7 @@ export function VendasPorDia({ vendas, hoje, marca }: VendasPorDiaProps) {
     );
   }
 
-  const foco = ativo ?? escolhido;
-  const diaAtivo = foco ? (dias.find((d) => d.dia === foco) ?? null) : null;
+  const diaAtivo = ativo ? (dias.find((d) => d.dia === ativo) ?? null) : null;
   const diaEscolhido = escolhido ? (dias.find((d) => d.dia === escolhido) ?? null) : null;
   const passados = dias.filter((d) => !hoje || d.dia <= hoje);
 
@@ -222,11 +236,10 @@ export function VendasPorDia({ vendas, hoje, marca }: VendasPorDiaProps) {
                   dia={d}
                   altura={altura}
                   futuro={hoje !== null && d.dia > hoje}
-                  apagado={foco !== null && foco !== d.dia}
+                  apagado={ativo !== null && ativo !== d.dia}
                   escolhido={escolhido === d.dia}
                   aoApontar={() => setAtivo(d.dia)}
-                  // Clicar no dia aberto fecha o quadro.
-                  aoEscolher={() => setEscolhido((atual) => (atual === d.dia ? null : d.dia))}
+                  aoEscolher={() => escolher(d.dia)}
                 />
               ))}
             </div>
@@ -281,16 +294,22 @@ export function VendasPorDia({ vendas, hoje, marca }: VendasPorDiaProps) {
                 {marca ? ` — ${marca}` : ""}
               </p>
               <p className="mt-0.5 text-sm text-tinta-media">
-                Pedidos criados no dia, da meia-noite às 23h59, no horário de Brasília.
+                {diaEscolhido.dia === hoje
+                  ? `Pedidos criados desde a meia-noite de ${dataCalendario(hoje)}, no horário de Brasília.`
+                  : "Pedidos criados no dia, da meia-noite às 23h59, no horário de Brasília."}
               </p>
             </div>
-            <button
-              type="button"
-              className="shrink-0 rounded-md border border-borda px-2.5 py-1 text-sm text-tinta-media hover:border-borda-forte hover:text-tinta"
-              onClick={() => setEscolhido(null)}
-            >
-              Fechar
-            </button>
+            {/* O dia de hoje nao se fecha: e o numero que o dono abre a aba
+                para ver (5.16.1). */}
+            {diaEscolhido.dia !== hoje && (
+              <button
+                type="button"
+                className="shrink-0 rounded-md border border-borda px-2.5 py-1 text-sm text-tinta-media hover:border-borda-forte hover:text-tinta"
+                onClick={() => setEscolhido(hoje)}
+              >
+                {hoje ? "Voltar para hoje" : "Fechar"}
+              </button>
+            )}
           </div>
           <NumerosDoDia resumo={diaEscolhido} hoje={diaEscolhido.dia === hoje} />
         </div>
@@ -366,8 +385,10 @@ function Coluna({
      * pintada. Num dia de venda baixa a barra tem 3px; ninguem acerta isso com
      * o dedo.
      *
-     * O dia escolhido ganha uma faixa de fundo na coluna inteira: com o mouse
-     * passeando pelos outros dias, e ela que diz de qual dia e o quadro aberto.
+     * O dia do quadro ganha uma faixa de fundo na coluna inteira, e so ele: as
+     * outras colunas apagam apenas enquanto o mouse aponta uma delas. Apagar
+     * tudo em volta do dia escolhido deixaria o grafico desbotado desde o
+     * carregamento, porque no mes atual o quadro ja abre em hoje.
      */
     <button
       type="button"

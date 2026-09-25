@@ -1871,8 +1871,8 @@ A aba se chamava "Comissões" e virou **Influencers** (`/influencers`; o endere�
 antigo `/comissoes` redireciona, com os parâmetros). A pergunta mudou de "quanto
 de comissão cada contrato gera" para "quanto cada influencer custa".
 
-No topo, **Vendas de hoje** (`VendasDeHoje`) — ver 5.16.1. Abaixo dele, o
-**seletor de cartões** — um por contrato — e a "Visão geral" com os totais e o
+No topo, **Vendas por dia**, com o quadro de hoje embaixo do gráfico — ver
+5.16.1. Abaixo dele, o **seletor de cartões** — um por contrato — e a "Visão geral" com os totais e o
 cadastro de contratos. Cartão e não `<select>`: o nome sozinho não ajuda a
 escolher, e o cartão responde a primeira pergunta antes do clique. A escolha
 mora na URL (`?influencer=`), como os filtros do relatório, e o seletor de mês
@@ -2010,30 +2010,48 @@ Pedido do cliente (18/09/2026): quantas vendas e quanto de valor **hoje**,
 acompanha o dia enquanto ele acontece, e uma janela móvel misturaria a noite de
 ontem com a manhã de hoje.
 
-Fica no topo da aba Influencers, em três números: **vendas hoje** (quantidade),
-**valor de hoje** e **já pago hoje**. Sem influencer escolhido, é a operação
-inteira, com uma linha por marca abaixo — vendas, valor e já pago, em colunas —;
-escolhido um, é só a marca dele.
+São três números: **vendas hoje** (quantidade), **valor de hoje** e **já pago
+hoje**. Sem influencer escolhido, é a operação inteira, com uma linha por marca
+abaixo — vendas, valor e já pago, em colunas —; escolhido um, é só a marca dele.
 
-**Só aparece com o mês atual no cabeçalho** (24/09/2026, pedido do dono).
-Antes ficava na tela olhando qualquer mês, com uma frase dizendo que "não segue
-o mês escolhido" — mas "hoje" olhando julho não responde pergunta nenhuma.
+**Hoje é um dia do gráfico, e não um cartão à parte** (25/09/2026, pedido do
+dono). Até então "Vendas de hoje" era um cartão no topo da aba, e o gráfico de
+vendas por dia, logo abaixo, abria o **mesmo** quadro para o dia clicado: dois
+quadros iguais na mesma tela, e o dono pediu para tirar um. Ficou um só, o
+**quadro do dia**, embaixo do gráfico (`VendasPorDia` + `NumerosDoDia`):
+
+- com o **mês atual** no cabeçalho ele abre em **hoje**, e é o "Vendas de
+  hoje" de antes, com os mesmos rótulos. Clicar numa coluna troca o dia, e
+  "Voltar para hoje" (ou clicar de novo no dia aberto) volta. Hoje não tem
+  "Fechar": é o número que se abre a aba para ver;
+- nos **outros meses** ele só aparece com um clique, e fecha. "Hoje" olhando
+  julho não responde pergunta nenhuma — foi por isso que, em 24/09/2026, o
+  cartão de hoje passou a aparecer só no mês atual.
+
+O custo, no celular: os números de hoje ficam **depois do gráfico**, uma rolada
+abaixo de onde o cartão ficava. Por cima do gráfico, cada toque numa coluna
+trocaria números fora da tela.
+
+O quadro reinicia ao trocar de **mês** (`key` pelo mês, na página), e não ao
+trocar de influencer: "e só da Tha, nesse mesmo dia?" é a pergunta seguinte
+natural.
 
 #### Vendas por dia
 
-Logo abaixo, e **em qualquer mês**, um gráfico de colunas com cada dia do mês
-escolhido (`VendasPorDia`, dados de `vendasPorDia` em `metrics.ts`). A altura
-da coluna é o valor vendido; a parte de baixo, em verde, o que já entrou; a de
-cima, em cinza, o que não entrou. É a mesma dupla do quadro de hoje, e a mesma
-tese da seção 1.
+Em **qualquer mês**, um gráfico de colunas com cada dia do mês escolhido
+(`VendasPorDia`, dados de `vendasPorDia` em `metrics.ts`). A altura da coluna é
+o valor vendido; a parte de baixo, em verde, o que já entrou; a de cima, em
+cinza, o que não entrou. É a mesma dupla do quadro do dia, e a mesma tese da
+seção 1.
 
 Decisões, a maioria vinda de olhar a tela renderizada e não o código:
 
 1. **HTML e não SVG.** Texto de SVG encolhe com o `viewBox` e obriga a dois
    formatos (2.1); aqui o texto é texto de verdade, e a mesma marcação serve do
    celular à reunião. Continua sem biblioteca.
-2. **Nenhuma conta nova**: cada dia é `reconciliar` sobre os pedidos dele. Há
-   teste exigindo que o dia de hoje no gráfico bata com o quadro acima.
+2. **Nenhuma conta nova**: cada dia é `resumirDia`, que é `reconciliar` sobre
+   os pedidos dele. Há teste exigindo que a coluna e o quadro do dia sejam o
+   mesmo resumo.
 3. **Todos os dias do mês entram**, com zero onde não houve venda — pular o dia
    juntaria o 9 com o 11 como vizinhos. **Dia futuro não tem barra**, mesmo com
    pedido: a demonstração gera o mês inteiro (seção 12), e uma barra no dia 30
@@ -2052,23 +2070,22 @@ Decisões, a maioria vinda de olhar a tela renderizada e não o código:
    o gráfico subia e descia a cada toque.
 6. **Tabela gêmea**, recolhida em "Ver os números dia a dia": todo número da
    leitura está ali sem precisar apontar nada.
-7. **Clicar numa coluna abre o quadro daquele dia** (25/09/2026, pedido do
-   dono), abaixo do gráfico: o mesmo de "Vendas de hoje" — vendas, valor, já
-   pago e a lista por marca. É o **mesmo componente** (`NumerosDoDia`) e a
-   **mesma conta** (`resumirDia`, em `metrics.ts`): clicar no dia de hoje tem
-   que abrir exatamente o número que está no quadro acima, e há teste. Cinco
-   detalhes:
-   - **Abre na hora, sem voltar ao servidor.** Cada dia já chega resumido, com
+7. **Clicar numa coluna troca o dia do quadro** (25/09/2026, pedido do dono),
+   ver acima. Cinco detalhes:
+   - **Troca na hora, sem voltar ao servidor.** Cada dia já chega resumido, com
      a quebra por marca — ~30 dias × 5 marcas de números agregados, nenhum
      pedido no navegador (seção 3). Por isso o dia escolhido não vai para a
      URL.
    - **Passar o mouse e clicar são estados diferentes.** O mouse muda a
-     leitura do topo e some ao sair; o clique fixa o dia até "Fechar" ou até
-     clicar nele de novo. A coluna escolhida ganha uma faixa de fundo, que é o
-     que diz de qual dia é o quadro enquanto o mouse passeia pelos outros.
-   - **O quadro rola para a vista** (`scrollIntoView`, `nearest`, com
-     `scroll-mt` para o cabeçalho grudado): no celular ele abre fora da tela,
-     e sem rolar o toque pareceria não ter feito nada.
+     leitura do topo e apaga as outras colunas só enquanto aponta; o clique
+     fixa o dia do quadro. A coluna do quadro ganha uma faixa de fundo, e só
+     isso: apagar tudo em volta dela deixaria o gráfico desbotado desde o
+     carregamento, porque no mês atual o quadro já abre em hoje.
+   - **O quadro rola para a vista depois de um clique** (`scrollIntoView`,
+     `nearest`, com `scroll-mt` para o cabeçalho grudado): no celular ele fica
+     fora da tela, e sem rolar o toque pareceria não ter feito nada. **Ao
+     carregar, não rola**: o quadro já nasce em hoje, e rolar até ele
+     empurraria a página para baixo sozinha.
    - **No eixo do celular o dia escolhido ganha número**, com prioridade sobre
      hoje e sobre os múltiplos de 5 (`prioridadeNoEixo`); o vizinho de
      prioridade menor sai, senão "24" e "25" viram "2425".
@@ -2102,14 +2119,14 @@ Quatro decisões:
    live o `created_at` já vem em `-03:00` da borda, então o corte cai exato. Na
    demonstração as datas são UTC e o corte fica 3 horas deslocado, a mesma
    aproximação que o agrupamento por mês já tinha.
-2. **Só com o mês atual no cabeçalho** — ver acima. Nos outros meses, só o
-   gráfico de vendas por dia.
+2. **Hoje só abre sozinho com o mês atual no cabeçalho** — ver acima. Nos
+   outros meses, o quadro do dia só abre com um clique.
 3. **O número grande é o BRUTO do dia, com o já pago ao lado.** No dia em que o
    pedido nasce quase nada está pago: boleto e pix levam horas. Só o bruto
    exagera o dia; só o recebido faria parecer que ninguém comprou. A tese da
    seção 1 vale aqui também, e por isso as duas coisas aparecem juntas.
-4. **Nenhuma conta nova**: é `reconciliar` sobre os pedidos do dia, a mesma
-   função da tela inicial.
+4. **Nenhuma conta nova**: é `resumirDia`, `reconciliar` sobre os pedidos do
+   dia, a mesma função da tela inicial.
 
 O número vem da cópia em disco, que no servidor é atualizada de 5 em 5 minutos —
 é o selo de sincronização do cabeçalho (seção 12) que diz de quando ela é. Os

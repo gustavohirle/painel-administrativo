@@ -6,10 +6,9 @@ import type { DiaDeVenda } from "@/lib/metrics";
  * Os numeros de um dia de vendas: quantidade, valor e ja pago, e a lista por
  * marca abaixo.
  *
- * Mora fora dos dois quadros que o usam -- "Vendas de hoje", no servidor, e o
- * dia clicado no grafico de vendas por dia, no navegador -- para os dois serem
- * o MESMO quadro. Sem diretiva de proposito: nao tem estado, e serve dos dois
- * lados.
+ * E o quadro do dia abaixo do grafico de vendas por dia (5.16.1). Mora em
+ * arquivo proprio por ser so apresentacao, sem estado: o grafico cuida de qual
+ * dia esta aberto, e isto so escreve os numeros dele.
  *
  * `hoje` so troca as palavras. "O resto ainda pode entrar" e verdade no dia em
  * que o pedido nasce (pix e boleto levam horas); num dia que ja passou, o que
