@@ -248,3 +248,45 @@ describe("taxaDoPedido", () => {
     expect(taxaDoPedido(p, [taxa({ metodo: "credit_card" })])).toBe(0);
   });
 });
+
+describe("taxa cobrada pelo marketplace", () => {
+  // O TikTok nao cobra por meio de pagamento: ele retem do repasse, pedido a
+  // pedido, e o valor vem do extrato ja cobrado (secao 15).
+  const doCanal = (taxaCanal: number, extra: Partial<Pedido> = {}) =>
+    pedido({ marca: "Tha Beauty TikTok", total: "100.00", taxaCanal, ...extra });
+
+  it("entra no total e na marca, sem inventar linha de meio de pagamento", () => {
+    const r = apurarTaxasPlataforma([doCanal(6), doCanal(4)], []);
+    expect(r.total).toBe(10);
+    expect(r.porMarca["Tha Beauty TikTok"]).toBe(10);
+    expect(r.porCanal).toEqual([
+      { marca: "Tha Beauty TikTok", pedidos: 2, comExtrato: 2, total: 10 },
+    ]);
+  });
+
+  it("pedido sem repasse fechado conta como lacuna, e nao como taxa zero", () => {
+    const r = apurarTaxasPlataforma([doCanal(6), pedido({ marca: "Tha Beauty TikTok" })], []);
+    expect(r.porCanal[0]).toMatchObject({ pedidos: 2, comExtrato: 1, total: 6 });
+  });
+
+  it("pedido cancelado nao traz taxa: o extrato dele e estorno", () => {
+    const r = apurarTaxasPlataforma([doCanal(6, { status: "cancelled" })], []);
+    expect(r.total).toBe(0);
+    expect(r.porCanal).toEqual([]);
+  });
+
+  it("marca sem marketplace nao vira linha de canal", () => {
+    const r = apurarTaxasPlataforma([pedido({ marca: "Tha Beauty" })], []);
+    expect(r.porCanal).toEqual([]);
+  });
+
+  it("soma com a taxa do meio de pagamento, sem substituir", () => {
+    const r = apurarTaxasPlataforma(
+      [doCanal(6, { payment_details: { method: "pix", credit_card_company: null, installments: 1 } })],
+      [taxa({ metodo: "pix", percentual: 1, valorFixo: 0 })],
+    );
+    // 1% de R$ 100 do pix, mais os R$ 6 que o canal reteve.
+    expect(r.total).toBeCloseTo(7, 10);
+    expect(r.porMarca["Tha Beauty TikTok"]).toBeCloseTo(7, 10);
+  });
+});

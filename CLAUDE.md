@@ -379,6 +379,10 @@ A fatia da Intelipost some quando é zero (a demonstração não tem). Custo da
 transportadora ausente (`"0.00"`) deixa o frete inteiro com ela, e a loja
 pagando mais que cobrou (frete grátis) não é modelado.
 
+A fatia de taxas se chama **"Taxas das lojas (Nuvemshop, TikTok, cartão e
+pix)"** desde 25/09/2026: com o marketplace ligado, "Taxas Nuvemshop" passou a
+nomear errado metade do que estava ali dentro.
+
 **A fatia de taxas é uma só**: Nuvemshop, cartão e pix juntos. O cadastro é por
 meio de pagamento, e a taxa do plano da Nuvemshop, se houver, entra somada ao
 percentual de cada meio. Na loja real o pix é **0,99%, só sobre pix pago**
@@ -1553,6 +1557,23 @@ muda com o plano, com o volume e com a antecipação de recebíveis. É o mesmo
 padrão do ICMS (5.10), com o nome do campo adaptado: quem confirma taxa
 comercial é a fatura, não o contador.
 
+**O marketplace cobra por fora do meio de pagamento** (25/09/2026). A comissão
+do TikTok Shop não é percentual cadastrado: vem do **extrato financeiro**,
+pedido a pedido, e por isso mora em `Pedido.taxaCanal` e sai em `porCanal` —
+uma linha por marca, ao lado das linhas por meio de pagamento. Três decisões:
+
+1. **Ela entra em `total` e em `porMarca`**, então aparece na DRE, na fatia da
+   pizza e na **base da comissão** (`liquido`, 5.1.2). Era o que o dono pediu:
+   o influencer de marketplace ganha sobre o que sobra depois das taxas do
+   canal.
+2. **É valor cobrado, não estimativa.** Pedido cujo repasse ainda não fechou
+   fica **sem** `taxaCanal`, e a tela diz quantos são ("377 pedido(s) ainda sem
+   repasse fechado"). Estimar pela média deixaria o número plausível e
+   inventado — o que a seção 8 proíbe.
+3. **Marca sem marketplace não vira linha de zero**, pela mesma razão de 5.2:
+   zero ali afirmaria que o canal não cobra nada, quando o que não existe é o
+   canal.
+
 **Meio de pagamento sem taxa cadastrada não some da conta.** Aparece na tabela
 com total zero e entra em `metodosSemTaxa`, com o quanto de receita ficou de
 fora — senão o total pareceria cobrir tudo que entrou.
@@ -2621,7 +2642,7 @@ em 1366×768. Isso é `npm test` e olho na tela.
 
 | Pergunta | Onde |
 |---|---|
-| A conta está certa? | `npm test` — 619 testes sobre as funções puras |
+| A conta está certa? | `npm test` — 624 testes sobre as funções puras |
 | A chave da Nuvemshop vale? Os pedidos chegam como esperado? | `npm run nuvemshop:testar` |
 | A página monta? O perfil bloqueia? | `npm run fumaca` |
 | Funciona no celular? | `npm run celular` |
@@ -3224,13 +3245,29 @@ aqui sai de graça no resto do painel.
 | Situações próprias (`UNPAID`, `CANCELLED`, `DELIVERED`...) | `traduzirSituacao` mapeia para os status do painel; situação nova conta como recebida e aparece em `situacoesDesconhecidas` |
 | A API devolve nome, telefone e endereço | nada disso é guardado: o cliente vira um id negativo, como o pedido sem cliente da Nuvemshop |
 
-### Onde o dinheiro do TikTok ainda NÃO está
+### O extrato financeiro: a taxa e o frete de verdade
 
-**A comissão da plataforma não vem no pedido.** O TikTok cobra comissão,
-taxa de transação e afiliado, e isso mora na API de finanças (*settlements*),
-que é outra chamada e outro escopo. Enquanto ela não for lida, a margem do
-canal sai **melhor do que é**. O caminho curto até lá: cadastrar a taxa do meio
-de pagamento "cci" na aba Impostos, que já aparece ali como lacuna declarada.
+**O pedido não traz taxa nenhuma.** Comissão da plataforma, taxa de indicação e
+o frete que sobra para o vendedor só existem quando o repasse fecha, dias
+depois. Por isso a sincronização tem duas etapas: os pedidos do período e,
+depois, os **extratos** (`/finance/202309/statements` e, de cada um,
+`statement_transactions`, uma linha por pedido).
+
+De cada linha saem dois números, e os dois entram nas contas:
+
+| Campo do extrato | Vira | Onde entra |
+|---|---|---|
+| `fee_amount` | `Pedido.taxaCanal` | fatia "Taxas das lojas", DRE, e a **base da comissão** (5.1.2) |
+| `shipping_cost_amount` | `shipping_cost_owner` acima do que o cliente pagou | fatia "Frete grátis (a loja bancou)" |
+
+**O extrato manda sobre o pedido.** No pedido, o frete grátis aparece como
+`shipping_fee_seller_discount` — a promessa do momento da venda; no extrato
+está o que a transportadora cobrou de fato. Em setembro os dois diferem: R$ 49
+mil pela promessa contra R$ 54 mil pelo extrato.
+
+**Pedido ainda não liquidado fica sem taxa**, e a aba de taxas diz quantos são.
+Em setembro, 1.197 de 1.574 pedidos recebidos já tinham repasse fechado; os
+outros ainda vão aumentar a taxa e diminuir a comissão do influencer.
 
 ### Como se sincroniza
 
@@ -3251,10 +3288,15 @@ quando falta menos de um dia — por isso ele mora em `.live-data`, e não no
 
 ### O que a primeira carga mostrou (25/09/2026, 3 meses)
 
-3.152 pedidos, R$ 408,7 mil de faturamento bruto, R$ 298,6 mil recebido e
-R$ 63,0 mil de frete que a loja bancou. Em setembro: R$ 266,5 mil de bruto,
-R$ 196,9 mil de receita real e R$ 19,6 mil de comissão. 730 pedidos cancelados
-em 3.152 — um quarto do volume, que vale investigar com o dono.
+3.154 pedidos, R$ 409,3 mil de faturamento bruto, R$ 299,0 mil recebido,
+R$ 75,0 mil de frete que a loja bancou e R$ 45,2 mil de taxas cobradas pelo
+canal. Em setembro: R$ 266,5 mil de bruto, R$ 196,9 mil de receita real,
+R$ 54,1 mil de frete grátis, R$ 31,4 mil de taxas e R$ 16,5 mil de comissão.
+731 pedidos cancelados em 3.154 — quase um quarto do volume, que vale
+investigar com o dono.
+
+Para a empresa inteira, setembro passou de R$ 1,155 mi para R$ 1,422 mi de
+faturamento bruto com o canal somado.
 
 Entraram 39 produtos novos no cadastro (21 kits), todos com a ficha provisória
 de 35% do preço médio pago, como os demais.

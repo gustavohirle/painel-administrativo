@@ -29,6 +29,24 @@ export interface LinhaTaxaMetodo {
   taxa: TaxaPlataforma | null;
 }
 
+/**
+ * O que um MARKETPLACE reteve, por marca.
+ *
+ * Fica separado das linhas por meio de pagamento porque a cobranca e outra: a
+ * do gateway e um percentual sobre o valor pago, e esta vem pronta do extrato
+ * do canal, pedido a pedido. Somar as duas numa linha so esconderia que uma e
+ * cadastro e a outra e fato.
+ */
+export interface LinhaTaxaDeCanal {
+  marca: string;
+  /** Pedidos recebidos da marca no periodo. */
+  pedidos: number;
+  /** Quantos deles ja vieram com taxa no extrato do canal. */
+  comExtrato: number;
+  /** Soma das taxas cobradas pelo canal. */
+  total: number;
+}
+
 export interface ResultadoTaxasPlataforma {
   /** Tudo que a plataforma e o gateway retiveram no periodo. */
   total: number;
@@ -51,6 +69,14 @@ export interface ResultadoTaxasPlataforma {
    * conta parecida.
    */
   porMarca: Record<string, number>;
+  /**
+   * Taxas cobradas pelos marketplaces, uma linha por marca.
+   *
+   * Ja entram em `total` e em `porMarca` -- ou seja, na DRE, na fatia da
+   * pizza e na base "o que cai na conta" da comissao (5.1.2). A comissao do
+   * influencer de marketplace sai depois das taxas do canal, como o dono pediu.
+   */
+  porCanal: LinhaTaxaDeCanal[];
 }
 
 const VAZIO: ResultadoTaxasPlataforma = {
@@ -62,6 +88,7 @@ const VAZIO: ResultadoTaxasPlataforma = {
   recebidoSemTaxa: 0,
   metodosSemTaxa: [],
   porMarca: {},
+  porCanal: [],
 };
 
 /**
@@ -90,6 +117,8 @@ export function apurarTaxasPlataforma(
   }
   const mapa = new Map<string, Acumulado>();
   const porMarca: Record<string, number> = {};
+  /** Taxa cobrada pelo canal, so dos recebidos: extrato de pedido cancelado e estorno. */
+  const canais = new Map<string, { pedidos: number; comExtrato: number; total: number }>();
 
   for (const pedido of pedidos) {
     const metodo = metodoDoPedido(pedido);
@@ -124,7 +153,32 @@ export function apurarTaxasPlataforma(
       }
     }
 
+    if (foiRecebido) {
+      const canal = canais.get(pedido.marca) ?? { pedidos: 0, comExtrato: 0, total: 0 };
+      canal.pedidos += 1;
+      if (pedido.taxaCanal !== undefined) {
+        canal.comExtrato += 1;
+        canal.total += pedido.taxaCanal;
+      }
+      canais.set(pedido.marca, canal);
+    }
+
     mapa.set(metodo, acc);
+  }
+
+  /*
+   * So marca que TEM taxa de canal vira linha. As da Nuvemshop passariam aqui
+   * com zero, e uma linha de zero afirmaria que o canal nao cobra nada --
+   * quando o que existe e canal nenhum. `comExtrato` menor que `pedidos` diz
+   * quantos ainda nao foram liquidados, e a tela avisa.
+   */
+  const porCanal: LinhaTaxaDeCanal[] = [...canais.entries()]
+    .filter(([, c]) => c.comExtrato > 0)
+    .map(([marca, c]) => ({ marca, pedidos: c.pedidos, comExtrato: c.comExtrato, total: c.total }))
+    .sort((a, b) => b.total - a.total);
+
+  for (const linha of porCanal) {
+    porMarca[linha.marca] = (porMarca[linha.marca] ?? 0) + linha.total;
   }
 
   const porMetodo: LinhaTaxaMetodo[] = [...mapa.entries()].map(([metodo, acc]) => {
@@ -145,7 +199,8 @@ export function apurarTaxasPlataforma(
   porMetodo.sort((a, b) => b.total - a.total);
 
   const base = porMetodo.reduce((s, l) => s + l.base, 0);
-  const total = porMetodo.reduce((s, l) => s + l.total, 0);
+  const total =
+    porMetodo.reduce((s, l) => s + l.total, 0) + porCanal.reduce((s, l) => s + l.total, 0);
 
   // A carga e sempre medida contra o RECEBIDO, mesmo quando a taxa incide
   // sobre o bruto: e do dinheiro que entrou que ela sai.
@@ -170,6 +225,7 @@ export function apurarTaxasPlataforma(
     recebidoSemTaxa: semTaxa.reduce((s, l) => s + l.base, 0),
     metodosSemTaxa: semTaxa.map((l) => l.metodo),
     porMarca,
+    porCanal,
   };
 }
 

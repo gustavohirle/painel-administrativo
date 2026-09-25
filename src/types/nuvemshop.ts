@@ -198,6 +198,18 @@ export interface Pedido {
   products: ProdutoDoPedido[];
   /**
    * NAO faz parte da API oficial da Nuvemshop.
+   *
+   * O que o MARKETPLACE reteve deste pedido: comissao da plataforma, taxa de
+   * indicacao e afins. Vem do extrato financeiro do canal (no TikTok Shop,
+   * `fee_amount` de `statement_transactions`), pedido a pedido, e nao de um
+   * percentual cadastrado -- e valor cobrado, nao estimativa.
+   *
+   * `undefined` em pedido da Nuvemshop (onde a taxa vem do cadastro, por meio
+   * de pagamento) e em pedido de marketplace ainda nao liquidado.
+   */
+  taxaCanal?: number;
+  /**
+   * NAO faz parte da API oficial da Nuvemshop.
    * Cada marca do cliente e uma loja Nuvemshop separada; ao consolidar varias
    * lojas num painel so, carimbamos a origem aqui. Na fase real isso e
    * preenchido pelo `store_id` de cada credencial configurada.

@@ -93,10 +93,13 @@ function montarLinhas(dre: DRE, fechado: MesFechado): Linha[] {
       tipo: "deducao",
     },
     {
-      rotulo: "Taxas Nuvemshop, cartão e pix",
+      rotulo: "Taxas das lojas (Nuvemshop, TikTok, cartão e pix)",
       explicacao: dre.taxasPlataforma
-        ? `${percentual(dre.taxasPlataforma.cargaSobreRecebido)} do recebido, ` +
-          `somando as taxas de ${dre.taxasPlataforma.porMetodo.filter((l) => l.total > 0).length} meio(s) de pagamento`
+        ? `${percentual(dre.taxasPlataforma.cargaSobreRecebido)} do recebido, somando ` +
+          `${dre.taxasPlataforma.porMetodo.filter((l) => l.total > 0).length} meio(s) de pagamento` +
+          (dre.taxasPlataforma.porCanal.length > 0
+            ? ` e a comissão de ${dre.taxasPlataforma.porCanal.length} marketplace(s)`
+            : "")
         : "Nenhuma taxa cadastrada ainda",
       valor: -dre.totalTaxasPlataforma,
       tipo: "deducao",

@@ -49,6 +49,33 @@ export function GestaoTaxas({ taxas, apuracao }: GestaoTaxasProps) {
         </p>
       )}
 
+      {apuracao.porCanal.length > 0 && (
+        <div className="mb-4 rounded-lg border border-borda bg-fundo px-4 py-3">
+          <p className="text-sm font-semibold text-tinta">
+            Comissão cobrada pelos marketplaces
+          </p>
+          <p className="mt-0.5 text-sm leading-relaxed text-tinta-media">
+            Não se cadastra aqui: vem do extrato do canal, pedido a pedido, e já é valor
+            cobrado. Entra no total abaixo e na base da comissão do influencer.
+          </p>
+          <ul className="mt-2 space-y-1 text-sm">
+            {apuracao.porCanal.map((linha) => (
+              <li key={linha.marca} className="flex flex-wrap items-baseline justify-between gap-2">
+                <span className="text-tinta">{linha.marca}</span>
+                <span className="numerico font-semibold text-tinta">
+                  {moeda(linha.total)}
+                  {linha.comExtrato < linha.pedidos && (
+                    <span className="ml-2 text-xs font-normal text-naopago">
+                      {linha.pedidos - linha.comExtrato} pedido(s) ainda sem repasse fechado
+                    </span>
+                  )}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       {apuracao.temTaxaNaoConfirmada && (
         <p className="mb-4 text-sm text-tinta-media">
           As taxas marcadas como <strong className="text-tinta">não conferidas</strong>{" "}

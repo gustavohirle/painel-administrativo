@@ -63,6 +63,12 @@ async function main() {
     if (contas.freteAbsorvido > 0) {
       console.log(`  frete que a loja bancou: ${reais(contas.freteAbsorvido)}`);
     }
+    const taxas = daMarca.reduce((s, p) => s + (p.taxaCanal ?? 0), 0);
+    const comExtrato = daMarca.filter((p) => p.taxaCanal !== undefined).length;
+    console.log(
+      `  taxas cobradas pelo canal: ${reais(taxas)}` +
+        ` (${comExtrato} de ${daMarca.length} pedidos já liquidados)`,
+    );
     console.log(
       `  como o painel classifica: ${[...situacoes.entries()]
         .sort((a, b) => b[1] - a[1])

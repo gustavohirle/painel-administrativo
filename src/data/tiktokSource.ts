@@ -203,6 +203,81 @@ async function buscarJanela(
   return pedidos;
 }
 
+/**
+ * O que o TikTok reteve de cada pedido, pelo EXTRATO financeiro.
+ *
+ * O pedido em si nao traz taxa nenhuma: comissao da plataforma, taxa de
+ * indicacao e o frete que sobra para o vendedor so aparecem quando o repasse e
+ * fechado, dias depois. Por isso a busca e em duas etapas -- os extratos do
+ * periodo, e depois as linhas de cada extrato, uma por pedido.
+ *
+ * Devolve, por id de pedido do TikTok:
+ *
+ * - `taxa`: o que o canal reteve (positivo);
+ * - `freteDaLoja`: o frete que sobrou para a loja depois do que o cliente
+ *   pagou (positivo) -- e o numero de verdade, contra o `seller_discount` do
+ *   pedido, que e a promessa de frete gratis no momento da venda.
+ */
+async function buscarExtratos(
+  conta: ContaDeCanal,
+  token: string,
+  desde: Date,
+  aoAvancar?: (p: ProgressoTikTok) => void,
+): Promise<Map<string, { taxa: number; freteDaLoja: number }>> {
+  const porPedido = new Map<string, { taxa: number; freteDaLoja: number }>();
+  const numero = (v: unknown) => {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : 0;
+  };
+
+  const extratos: string[] = [];
+  let pagina: string | undefined;
+  do {
+    const extras: Record<string, string> = {
+      page_size: "50",
+      sort_field: "statement_time",
+      statement_time_ge: String(Math.floor(desde.getTime() / 1000)),
+    };
+    if (pagina) extras.page_token = pagina;
+    const resposta = await chamar(conta, token, "GET", "/finance/202309/statements", extras);
+    for (const bruto of (resposta.data?.statements as { id?: string }[]) ?? []) {
+      if (bruto.id) extratos.push(bruto.id);
+    }
+    pagina = (resposta.data?.next_page_token as string) || undefined;
+  } while (pagina);
+
+  aoAvancar?.({ marca: conta.marca, etapa: `${extratos.length} extrato(s) de repasse`, pedidos: 0 });
+
+  for (const extrato of extratos) {
+    let paginaLinhas: string | undefined;
+    do {
+      const extras: Record<string, string> = { page_size: "50", sort_field: "order_create_time" };
+      if (paginaLinhas) extras.page_token = paginaLinhas;
+      const resposta = await chamar(
+        conta,
+        token,
+        "GET",
+        `/finance/202309/statements/${extrato}/statement_transactions`,
+        extras,
+      );
+      const linhas = (resposta.data?.statement_transactions as Record<string, unknown>[]) ?? [];
+      for (const linha of linhas) {
+        const idPedido = String(linha.order_id ?? "");
+        if (idPedido === "") continue;
+        const atual = porPedido.get(idPedido) ?? { taxa: 0, freteDaLoja: 0 };
+        // Os valores retidos vem NEGATIVOS no extrato; aqui viram custo positivo.
+        atual.taxa += Math.max(0, -numero(linha.fee_amount));
+        atual.freteDaLoja += Math.max(0, -numero(linha.shipping_cost_amount));
+        porPedido.set(idPedido, atual);
+      }
+      paginaLinhas = (resposta.data?.next_page_token as string) || undefined;
+    } while (paginaLinhas);
+    aoAvancar?.({ marca: conta.marca, etapa: "linhas do extrato", pedidos: porPedido.size });
+  }
+
+  return porPedido;
+}
+
 /** Uma janela por mes, da mais antiga para a mais nova. */
 function janelas(meses: number): { inicio: Date; fim: Date }[] {
   const agora = new Date();
@@ -219,7 +294,12 @@ export interface ResultadoSincronizacaoTikTok {
   marca: string;
   pedidos: number;
   novosIds: number;
+  /** Quantos pedidos desta busca ja tinham extrato (taxa e frete cobrados). */
+  comExtrato: number;
 }
+
+/** O id do TikTok fica guardado no `gateway_name`: "TikTok Shop <id>". */
+const idTikTokDoPedido = (pedido: Pedido): string => pedido.gateway_name.replace(/^TikTok Shop /, "");
 
 /**
  * Busca os ultimos `meses` meses de uma conta e grava no disco.
@@ -250,10 +330,33 @@ export async function sincronizarTikTok(
       pedidos = pedidos.concat(await buscarJanela(conta, token, ids, janela.inicio, janela.fim, aoAvancar));
     }
 
+    /*
+     * O extrato manda: onde ele existe, a taxa do canal e o frete que sobrou
+     * para a loja passam a ser os valores COBRADOS, e nao os prometidos na
+     * venda. Pedido ainda nao liquidado fica sem `taxaCanal`, e a aba de taxas
+     * diz quantos sao -- melhor lacuna declarada que taxa estimada (secao 8).
+     */
+    const extrato = await buscarExtratos(conta, token, janelas(meses)[0]!.inicio, aoAvancar);
+    let comExtrato = 0;
+    for (const pedido of pedidos) {
+      const doExtrato = extrato.get(idTikTokDoPedido(pedido));
+      if (!doExtrato) continue;
+      comExtrato += 1;
+      pedido.taxaCanal = doExtrato.taxa;
+      pedido.shipping_cost_owner = (
+        Number(pedido.shipping_cost_customer) + doExtrato.freteDaLoja
+      ).toFixed(2);
+    }
+
     const juntos = mesclarPedidos(anteriores, pedidos);
     await ids.gravar();
     await gravarPedidos(conta, juntos);
-    resultados.push({ marca: conta.marca, pedidos: juntos.length, novosIds: ids.criados });
+    resultados.push({
+      marca: conta.marca,
+      pedidos: juntos.length,
+      novosIds: ids.criados,
+      comExtrato,
+    });
   }
 
   return resultados;

@@ -102,7 +102,7 @@ function montarFatias(dre: DemonstrativoResultado, fechado: MesFechado): Fatia[]
     // das duas que da para renegociar.
     // Todas as taxas juntas: a da Nuvemshop e as do cartao e do pix.
     {
-      rotulo: "Taxas Nuvemshop, cartão e pix",
+      rotulo: "Taxas das lojas (Nuvemshop, TikTok, cartão e pix)",
       valor: dre.totalTaxasPlataforma,
       cor: "var(--color-taxa)",
     },
