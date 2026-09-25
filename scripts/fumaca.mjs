@@ -67,6 +67,7 @@ function tokenSessao(usuarioId, perfil) {
 
 const AREA_DA_ROTA = {
   "/": "financeiro",
+  "/vendas": "financeiro",
   "/influencers": "financeiro",
   "/relatorios": "financeiro",
   "/simulador": "financeiro",

@@ -4,7 +4,6 @@ import { ContratoDoInfluencer, GestaoComissoes } from "@/components/GestaoComiss
 import { GestaoDespesasInfluencer } from "@/components/GestaoDespesasInfluencer";
 import { RodapeDemonstracao } from "@/components/RodapeDemonstracao";
 import { SeletorInfluencer, type CartaoDeInfluencer } from "@/components/SeletorInfluencer";
-import { VendasPorDia } from "@/components/VendasPorDia";
 
 import { obterFonteDePedidos, obterRepositorioCadastros } from "@/data";
 import { lojasNuvemshop, modoDemonstracao } from "@/lib/config";
@@ -20,7 +19,6 @@ import {
   filtrarPorMes,
   mesesDisponiveis,
   reconciliar,
-  vendasPorDia,
 } from "@/lib/metrics";
 import { apurarTaxasPlataforma } from "@/lib/plataforma";
 import { mesDaTela } from "@/lib/mesDaTelaServidor";
@@ -80,12 +78,6 @@ export default async function PaginaInfluencers({
   const pedidosDoMes = filtrarPorMes(todosOsPedidos, mesSelecionado);
 
   const hoje = diaDeHoje();
-  /*
-   * Com o mes ATUAL no cabecalho, o quadro do dia abaixo do grafico abre em
-   * hoje -- e o "Vendas de hoje" (5.16.1). Olhando julho, "hoje" nao faz
-   * sentido na tela, e o quadro so abre com um clique numa coluna.
-   */
-  const noMesAtual = mesSelecionado === hoje.slice(0, 7);
 
   const reconciliacao = reconciliar(pedidosDoMes);
   // A base "o que cai na conta" desconta a mesma taxa que a DRE desconta.
@@ -178,30 +170,6 @@ export default async function PaginaInfluencers({
             Referência: {mesAnoLongo(mesSelecionado)}.
           </p>
         </div>
-
-        <Cartao
-          titulo={`Vendas por dia — ${mesAnoLongo(mesSelecionado)}`}
-          descricao={`${selecionado ? `Só a ${selecionado.marca}.` : "A operação inteira."} ${
-            noMesAtual
-              ? "Abaixo do gráfico, as vendas de hoje; toque ou clique numa coluna para ver outro dia."
-              : "Toque ou clique numa coluna para abrir as vendas do dia."
-          }`}
-        >
-          {/* A chave pelo mes recomeca o quadro ao trocar de mes (em hoje, no
-              mes atual). Trocar de influencer mantem o dia aberto: "e so da
-              Tha, nesse mesmo dia?" e a pergunta seguinte natural. */}
-          <VendasPorDia
-            key={mesSelecionado}
-            vendas={vendasPorDia(
-              selecionado
-                ? pedidosDoMes.filter((p) => p.marca === selecionado.marca)
-                : pedidosDoMes,
-              mesSelecionado,
-            )}
-            hoje={noMesAtual ? hoje : null}
-            marca={selecionado?.marca ?? null}
-          />
-        </Cartao>
 
         <Cartao
           titulo="Escolha o influencer"

@@ -157,8 +157,8 @@ As três decisões que valem daqui para frente:
    formulário nascia com 900px numa tela de 390 e só era alcançável arrastando
    de lado. A classe prende a largura na tela e gruda o bloco à esquerda, para
    ele não sumir quando a tabela rolar.
-4. **A barra de abas rola de lado, não quebra em linhas.** São onze seções;
-   em 390px elas somam ~650px. Até aqui as abas dividiam a linha do cabeçalho
+4. **A barra de abas rola de lado, não quebra em linhas.** São treze seções
+   (com onze, em 390px, elas já somavam ~650px). Até aqui as abas dividiam a linha do cabeçalho
    com o logo e o menu do usuário num `flex-wrap` único, e a lista quebrava no
    meio: a segunda fileira começava embaixo do logo, desalinhada de tudo. O
    problema não era o espaço — era a barra tentar ser uma linha só quando não
@@ -1871,9 +1871,9 @@ A aba se chamava "Comissões" e virou **Influencers** (`/influencers`; o endere�
 antigo `/comissoes` redireciona, com os parâmetros). A pergunta mudou de "quanto
 de comissão cada contrato gera" para "quanto cada influencer custa".
 
-No topo, **Vendas por dia**, com o quadro de hoje embaixo do gráfico — ver
-5.16.1. Abaixo dele, o **seletor de cartões** — um por contrato — e a "Visão geral" com os totais e o
-cadastro de contratos. Cartão e não `<select>`: o nome sozinho não ajuda a
+A aba abre no **seletor de cartões** — um por contrato — e na "Visão geral"
+com os totais e o cadastro de contratos. As vendas do dia moravam no topo dela
+e foram para a aba **Vendas** (5.16.1). Cartão e não `<select>`: o nome sozinho não ajuda a
 escolher, e o cartão responde a primeira pergunta antes do clique. A escolha
 mora na URL (`?influencer=`), como os filtros do relatório, e o seletor de mês
 do cabeçalho a preserva.
@@ -2003,7 +2003,18 @@ Três detalhes de comportamento:
 - Remover despesa é em dois passos na própria linha, sem `window.confirm`, que
   some atrás de abas no celular e trava a auditoria automatizada.
 
-### 5.16.1 Vendas de hoje
+### 5.16.1 Aba Vendas: vendas de hoje e vendas por dia
+
+Aba `/vendas`, área `financeiro`, logo depois de "Painel" no menu. Tem uma
+coisa só: o gráfico de vendas por dia e, embaixo dele, o quadro do dia. Os dois
+moravam no topo da aba Influencers e ganharam aba própria em **25/09/2026**, a
+pedido do dono: acompanhar o dia é uma pergunta diferente de "quanto cada
+influencer custa", e é a que ele faz mais vezes.
+
+É sempre a **operação inteira**. Na aba Influencers o gráfico estreitava para a
+marca do influencer escolhido; aqui não há influencer escolhido, e a quebra por
+marca vem na lista do quadro do dia. Um filtro por loja, se fizer falta, seria
+`?marca=` na URL, como o resto do painel.
 
 Pedido do cliente (18/09/2026): quantas vendas e quanto de valor **hoje**,
 "começando à meia-noite", e explicitamente **não** nas últimas 24 horas — ele
@@ -2011,8 +2022,7 @@ acompanha o dia enquanto ele acontece, e uma janela móvel misturaria a noite de
 ontem com a manhã de hoje.
 
 São três números: **vendas hoje** (quantidade), **valor de hoje** e **já pago
-hoje**. Sem influencer escolhido, é a operação inteira, com uma linha por marca
-abaixo — vendas, valor e já pago, em colunas —; escolhido um, é só a marca dele.
+hoje**, com uma linha por marca abaixo — vendas, valor e já pago, em colunas.
 
 **Hoje é um dia do gráfico, e não um cartão à parte** (25/09/2026, pedido do
 dono). Até então "Vendas de hoje" era um cartão no topo da aba, e o gráfico de
@@ -2032,9 +2042,8 @@ O custo, no celular: os números de hoje ficam **depois do gráfico**, uma rolad
 abaixo de onde o cartão ficava. Por cima do gráfico, cada toque numa coluna
 trocaria números fora da tela.
 
-O quadro reinicia ao trocar de **mês** (`key` pelo mês, na página), e não ao
-trocar de influencer: "e só da Tha, nesse mesmo dia?" é a pergunta seguinte
-natural.
+O quadro reinicia ao trocar de **mês** (`key` pelo mês, na página): em hoje, no
+mês atual; fechado, nos outros.
 
 #### Vendas por dia
 
