@@ -232,6 +232,8 @@ export interface LinhaMarca {
   naoPago: number;
   recebido: number;
   receitaReal: number;
+  /** Frete que a loja bancou (frete gratis): sai da base "o que cai na conta". */
+  freteAbsorvido: number;
   /** Fracao (0.14), nao percentual pronto. */
   taxaNaoPago: number;
   comissaoSobreBruto: number;
@@ -266,6 +268,7 @@ export function agruparPorMarca(
       marca,
       bruto: r.bruto,
       brutoSemFrete: r.brutoSemFrete,
+      freteAbsorvido: r.freteAbsorvido,
       naoPago: r.naoPago,
       recebido: r.recebido,
       receitaReal: r.receitaReal,

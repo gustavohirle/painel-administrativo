@@ -314,12 +314,21 @@ export function calcularComissoesPorInfluencer(
  * a DRE e o cruzamento de contratos nao terem cada um a sua versao.
  */
 function valorDaBaseDaMarca(
-  r: Pick<Reconciliacao, "brutoSemFrete" | "receitaReal">,
+  r: Pick<Reconciliacao, "brutoSemFrete" | "receitaReal" | "freteAbsorvido">,
   base: BaseComissao,
   taxas: number,
 ): number {
   if (base === "bruto") return r.brutoSemFrete;
-  if (base === "liquido") return r.receitaReal - taxas;
+  /*
+   * "O que cai na conta" e o repasse: receita real, menos as taxas da loja e
+   * do pagamento, menos o frete que a LOJA bancou (5.1.2).
+   *
+   * O frete absorvido entrou aqui em 25/09/2026, com o TikTok Shop, a pedido
+   * do dono: ali o frete gratis sai do mesmo repasse, antes de o dinheiro
+   * chegar. Na Nuvemshop nada muda, porque quem paga o frete e o cliente e
+   * `freteAbsorvido` e zero -- a regra e uma so, e nao uma excecao por canal.
+   */
+  if (base === "liquido") return r.receitaReal - taxas - r.freteAbsorvido;
   return r.receitaReal;
 }
 

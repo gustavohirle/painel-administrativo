@@ -503,8 +503,17 @@ cartão** — "basicamente o que cai na conta da empresa, fora o frete".
 
 ```
 base "liquido" = recebido − frete − taxas de plataforma e pagamento
-               = receita real − taxas
+                 − frete que a LOJA bancou
+               = receita real − taxas − frete grátis
 ```
+
+**O frete grátis entrou na conta em 25/09/2026**, com o TikTok Shop, a pedido
+do dono: ali a loja banca o frete e ele sai do **mesmo repasse**, antes de o
+dinheiro chegar. "O que cai na conta" passou a ser o repasse de verdade. A
+regra é uma só, e não uma exceção por canal: na Nuvemshop quem paga o frete é
+o cliente, `freteAbsorvido` é zero e nada muda. Em setembro isso levou a
+comissão do TikTok de R$ 16,5 mil para R$ 11,1 mil, e não mexeu em nenhuma
+outra marca.
 
 Virou a quarta base (`liquido`, "O que cai na conta (sem frete)"), a primeira do
 formulário e o padrão de contrato novo (`BASE_PADRAO_CONTRATO`) e de marca sem

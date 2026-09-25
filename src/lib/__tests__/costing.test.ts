@@ -453,6 +453,7 @@ function linhaMarca(parcial: Partial<LinhaMarca> = {}): LinhaMarca {
   };
   return {
     ...base,
+    freteAbsorvido: parcial.freteAbsorvido ?? 0,
     brutoSemFrete: parcial.brutoSemFrete ?? base.bruto - (base.recebido - base.receitaReal),
   };
 }
@@ -943,5 +944,54 @@ describe("fichasProvisorias", () => {
   it("o mesmo produto repetido na lista gera uma ficha só", () => {
     const pedidos = [pedido({ products: [item("100.00")] })];
     expect(fichasProvisorias(pedidos, [produtoA, produtoA], [])).toHaveLength(1);
+  });
+});
+
+describe("base \"o que cai na conta\" com frete grátis", () => {
+  // No TikTok Shop a loja banca o frete, e ele sai do MESMO repasse: o que cai
+  // na conta e receita real menos as taxas do canal menos esse frete (5.1.2).
+  const doCanal = (parcial: Partial<Pedido> = {}) =>
+    pedido({
+      marca: "Tha Beauty TikTok",
+      total: "100.00",
+      shipping_cost_customer: "0.00",
+      shipping_cost_owner: "20.00",
+      ...parcial,
+    });
+  const contrato = influencer({ marca: "Tha Beauty TikTok", percentual: 10, baseComissao: "liquido" });
+
+  it("desconta o frete que a loja bancou, além das taxas", () => {
+    const [linha] = calcularComissoesPorInfluencer([doCanal()], [contrato], {
+      "Tha Beauty TikTok": 6,
+    });
+    // 100 recebidos, frete cobrado 0 -> receita real 100; menos 6 de taxa e
+    // 20 de frete bancado = 74 de base.
+    expect(linha!.valorBase).toBeCloseTo(74, 10);
+    expect(linha!.valorComissao).toBeCloseTo(7.4, 10);
+  });
+
+  it("na Nuvemshop nada muda: quem paga o frete é o cliente", () => {
+    const daLoja = pedido({
+      marca: "Marca Teste",
+      total: "119.00",
+      shipping_cost_customer: "19.00",
+      shipping_cost_owner: "19.00",
+    });
+    const [linha] = calcularComissoesPorInfluencer(
+      [daLoja],
+      [influencer({ percentual: 10, baseComissao: "liquido" })],
+      { "Marca Teste": 5 },
+    );
+    // Receita real 100, menos 5 de taxa. O frete nao entra: foi repasse.
+    expect(linha!.valorBase).toBeCloseTo(95, 10);
+  });
+
+  it("frete grátis de pedido cancelado não reduz a base", () => {
+    const [linha] = calcularComissoesPorInfluencer(
+      [doCanal(), doCanal({ status: "cancelled" })],
+      [contrato],
+      {},
+    );
+    expect(linha!.valorBase).toBeCloseTo(80, 10);
   });
 });
