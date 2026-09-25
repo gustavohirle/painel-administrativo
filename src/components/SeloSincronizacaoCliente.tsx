@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 
 import { dataHora, horaCurta } from "@/lib/format";
-import type { SincronizacaoNaTela } from "@/types/sincronizacao";
+import type { CopiaDeCanal, SincronizacaoNaTela } from "@/types/sincronizacao";
 
 /**
  * Acima disto o selo fica vermelho.
@@ -34,6 +34,15 @@ const INTERVALO_MS = 60 * 1000;
  * Com a aba escondida nao adianta perguntar: o intervalo para, e a volta da
  * aba dispara uma consulta na hora. Era justamente nesse momento que o dono
  * percebia a hora velha.
+ *
+ * **Um selo por fonte** (25/09/2026, pedido do dono): o da Nuvemshop e, ao
+ * lado, um para cada canal que sincroniza por conta propria -- hoje o TikTok
+ * Shop, que tem timer de hora em hora. Cada um fica vermelho pelo proprio
+ * atraso: o TikTok com 40 minutos esta em dia, a Nuvemshop nao.
+ *
+ * No celular, com dois selos, eles EMPILHAM e mostram o nome. Lado a lado nao
+ * cabem na linha do botao de sair, e sem o nome seriam duas horas soltas sem
+ * dizer qual e qual.
  */
 export function SeloSincronizacaoCliente({
   inicial,
@@ -91,6 +100,11 @@ export function SeloSincronizacaoCliente({
     };
   }, []);
 
+  // `?? []`: durante um deploy, a pagina antiga pode receber a resposta nova e
+  // a nova pode receber a antiga, que nao tinha o campo.
+  const canais = estado.canais ?? [];
+  const empilhados = canais.length > 0;
+
   const atraso = estado.atualizadoEm
     ? agora - new Date(estado.atualizadoEm).getTime()
     : null;
@@ -117,24 +131,93 @@ export function SeloSincronizacaoCliente({
     .filter(Boolean)
     .join(" ");
 
+  const nuvemshop = (
+    <Selo
+      rotulo="Nuvemshop"
+      hora={estado.atualizadoEm ? horaCurta(estado.atualizadoEm, new Date(agora)) : "sem cópia"}
+      preocupa={preocupa}
+      pulsando={estado.sincronizando}
+      explicacao={explicacao}
+      empilhado={empilhados}
+    />
+  );
+  if (!empilhados) return nuvemshop;
+
+  return (
+    <span className="flex shrink-0 flex-col items-start gap-0.5 sm:flex-row sm:items-center sm:gap-2">
+      {nuvemshop}
+      {canais.map((canal) => (
+        <SeloDeCanal key={canal.rotulo} canal={canal} agora={agora} />
+      ))}
+    </span>
+  );
+}
+
+function SeloDeCanal({ canal, agora }: { canal: CopiaDeCanal; agora: number }) {
+  const atraso = canal.atualizadoEm ? agora - new Date(canal.atualizadoEm).getTime() : null;
+  const atrasado = atraso !== null && atraso > canal.atrasoQuePreocupaMs;
+  const preocupa = atraso === null || atrasado || canal.contasPendentes.length > 0;
+
+  const explicacao = [
+    canal.atualizadoEm
+      ? `Pedidos lidos do ${canal.rotulo} em ${dataHora(canal.atualizadoEm)}.`
+      : `Os pedidos do ${canal.rotulo} ainda não foram buscados.`,
+    canal.contasPendentes.length > 0 ? `Ainda sem cópia: ${canal.contasPendentes.join(", ")}.` : null,
+    atrasado ? "A cópia parou de ser atualizada: passou de uma rodada inteira." : null,
+    canal.frequencia,
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  return (
+    <Selo
+      rotulo={canal.rotulo}
+      hora={canal.atualizadoEm ? horaCurta(canal.atualizadoEm, new Date(agora)) : "sem cópia"}
+      preocupa={preocupa}
+      pulsando={false}
+      explicacao={explicacao}
+      empilhado
+    />
+  );
+}
+
+function Selo({
+  rotulo,
+  hora,
+  preocupa,
+  pulsando,
+  explicacao,
+  empilhado,
+}: {
+  rotulo: string;
+  hora: string;
+  preocupa: boolean;
+  pulsando: boolean;
+  explicacao: string;
+  /** Mais de um selo: no celular eles empilham, menores e com o nome. */
+  empilhado: boolean;
+}) {
   return (
     <span
       title={explicacao}
-      className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold sm:gap-2 sm:px-3 sm:py-1.5 ${
+      className={`inline-flex shrink-0 items-center rounded-full border font-semibold ${
+        empilhado
+          ? "gap-1.5 px-2 py-0 text-[11px] leading-4 sm:gap-2 sm:px-3 sm:py-1.5 sm:text-xs"
+          : "gap-1.5 px-2.5 py-1 text-xs sm:gap-2 sm:px-3 sm:py-1.5"
+      } ${
         preocupa
           ? "border-alerta-borda bg-alerta-fundo text-naopago"
           : "border-borda bg-fundo text-tinta-media"
       }`}
     >
       <span
-        className={`h-2 w-2 shrink-0 rounded-full ${estado.sincronizando ? "animate-pulse" : ""}`}
+        className={`h-2 w-2 shrink-0 rounded-full ${pulsando ? "animate-pulse" : ""}`}
         style={{ backgroundColor: preocupa ? "var(--color-naopago)" : "var(--color-real)" }}
       />
-      {/* No celular sobra a hora: o rotulo tomaria a linha do botao de sair. */}
-      <span className="hidden sm:inline">Nuvemshop</span>
-      <span className="numerico">
-        {estado.atualizadoEm ? horaCurta(estado.atualizadoEm, new Date(agora)) : "sem cópia"}
-      </span>
+      {/* Com um selo so, no celular sobra a hora: o rotulo tomaria a linha do
+          botao de sair. Empilhados, o nome volta -- e o que diz qual e qual. */}
+      <span className={empilhado ? "" : "hidden sm:inline"}>{rotulo}</span>
+      <span className="numerico">{hora}</span>
     </span>
   );
 }

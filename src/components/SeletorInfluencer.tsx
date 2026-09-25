@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-import { moeda } from "@/lib/format";
+import { moeda, percentual, razaoSegura } from "@/lib/format";
 
 export interface CartaoDeInfluencer {
   id: string;
@@ -35,6 +35,11 @@ interface SeletorInfluencerProps {
  * se e caro ou barato: R$ 50 mil e pouco em cima de R$ 800 mil e muito em cima
  * de R$ 100 mil. E comissao e despesa somadas escondiam qual das duas mexer.
  * Por isso: receita bruta da marca, comissao e despesas, lado a lado.
+ *
+ * Embaixo das despesas vai quanto elas pesam na receita bruta da marca
+ * (25/09/2026, pedido do dono). E a conta que ele fazia de cabeca entre os dois
+ * numeros do cartao, e a divisao usa exatamente esses dois: o percentual se
+ * confere olhando o proprio cartao.
  *
  * A escolha mora na URL (?influencer=), como os filtros do relatorio: o
  * detalhe de um influencer vira um link que da para mandar, e o seletor de mes
@@ -114,6 +119,13 @@ export function SeletorInfluencer({ influencers, selecionadoId, mes }: SeletorIn
                 <dt className="text-xs text-tinta-fraca">despesas</dt>
                 <dd className="numerico text-sm font-semibold text-tinta-media">
                   {moeda(influencer.despesas)}
+                </dd>
+                {/* Sem venda no mes nao ha contra o que medir: um "0,0%" ali
+                    diria que a despesa nao pesa nada. */}
+                <dd className="numerico text-xs text-tinta-fraca">
+                  {influencer.receitaBruta > 0
+                    ? `${percentual(razaoSegura(influencer.despesas, influencer.receitaBruta))} da receita bruta`
+                    : "sem venda no mês"}
                 </dd>
               </div>
             </dl>

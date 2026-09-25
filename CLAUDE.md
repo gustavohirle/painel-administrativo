@@ -1887,6 +1887,13 @@ uma se renegocia no contrato, a outra se corta. A ordem dos cartões continua
 sendo pelo custo (comissão + despesas), que é a ordem em que a conversa
 acontece.
 
+**Embaixo das despesas vai o peso delas na receita bruta** ("16,6% da receita
+bruta", 25/09/2026, pedido do dono), e a divisão usa exatamente os dois números
+do cartão — o percentual se confere olhando o próprio cartão. Marca sem venda no
+mês diz "sem venda no mês", e não "0,0%": não há contra o que medir. O detalhe
+do influencer repete o percentual no quadro "Despesas do mês", sobre a mesma
+receita bruta (`brutoPorMarca`).
+
 O bruto por marca sai de uma varredura só sobre os pedidos do mês
 (`brutoPorMarca`), e não de um `reconciliar` por contrato dentro do `map` —
 que releria os pedidos uma vez por influencer.
@@ -2899,6 +2906,25 @@ Quatro decisões:
    botão de sair. O selo é mais estreito que o de demonstração, então a
    auditoria de 390px em modo demonstração continua sendo o teto — mas ela foi
    rodada nos dois modos.
+5. **Um selo por fonte** (25/09/2026, pedido do dono): ao lado do da
+   Nuvemshop, um para cada canal que sincroniza por conta própria — hoje o
+   **TikTok** (seção 15). `SincronizacaoNaTela.canais` traz a cópia de cada
+   um, e o `/api/sincronizacao` devolve os dois juntos, então o do TikTok
+   também se atualiza de minuto em minuto. Três decisões:
+   - **Cada selo fica vermelho pelo próprio atraso.** O limite é do canal
+     (`atrasoQuePreocupaMs`), e não do selo: o TikTok roda de hora em hora
+     (`painel-tiktok.timer`), então 40 minutos ali está em dia; o vermelho
+     vem com **duas horas**, uma rodada inteira perdida.
+   - **A hora do TikTok é a data do ARQUIVO** (`fs.stat`), e não o
+     `atualizadoEm` gravado dentro dele. O selo pergunta a cada minuto, em
+     cada aba aberta, e abrir o JSON inteiro para ler um campo seria o custo
+     que o endereço existe para evitar. O arquivo só é escrito por
+     `gravarPedidos`, com `rename` no fim, então a data é a da gravação.
+   - **No celular, com dois selos, eles empilham e mostram o nome**, menores
+     (11px). Lado a lado não cabiam na linha do botão de sair, e sem o nome
+     seriam duas horas soltas sem dizer qual é qual. Conferido em 390px com
+     estado forjado, porque a auditoria roda em demonstração, e lá o lugar é
+     do selo de demonstração.
 
 **Uma loja por influencer, e cada loja por conta própria** (17/09/2026). A
 busca passa loja por loja, e a falha de uma — chave recusada, loja fora do

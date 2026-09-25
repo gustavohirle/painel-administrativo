@@ -194,6 +194,9 @@ export default async function PaginaInfluencers({
             const pedidosDaMarca = pedidosDoMes.filter((p) => p.marca === selecionado.marca);
             const marcaVendeu = pedidosDaMarca.length > 0;
             const receitaRealDaMarca = reconciliar(pedidosDaMarca).receitaReal;
+            // A mesma receita bruta do cartao, para o percentual das despesas
+            // ser o mesmo nos dois lugares.
+            const receitaBrutaDaMarca = brutoPorMarca.get(selecionado.marca) ?? 0;
 
             // A grade mostra o que foi cadastrado no mes, pela data.
             const despesasDele = despesas.filter(
@@ -222,7 +225,11 @@ export default async function PaginaInfluencers({
                   <NumeroDestaque
                     rotulo="Despesas do mês"
                     valor={moedaRedonda(totalDespesasDele)}
-                    apoio={`${despesasDele.length} despesa(s) no mês, com a parte das compartilhadas`}
+                    apoio={`${despesasDele.length} despesa(s) no mês, com a parte das compartilhadas${
+                      receitaBrutaDaMarca > 0
+                        ? ` · ${percentual(razaoSegura(totalDespesasDele, receitaBrutaDaMarca))} da receita bruta da marca`
+                        : ""
+                    }`}
                   />
                   <NumeroDestaque
                     rotulo="Custo total do influencer"

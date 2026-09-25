@@ -48,6 +48,7 @@ import {
   type PedidoConvertido,
 } from "@/lib/nuvemshop";
 import { buscarCarrinhosDaLoja, buscarPedidosDaLoja } from "@/data/apiSource";
+import { copiaDoTikTok } from "@/data/tiktokSource";
 
 const VERSAO = 1;
 
@@ -765,11 +766,15 @@ export async function obterBaseNuvemshop(): Promise<BaseNuvemshop> {
 export async function estadoDaSincronizacao(): Promise<EstadoDaSincronizacao> {
   const base = await lerDoDisco();
   const { atualizadoEm, pendentes } = situacaoDaCopia(base);
+  // O TikTok tem copia e timer proprios (secao 15); entra aqui porque e o que
+  // o cabecalho e o `/api/sincronizacao` leem, e os dois selos andam juntos.
+  const tiktok = await copiaDoTikTok();
   return {
     atualizadoEm,
     lojasPendentes: pendentes,
     sincronizando: memoria.emAndamento !== null,
     ultimoErro: memoria.ultimoErro,
+    canais: tiktok ? [tiktok] : [],
   };
 }
 

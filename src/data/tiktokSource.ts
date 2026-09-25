@@ -29,6 +29,7 @@ import { abrirMapaDeIds } from "@/data/idsTikTok";
 import { gravarToken, tokenDaConta } from "@/data/tokensCanais";
 import type { ContaDeCanal } from "@/types/canais";
 import type { Pedido } from "@/types/nuvemshop";
+import type { CopiaDeCanal } from "@/types/sincronizacao";
 
 const BASE = "https://open-api.tiktokglobalshop.com";
 const AUTENTICACAO = "https://auth.tiktok-shops.com/api/v2/token";
@@ -406,7 +407,22 @@ export async function pedidosDoTikTok(): Promise<Pedido[]> {
   return listas.flatMap((l) => l?.pedidos ?? []);
 }
 
-/** Quando cada conta foi sincronizada, para o rodape. */
+/**
+ * `painel-tiktok.timer` roda de hora em hora, e a busca leva uns dois minutos.
+ * Duas horas sem copia nova e uma rodada perdida inteira: o timer parado, o
+ * token recusado ou a API fora do ar -- nao demora.
+ */
+const ATRASO_QUE_PREOCUPA_MS = 2 * 60 * 60 * 1000;
+
+/**
+ * De quando e a copia de cada conta, para o selo do cabecalho.
+ *
+ * Pela data do ARQUIVO, e nao pelo `atualizadoEm` de dentro dele. O selo
+ * pergunta de minuto em minuto, em cada aba aberta, e abrir o JSON inteiro --
+ * milhares de pedidos -- so para ler um campo e exatamente o custo que o
+ * `/api/sincronizacao` existe para evitar. O arquivo so e escrito por
+ * `gravarPedidos`, com `rename` no fim, entao a data dele e a da gravacao.
+ */
 export async function estadoDoTikTok(): Promise<{ marca: string; atualizadoEm: string | null }[]> {
   let contas: ContaDeCanal[];
   try {
@@ -415,9 +431,32 @@ export async function estadoDoTikTok(): Promise<{ marca: string; atualizadoEm: s
     return [];
   }
   return Promise.all(
-    contas.map(async (conta) => ({
-      marca: conta.marca,
-      atualizadoEm: (await lerPedidosDaConta(conta))?.atualizadoEm ?? null,
-    })),
+    contas.map(async (conta) => {
+      try {
+        const info = await fs.stat(arquivo(conta));
+        return { marca: conta.marca, atualizadoEm: info.mtime.toISOString() };
+      } catch {
+        return { marca: conta.marca, atualizadoEm: null };
+      }
+    }),
   );
+}
+
+/**
+ * O selo do TikTok: a copia mais velha entre as contas, como o da Nuvemshop faz
+ * com as lojas. `null` quando nao ha conta de TikTok configurada -- ai nao ha
+ * selo nenhum.
+ */
+export async function copiaDoTikTok(): Promise<CopiaDeCanal | null> {
+  const contas = await estadoDoTikTok();
+  if (contas.length === 0) return null;
+
+  const datas = contas.map((c) => c.atualizadoEm).filter((d): d is string => d !== null);
+  return {
+    rotulo: "TikTok",
+    atualizadoEm: datas.length > 0 ? datas.sort()[0]! : null,
+    contasPendentes: contas.filter((c) => c.atualizadoEm === null).map((c) => c.marca),
+    atrasoQuePreocupaMs: ATRASO_QUE_PREOCUPA_MS,
+    frequencia: "O servidor busca os pedidos do TikTok de hora em hora.",
+  };
 }
