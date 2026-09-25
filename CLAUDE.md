@@ -3125,12 +3125,15 @@ está listado abaixo **não está**, de propósito.
   <aaaa-mm>`. Vale perguntar ao contador se cosmético na revenda não está no
   PIS/COFINS **monofásico** (alíquota zero para quem revende) — aí nem o Shine
   Sérum pagaria.
-- **Dos 9,0% do TikTok, 6,2% são o imposto sobre o faturado** (ICMS 4% +
-  IRPJ e CSLL do Presumido) **e o resto é o faturado sobre o recebido** (1,44×
-  em agosto: 31% do valor foi cancelado). O imposto incide sobre todo pedido
-  criado (5.1.1), e o simulador o reparte pelas vendas pagas. Na Tha o fator é
-  1,15×. Voltar a tributar só o recebido é decisão do dono, e ainda não foi
-  tomada.
+- **E o cancelado saiu da base no mesmo dia** (5.1.1). Dos 9,0% do TikTok
+  depois do PIS/COFINS, 6,2% eram o imposto sobre o faturado e o resto era o
+  faturado sobre o recebido (1,44×: 31% do valor de agosto foi cancelado). Com
+  cancelados e reembolsados fora, o simulador do TikTok de agosto ficou em
+  **6,2%** (ICMS 3,95% + IRPJ 1,20% + CSLL 1,08% do valor pago); a Tha foi de
+  8,0% para **6,9%**, e o DIFAL dela de 7,7% para 6,7%. A base do DAS da Ka
+  caiu de R$ 476 mil para R$ 401 mil, na mesma faixa (o RBT12 não mudou). O
+  DIFAL do TikTok não mexeu: os pedidos cancelados de lá chegam sem estado de
+  destino, e já estavam fora da base interestadual.
 - **Os custos de fabricação gravados são PROVISÓRIOS**: 35% do preço de venda,
   a pedido do dono, só para o painel ter base até os custos reais chegarem. São
   76 fichas, com o valor inteiro em "matéria-prima" e os outros três componentes

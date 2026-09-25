@@ -5,7 +5,8 @@
  *
  * Existe para responder "por que o simulador diz X% de imposto": o simulador
  * divide o imposto do mes pelo RECEBIDO, e o imposto incide sobre o FATURADO
- * (5.1.1). Aqui aparecem as duas bases lado a lado, e cada linha da apuracao.
+ * sem cancelados e reembolsados (5.1.1). Aqui aparecem as bases lado a lado, e
+ * cada linha da apuracao.
  * Mesmas funcoes da tela; nenhuma conta propria alem das divisoes do resumo.
  */
 
@@ -55,13 +56,14 @@ async function main() {
 
   console.log(`\n${marca} -- ${mes} -- ${a.regime}\n`);
   console.log(`pedidos criados        ${daMarca.length}`);
-  console.log(`faturado (com frete)   ${reais(r.bruto)}   <- base do imposto (5.1.1)`);
+  console.log(`faturado (com frete)   ${reais(r.bruto)}`);
   console.log(`  soma dos itens       ${reais(itens)}   (preco x quantidade, todos os pedidos)`);
   console.log(`  nao pago             ${reais(r.naoPago)}`);
   console.log(`  cancelado            ${reais(r.cancelado)}`);
   console.log(`  reembolsado          ${reais(r.reembolsado)}`);
+  console.log(`base do imposto        ${reais(r.faturadoTributavel)}   <- faturado - cancelado - reembolsado (5.1.1)`);
   console.log(`recebido               ${reais(r.recebido)}   <- o simulador divide por este`);
-  console.log(`faturado / recebido    ${(r.bruto / r.recebido).toFixed(3)}x\n`);
+  console.log(`base / recebido        ${(r.faturadoTributavel / r.recebido).toFixed(3)}x\n`);
 
   console.log("tributo      aliquota         base            valor    % do faturado   % do recebido");
   let semDifal = 0;
