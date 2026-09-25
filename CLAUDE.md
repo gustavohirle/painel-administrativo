@@ -3167,9 +3167,21 @@ está listado abaixo **não está**, de propósito.
 - **Os quatro contratos novos nasceram como PREMISSA** (cópia da Tha: 25%
   sobre o que cai na conta, Lucro Presumido, GO), e o dono já editou três pela
   tela: Ka 22%, Duale 30% e Laoli 20%, os três no **Simples Nacional** — por
-  isso não têm DIFAL. A Revenda continua com a premissa (e é canal de revenda,
-  ticket médio ~R$ 1.500: pode nem pagar comissão). O regime da Laoli pode ter
-  vindo do formulário da Duale (defeito abaixo): confirmar com o dono.
+  isso não têm DIFAL. A Revenda é canal de revenda, ticket médio ~R$ 1.500. O
+  regime da Laoli pode ter vindo do formulário da Duale (defeito abaixo):
+  confirmar com o dono.
+- **A Revenda é Lucro Presumido** (dito pelo dono em 25/09/2026). O contrato
+  tinha ido para o Simples em algum momento, e foi devolvido ao Presumido no
+  banco do servidor. Os 57 produtos dela já tinham o ICMS do Presumido marcado
+  (de quando o contrato nasceu), e a troca de regime do mesmo dono não remarca
+  imposto (`ajustesDeDono`), então o ICMS de 4% passou a valer na hora. Agosto:
+  o DAS de R$ 13,2 mil virou R$ 8,0 mil de imposto (ICMS + IRPJ + CSLL) mais
+  R$ 8,3 mil de DIFAL, que o Simples não recolhe. E a faixa do Simples de quem
+  ficou caiu: Duale e Laoli, sem CNPJ cadastrado, eram somadas com a Revenda
+  num grupo só (5.10.1); sem ela, a alíquota efetiva foi de 10,31% para 9,71%.
+  **Se Revenda e Duale forem o mesmo CNPJ** (as duas estão na conta Nuvemshop
+  da CLIP NEGOCIOS DIGITAIS), a Duale também é Presumido — um CNPJ tem um
+  regime só. Preencher o CNPJ das três resolve a dúvida e o agrupamento.
 - **Defeito corrigido em 17/09/2026**: na tela de um influencer, trocar de
   cartão com "Editar contrato" aberto mantinha os campos do anterior, e o
   contrato da Laoli foi gravado com a marca "Duale Beauty" — a loja Laoli
