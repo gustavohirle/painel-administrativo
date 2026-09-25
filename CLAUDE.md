@@ -3074,6 +3074,27 @@ está listado abaixo **não está**, de propósito.
   deixou o **ICMS em 4%** (marcado nos 82) e marcou PIS e COFINS num produto
   para testar a regra nova (5.10) — os dois passaram a incidir só sobre ele.
   Próximo passo: montar os kits na aba Kits (5.11.1) e cadastrar os custos.
+- **PIS e COFINS: só no Shine Sérum Capilar 65ml** (Tha Beauty,
+  `228990398:1009533981`), o produto que o dono marcou à mão em 17/09. Em
+  25/09/2026 havia **220** produtos com os dois marcados: no servidor, PIS e
+  COFINS tinham passado a "nascer marcados" (`aplicacaoPorProduto: true`,
+  contra o `false` da semente e da decisão do cliente em 5.10), e todo lote
+  trazido depois disso veio com eles — 67 da Tha, os 39 do TikTok e os de Ka,
+  Revenda e Duale de quando ainda estavam no Presumido. Apareceu pelo
+  simulador: o TikTok de agosto dava **14,2%** de imposto sobre o valor pago.
+  O dono confirmou que só aquele produto tem os dois; a flag voltou para
+  `false` e os 219 foram desmarcados (cópia de antes em
+  `/var/backups/painel/pis-cofins-antes-*.json`). O TikTok de agosto caiu
+  para **9,0%**. Para conferir de novo: `npm run impostos:marca -- "<marca>"
+  <aaaa-mm>`. Vale perguntar ao contador se cosmético na revenda não está no
+  PIS/COFINS **monofásico** (alíquota zero para quem revende) — aí nem o Shine
+  Sérum pagaria.
+- **Dos 9,0% do TikTok, 6,2% são o imposto sobre o faturado** (ICMS 4% +
+  IRPJ e CSLL do Presumido) **e o resto é o faturado sobre o recebido** (1,44×
+  em agosto: 31% do valor foi cancelado). O imposto incide sobre todo pedido
+  criado (5.1.1), e o simulador o reparte pelas vendas pagas. Na Tha o fator é
+  1,15×. Voltar a tributar só o recebido é decisão do dono, e ainda não foi
+  tomada.
 - **Os custos de fabricação gravados são PROVISÓRIOS**: 35% do preço de venda,
   a pedido do dono, só para o painel ter base até os custos reais chegarem. São
   76 fichas, com o valor inteiro em "matéria-prima" e os outros três componentes
