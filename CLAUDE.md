@@ -379,9 +379,18 @@ A fatia da Intelipost some quando é zero (a demonstração não tem). Custo da
 transportadora ausente (`"0.00"`) deixa o frete inteiro com ela, e a loja
 pagando mais que cobrou (frete grátis) não é modelado.
 
-A fatia de taxas se chama **"Taxas das lojas (Nuvemshop, TikTok, cartão e
-pix)"** desde 25/09/2026: com o marketplace ligado, "Taxas Nuvemshop" passou a
-nomear errado metade do que estava ali dentro.
+A fatia de taxas se chama **"Taxas das lojas (plataforma, cartão e pix)"**
+desde 25/09/2026: com o marketplace ligado, "Taxas Nuvemshop" passou a nomear
+errado metade do que estava ali dentro. O rotulo nao cita loja nenhuma de
+proposito -- filtrada por uma loja so (abaixo), citar a outra seria mentira.
+
+**A tela inicial tem filtro de loja** (pedido do cliente, 25/09/2026): botoes
+no topo da pizza, e a escolha mora na URL (`?loja=`). Ele filtra a TELA
+INTEIRA, e nao so o grafico: pizza de um canal ao lado do raio-x de todos
+mostraria dois lucros diferentes na mesma tela, que e o que a 5.14 proibe no
+relatorio pelo mesmo motivo. Marca que nao vendeu no mes nao vira botao, e um
+endereco com loja que nao existe volta para "todas as lojas", em silencio --
+link velho nao e erro de quem esta olhando.
 
 **A fatia de taxas é uma só**: Nuvemshop, cartão e pix juntos. O cadastro é por
 meio de pagamento, e a taxa do plano da Nuvemshop, se houver, entra somada ao

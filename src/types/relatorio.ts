@@ -133,7 +133,7 @@ export const ROTULO_METRICA: Record<Metrica, string> = {
   margemContribuicao: "Margem de contribuição",
   margemItens: "Margem bruta do item",
   impostos: "Impostos",
-  taxas: "Taxas das lojas (Nuvemshop, TikTok, cartão e pix)",
+  taxas: "Taxas das lojas (plataforma, cartão e pix)",
   comissao: "Comissão",
   lucro: "Lucro operacional",
   margemPercentual: "Margem operacional",

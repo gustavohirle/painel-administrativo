@@ -7,6 +7,7 @@ import { EvolucaoMensal } from "@/components/EvolucaoMensal";
 import { MeiosPagamento } from "@/components/MeiosPagamento";
 import { SinaisAdicionais } from "@/components/SinaisAdicionais";
 import { RodapeDemonstracao } from "@/components/RodapeDemonstracao";
+import { SeletorLoja } from "@/components/SeletorLoja";
 import {
   BotaoResultado,
   Oculto,
@@ -46,10 +47,10 @@ export const dynamic = "force-dynamic";
 export default async function PaginaPainel({
   searchParams,
 }: {
-  searchParams: Promise<{ mes?: string }>;
+  searchParams: Promise<{ mes?: string; loja?: string }>;
 }) {
   const usuario = await exigirArea("financeiro");
-  const { mes: mesPedido } = await searchParams;
+  const { mes: mesPedido, loja: lojaPedida } = await searchParams;
 
   const fonte = obterFonteDePedidos();
   const repositorio = await obterRepositorioCadastros();
@@ -79,9 +80,28 @@ export default async function PaginaPainel({
   const meses = mesesDisponiveis(todosOsPedidos);
   const mesSelecionado = await mesDaTela(meses, mesPedido);
 
-  const pedidosDoMes = filtrarPorMes(todosOsPedidos, mesSelecionado);
-  const carrinhos = await fonte.listarCarrinhosAbandonados(
-    mesSelecionado ? periodoDoMes(mesSelecionado) : undefined,
+  const doMes = filtrarPorMes(todosOsPedidos, mesSelecionado);
+
+  /*
+   * Filtro de loja (5.1): a tela INTEIRA passa a ser daquela marca, e nao so a
+   * pizza. Uma pizza de um canal ao lado do raio-x de todos mostraria dois
+   * lucros diferentes na mesma tela. Marca que nao vendeu no mes nao vira
+   * botao, e um ?loja= que nao existe e ignorado em silencio -- e link
+   * velho, nao erro de quem esta olhando.
+   */
+  const lojas = [...new Set(doMes.map((p) => p.marca))].sort((a, b) =>
+    a.localeCompare(b, "pt-BR"),
+  );
+  const lojaSelecionada = lojaPedida && lojas.includes(lojaPedida) ? lojaPedida : null;
+  const daLoja = <T extends { marca: string }>(lista: T[]) =>
+    lojaSelecionada ? lista.filter((item) => item.marca === lojaSelecionada) : lista;
+
+  const pedidosDoMes = daLoja(doMes);
+  const historico = daLoja(todosOsPedidos);
+  const carrinhos = daLoja(
+    await fonte.listarCarrinhosAbandonados(
+      mesSelecionado ? periodoDoMes(mesSelecionado) : undefined,
+    ),
   );
 
   const reconciliacao = reconciliar(pedidosDoMes);
@@ -92,14 +112,14 @@ export default async function PaginaPainel({
    * marca -- e a marca, quando ela nao tem contrato ativo, para a linha nao
    * ficar sem nome na legenda.
    */
-  const evolucao = evolucaoPorMarca(todosOsPedidos, 12);
+  const evolucao = evolucaoPorMarca(historico, 12);
   const nomeDaMarca = new Map(
     influencers.filter((i) => i.ativo).map((i) => [i.marca, i.nome] as const),
   );
-  const sinais = calcularSinaisAdicionais(pedidosDoMes, carrinhos, todosOsPedidos);
+  const sinais = calcularSinaisAdicionais(pedidosDoMes, carrinhos, historico);
   const impostos = apurarImpostos(
     pedidosDoMes,
-    todosOsPedidos,
+    historico,
     produtos,
     impostosCadastrados,
     influencers,
@@ -196,6 +216,7 @@ export default async function PaginaPainel({
         </div>
 
         <Cartao
+          acao={<SeletorLoja lojas={lojas} selecionada={lojaSelecionada} />}
           titulo="Para onde vai cada real faturado"
           descricao="O que nunca entrou, o frete, os impostos, o DIFAL, a taxa da Nuvemshop, o custo de fabricação, as comissões -- e o que sobra."
         >
