@@ -26,8 +26,17 @@ interface Simulacao {
   influencerId: string;
   custoTexto: string;
   precoTexto: string;
+  freteGratis: boolean;
   resultado: ResultadoSimulacao;
 }
+
+/**
+ * A opcao de frete gratis nasce como aconteceu na MAIORIA das vendas pagas do
+ * mes. Com ela desmarcada por padrao, o TikTok -- onde quase tudo sai com frete
+ * gratis -- abriria simulando o caso raro, e o caso raro e o barato.
+ */
+const freteGratisPadrao = (perfil: PerfilDeCusto | null | undefined): boolean =>
+  (perfil?.freteGratis?.fracaoDosPedidos ?? 0) >= 0.5;
 
 /**
  * Formulario do simulador e o resultado ao lado.
@@ -41,6 +50,7 @@ export function SimuladorPreco({ perfis, rotuloMes, semVendas }: SimuladorPrecoP
   const [influencerId, setInfluencerId] = useState(perfis[0]?.influencerId ?? "");
   const [custoTexto, setCustoTexto] = useState("");
   const [precoTexto, setPrecoTexto] = useState("");
+  const [freteGratis, setFreteGratis] = useState(freteGratisPadrao(perfis[0]));
   const [erro, setErro] = useState("");
   const [simulacao, setSimulacao] = useState<Simulacao | null>(null);
 
@@ -56,7 +66,18 @@ export function SimuladorPreco({ perfis, rotuloMes, semVendas }: SimuladorPrecoP
     );
   }
 
-  function executar(idEscolhido: string, custoDigitado: string, precoDigitado: string) {
+  /** Trocar de influencer volta a opcao de frete gratis ao padrao da marca nova. */
+  function escolherInfluencer(id: string) {
+    setInfluencerId(id);
+    setFreteGratis(freteGratisPadrao(perfis.find((p) => p.influencerId === id)));
+  }
+
+  function executar(
+    idEscolhido: string,
+    custoDigitado: string,
+    precoDigitado: string,
+    comFreteGratis: boolean,
+  ) {
     const escolhido = perfis.find((p) => p.influencerId === idEscolhido);
     if (!escolhido) {
       setErro("Escolha o influencer.");
@@ -76,17 +97,20 @@ export function SimuladorPreco({ perfis, rotuloMes, semVendas }: SimuladorPrecoP
     }
 
     setErro("");
+    // Marca sem a opcao (fora do TikTok) simula sempre sem frete gratis.
+    const gratis = escolhido.freteGratis !== null && comFreteGratis;
     setSimulacao({
       influencerId: idEscolhido,
       custoTexto: custoDigitado,
       precoTexto: precoDigitado,
-      resultado: simularPreco(escolhido, custo, preco),
+      freteGratis: gratis,
+      resultado: simularPreco(escolhido, custo, preco, gratis),
     });
   }
 
   function simular(evento: FormEvent<HTMLFormElement>) {
     evento.preventDefault();
-    executar(influencerId, custoTexto, precoTexto);
+    executar(influencerId, custoTexto, precoTexto, freteGratis);
   }
 
   /**
@@ -104,7 +128,8 @@ export function SimuladorPreco({ perfis, rotuloMes, semVendas }: SimuladorPrecoP
     setInfluencerId(simulacao.influencerId);
     setCustoTexto(simulacao.custoTexto);
     setPrecoTexto(texto);
-    executar(simulacao.influencerId, simulacao.custoTexto, texto);
+    setFreteGratis(simulacao.freteGratis);
+    executar(simulacao.influencerId, simulacao.custoTexto, texto, simulacao.freteGratis);
 
     // No celular as sugestões ficam abaixo do veredito; sem isto o número
     // muda fora da tela e o toque parece não ter feito nada.
@@ -117,7 +142,8 @@ export function SimuladorPreco({ perfis, rotuloMes, semVendas }: SimuladorPrecoP
     simulacao !== null &&
     (simulacao.influencerId !== influencerId ||
       simulacao.custoTexto !== custoTexto ||
-      simulacao.precoTexto !== precoTexto);
+      simulacao.precoTexto !== precoTexto ||
+      (perfil?.freteGratis != null && simulacao.freteGratis !== freteGratis));
 
   const perfilSimulado = simulacao
     ? (perfis.find((p) => p.influencerId === simulacao.influencerId) ?? null)
@@ -130,7 +156,7 @@ export function SimuladorPreco({ perfis, rotuloMes, semVendas }: SimuladorPrecoP
           <span className="mb-1 block text-sm font-medium text-tinta">Influencer</span>
           <select
             value={influencerId}
-            onChange={(e) => setInfluencerId(e.target.value)}
+            onChange={(e) => escolherInfluencer(e.target.value)}
             className="w-full rounded-lg border border-borda-forte bg-superficie px-3 py-2.5 text-base text-tinta"
           >
             {perfis.map((p) => (
@@ -147,6 +173,29 @@ export function SimuladorPreco({ perfis, rotuloMes, semVendas }: SimuladorPrecoP
             </span>
           )}
         </label>
+
+        {/* So no TikTok (escolha 4 de simulacaoPreco): la a loja banca o frete
+            de boa parte das vendas, e isso muda muito o custo. */}
+        {perfil?.freteGratis && (
+          <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-borda-forte px-3 py-3">
+            <input
+              type="checkbox"
+              checked={freteGratis}
+              onChange={(e) => setFreteGratis(e.target.checked)}
+              className="mt-0.5 h-5 w-5 shrink-0 accent-[var(--color-tinta)]"
+            />
+            <span className="min-w-0">
+              <span className="block text-sm font-medium text-tinta">
+                Frete grátis — a loja paga o frete
+              </span>
+              <span className="mt-0.5 block text-xs text-tinta-media">
+                Em {rotuloMes}, {percentual(perfil.freteGratis.fracaoDosPedidos, 0)} das vendas
+                pagas da {perfil.marca} saíram com frete grátis; nelas a loja pagou em média{" "}
+                {moeda(perfil.freteGratis.custoPorUnidade)} de frete por unidade.
+              </span>
+            </span>
+          </label>
+        )}
 
         <label className="block">
           <span className="mb-1 block text-sm font-medium text-tinta">
@@ -202,6 +251,7 @@ export function SimuladorPreco({ perfis, rotuloMes, semVendas }: SimuladorPrecoP
         {simulacao && perfilSimulado ? (
           <Resultado
             perfil={perfilSimulado}
+            freteGratis={simulacao.freteGratis}
             resultado={simulacao.resultado}
             rotuloMes={rotuloMes}
             desatualizada={desatualizada}
@@ -222,12 +272,14 @@ export function SimuladorPreco({ perfis, rotuloMes, semVendas }: SimuladorPrecoP
 
 function Resultado({
   perfil,
+  freteGratis,
   resultado,
   rotuloMes,
   desatualizada,
   aoUsarPreco,
 }: {
   perfil: PerfilDeCusto;
+  freteGratis: boolean;
   resultado: ResultadoSimulacao;
   rotuloMes: string;
   desatualizada: boolean;
@@ -248,7 +300,7 @@ function Resultado({
   const linhas: Array<{ rotulo: string; detalhe: string; valor: number; cor: string }> = [
     {
       rotulo: `Impostos (${ROTULO_REGIME[perfil.regime]})`,
-      detalhe: `Média de ${percentual(perfil.cargaImpostos)} do valor pago, com frete — inclui o imposto dos pedidos que não foram pagos`,
+      detalhe: `Média de ${percentual(perfil.cargaImpostos)} do valor pago${resultado.frete > 0 ? ", com frete" : ""} — inclui o imposto dos pedidos que não foram pagos`,
       valor: resultado.impostos,
       cor: "var(--color-imposto)",
     },
@@ -262,7 +314,10 @@ function Resultado({
     },
     {
       rotulo: "Taxa da plataforma e do pagamento",
-      detalhe: `Média de ${percentual(perfil.cargaTaxas)} sobre o valor pago com frete (${moeda(resultado.preco + resultado.frete)}), com a mistura de cartão, Pix e boleto da marca`,
+      detalhe:
+        resultado.frete > 0
+          ? `Média de ${percentual(perfil.cargaTaxas)} sobre o valor pago com frete (${moeda(resultado.preco + resultado.frete)}), com a mistura de cartão, Pix e boleto da marca`
+          : `Média de ${percentual(perfil.cargaTaxas)} sobre o valor pago (${moeda(resultado.preco)}), com a mistura de meios de pagamento da marca`,
       valor: resultado.taxas,
       cor: "var(--color-taxa)",
     },
@@ -273,12 +328,21 @@ function Resultado({
       // sobre quanto o percentual incidiu.
       detalhe:
         perfil.baseComissao === "liquido"
-          ? `${perfil.percentualContrato.toLocaleString("pt-BR")}% sobre o que cai na conta, sem frete (${moeda(resultado.preco - (resultado.preco + resultado.frete) * perfil.taxaForaDaComissao)})`
+          ? `${perfil.percentualContrato.toLocaleString("pt-BR")}% sobre o que cai na conta, sem frete (${moeda(resultado.baseDaComissao)})`
           : `${perfil.percentualContrato.toLocaleString("pt-BR")}% sobre o preço do produto, sem frete (contrato sobre ${ROTULO_BASE[perfil.baseComissao].toLowerCase()})`,
       valor: resultado.comissao,
       cor: "var(--color-comissao)",
     },
   ];
+
+  if (resultado.freteDaLoja > 0) {
+    linhas.push({
+      rotulo: "Frete grátis (a loja paga)",
+      detalhe: `Média do que a loja pagou à transportadora por unidade nas vendas com frete grátis de ${rotuloMes}`,
+      valor: resultado.freteDaLoja,
+      cor: "var(--color-frete-absorvido)",
+    });
+  }
 
   if (perfil.cargaDespesas > 0) {
     linhas.push({
@@ -292,7 +356,7 @@ function Resultado({
   if (perfil.cargaSocios > 0) {
     linhas.push({
       rotulo: "Participação dos sócios",
-      detalhe: `${(perfil.cargaSocios * 100).toLocaleString("pt-BR", { maximumFractionDigits: 2 })}% do valor pago com frete`,
+      detalhe: `${(perfil.cargaSocios * 100).toLocaleString("pt-BR", { maximumFractionDigits: 2 })}% do valor pago${resultado.frete > 0 ? " com frete" : ""}`,
       valor: resultado.socios,
       cor: "var(--color-socios)",
     });
@@ -342,7 +406,12 @@ function Resultado({
         </p>
       </div>
 
-      <SugestaoDePreco perfil={perfil} resultado={resultado} aoUsarPreco={aoUsarPreco} />
+      <SugestaoDePreco
+        perfil={perfil}
+        freteGratis={freteGratis}
+        resultado={resultado}
+        aoUsarPreco={aoUsarPreco}
+      />
 
       <div className="rounded-xl border border-borda">
         <Linha rotulo="Preço de venda" valor={resultado.preco} percentualTexto="100%" forte />
@@ -365,15 +434,32 @@ function Resultado({
         />
       </div>
 
-      {/* O frete saiu da lista de custos: o cliente paga por fora e ele vai
-          para a transportadora. A frase existe para ninguem achar que foi
-          esquecido. */}
-      <p className="text-sm text-tinta-media">
-        O cliente paga o frete à parte: em média {moeda(resultado.frete)} por unidade (
-        {moeda(perfil.fretePorPedido)} por pedido), que vão para a transportadora. O frete
-        não entra em imposto, comissão nem custo — só a taxa do pagamento e a participação
-        dos sócios incidem sobre o valor pago com ele, {moeda(resultado.preco + resultado.frete)}.
-      </p>
+      {/* O frete do cliente saiu da lista de custos: ele paga por fora e o
+          frete vai para a transportadora. A frase existe para ninguem achar
+          que foi esquecido. Com frete gratis e o contrario, e a frase diz. */}
+      {freteGratis ? (
+        <p className="text-sm text-tinta-media">
+          Com frete grátis o cliente paga só o produto, e a loja paga o frete: em média{" "}
+          {moeda(resultado.freteDaLoja)} por unidade, que estão na lista acima como custo.
+          Imposto, taxa e participação dos sócios incidem só sobre o preço.
+          {perfil.baseComissao === "liquido" &&
+            " Como o contrato é sobre o que cai na conta, esse frete também sai da base da comissão."}
+        </p>
+      ) : perfil.freteGratis ? (
+        <p className="text-sm text-tinta-media">
+          Sem frete grátis, o cliente paga o frete à parte: em média {moeda(resultado.frete)} por
+          unidade nas vendas de {rotuloMes} em que ele pagou, que vão para a transportadora. O
+          frete não entra em comissão nem custo — imposto, taxa e participação dos sócios
+          incidem sobre o valor pago com ele, {moeda(resultado.preco + resultado.frete)}.
+        </p>
+      ) : (
+        <p className="text-sm text-tinta-media">
+          O cliente paga o frete à parte: em média {moeda(resultado.frete)} por unidade (
+          {moeda(perfil.fretePorPedido)} por pedido), que vão para a transportadora. O frete
+          não entra em imposto, comissão nem custo — só a taxa do pagamento e a participação
+          dos sócios incidem sobre o valor pago com ele, {moeda(resultado.preco + resultado.frete)}.
+        </p>
+      )}
 
       <p className="text-xs text-tinta-fraca">
         Médias de {rotuloMes} da {perfil.marca}, tiradas de{" "}
@@ -399,10 +485,12 @@ const FORMATO_MULTIPLO = { minimumFractionDigits: 0, maximumFractionDigits: 1 } 
  */
 function SugestaoDePreco({
   perfil,
+  freteGratis,
   resultado,
   aoUsarPreco,
 }: {
   perfil: PerfilDeCusto;
+  freteGratis: boolean;
   resultado: ResultadoSimulacao;
   aoUsarPreco: (preco: number) => void;
 }) {
@@ -410,13 +498,13 @@ function SugestaoDePreco({
   const custo = resultado.custoFabricacao;
 
   const sugestoes = MARGENS_DE_REFERENCIA.map((referencia) => {
-    const exato = precoParaMargem(perfil, custo, referencia.margem);
+    const exato = precoParaMargem(perfil, custo, referencia.margem, freteGratis);
     const comercial = exato === null ? null : precoComercial(exato);
     return {
       ...referencia,
       exato,
       comercial,
-      naVenda: comercial === null ? null : simularPreco(perfil, custo, comercial),
+      naVenda: comercial === null ? null : simularPreco(perfil, custo, comercial, freteGratis),
     };
   });
 
@@ -435,7 +523,9 @@ function SugestaoDePreco({
 
   const outraPercentual = lerReais(outraTexto);
   const outraValida = outraPercentual !== null && outraPercentual >= 0 && outraPercentual < 100;
-  const outraPreco = outraValida ? precoParaMargem(perfil, custo, outraPercentual / 100) : null;
+  const outraPreco = outraValida
+    ? precoParaMargem(perfil, custo, outraPercentual / 100, freteGratis)
+    : null;
 
   return (
     <div className="rounded-xl border border-borda px-4 py-4 sm:px-5">

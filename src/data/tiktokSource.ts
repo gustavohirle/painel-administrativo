@@ -28,7 +28,7 @@ import { converterPedidoTikTok } from "@/lib/tiktok";
 import { abrirMapaDeIds } from "@/data/idsTikTok";
 import { gravarToken, tokenDaConta } from "@/data/tokensCanais";
 import type { ContaDeCanal } from "@/types/canais";
-import type { Pedido } from "@/types/nuvemshop";
+import { PREFIXO_GATEWAY_TIKTOK, type Pedido } from "@/types/nuvemshop";
 import type { CopiaDeCanal } from "@/types/sincronizacao";
 
 const BASE = "https://open-api.tiktokglobalshop.com";
@@ -300,7 +300,8 @@ export interface ResultadoSincronizacaoTikTok {
 }
 
 /** O id do TikTok fica guardado no `gateway_name`: "TikTok Shop <id>". */
-const idTikTokDoPedido = (pedido: Pedido): string => pedido.gateway_name.replace(/^TikTok Shop /, "");
+const idTikTokDoPedido = (pedido: Pedido): string =>
+  pedido.gateway_name.slice(PREFIXO_GATEWAY_TIKTOK.length);
 
 /**
  * Busca os ultimos `meses` meses de uma conta e grava no disco.

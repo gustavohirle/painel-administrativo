@@ -2246,9 +2246,62 @@ custo **da simulação que gerou a sugestão**, não com o que estiver digitado 
 se a pessoa mexeu nos campos depois, a sugestão não vale para eles — e rola até
 o veredito, que no celular fica fora da tela.
 
-O mês das médias é o do seletor do cabeçalho. Influencer inativo e marca sem
-venda paga no mês ficam fora da lista, **e a tela diz quem** — simular com carga
-zero diria que vender ali não custa nada.
+**O mês das médias é o do cabeçalho — a menos que ele seja o mês corrente**,
+e aí é o **anterior** (25/09/2026, pedido do dono; `mesDeReferenciaDoSimulador`,
+com teste). Vale para as duas abas do simulador. O mês aberto não tem as
+despesas lançadas — elas chegam da contabilidade depois que ele fecha —, e com
+despesa zero a venda saía mais lucrativa do que é. Três decisões:
+
+- **Tudo sai do mês anterior, e não só as despesas.** Cada média é fração do
+  faturamento daquele mês; a despesa de agosto com o imposto de setembro daria
+  um perfil que não é de mês nenhum. E há um segundo motivo: o repasse do TikTok
+  fecha dias depois da venda (seção 15), então a taxa do canal no mês aberto
+  ainda está pela metade.
+- **A tela diz**, logo abaixo da explicação: "As médias são de agosto de 2026, e
+  não de setembro de 2026", com o porquê. O cabeçalho mostra um mês e a conta
+  usa outro; sem a frase, alguém leria agosto achando que é setembro.
+- **A URL continua com o mês do cabeçalho.** Trocar de aba não pode trocar o
+  mês escolhido (2.2). Sem o mês anterior na base, fica o do cabeçalho.
+
+Influencer inativo e marca sem venda paga no mês ficam fora da lista, **e a tela
+diz quem** — simular com carga zero diria que vender ali não custa nada.
+
+**Frete grátis, só no TikTok** (25/09/2026, pedido do dono). Na loja do TikTok
+a loja banca o frete de boa parte das vendas, e isso muda muito o custo: o
+cliente paga só o produto, o frete sai do repasse (`freteAbsorvido`, 5.1) e, no
+contrato sobre o que cai na conta, também sai da base da comissão (5.1.2). O
+formulário ganha a caixa **"Frete grátis — a loja paga o frete"**, com o
+percentual das vendas do mês que saíram assim e o quanto a loja pagou por
+unidade. Marcada, a escolha 2 acima se inverte:
+
+| | Cliente paga o frete | Frete grátis |
+|---|---|---|
+| Frete do cliente (base de imposto, taxa e sócios) | o das vendas em que ele pagou | zero |
+| Frete da loja (custo) | zero | o das vendas com frete grátis |
+| Base da comissão "o que cai na conta" | preço − taxa | preço − taxa − frete da loja |
+
+```
+preço para a margem m = (fabricação + frete do cliente × (impostos + DIFAL + taxa + sócios − c × taxa)
+                         + frete da loja × (1 − c))  ÷ (1 − cargas − m)
+c = percentual da comissão, só no contrato sobre o que cai na conta (senão 0)
+```
+
+Quatro decisões:
+
+1. **As duas médias são medidas em grupos separados** (`FreteGratisDaMarca`):
+   o que a loja pagou, só nas vendas com frete grátis; o que o cliente pagou,
+   só nas outras. Misturadas, cada uma sairia diluída na outra.
+2. **Só no TikTok, pelo canal e não pelo dado** (`ehPedidoDoTikTok`, o prefixo
+   "TikTok Shop" que a conversão grava no `gateway_name`). A primeira versão
+   ligava a caixa em qualquer marca que tivesse frete bancado no mês, e o dono
+   corrigiu na hora: uma promoção de frete grátis numa loja Nuvemshop trocaria
+   o frete médio de sempre e mexeria num simulador que estava certo.
+3. **A caixa nasce como aconteceu na maioria das vendas do mês.** No TikTok
+   quase tudo sai com frete grátis; desmarcada por padrão, a tela abriria
+   simulando o caso raro — e o raro é o barato.
+4. **Há teste de identidade com a DRE**: uma marca com todo pedido em frete
+   grátis, simulada no preço e no custo médios, reproduz o lucro operacional
+   dela, com o frete bancado inteiro como custo e a comissão batendo inteira.
 
 O resultado guarda os valores que o produziram. Mexer num campo depois apaga o
 destaque e avisa "toque em Simular para atualizar"; senão a pessoa leria o lucro

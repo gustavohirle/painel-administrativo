@@ -26,7 +26,7 @@
 
 import { paraHorarioDeBrasilia } from "@/lib/nuvemshop";
 import { normalizarUF } from "@/types/estados";
-import { normalizarMetodoPagamento } from "@/types/nuvemshop";
+import { normalizarMetodoPagamento, PREFIXO_GATEWAY_TIKTOK } from "@/types/nuvemshop";
 import type {
   MetodoPagamento,
   Pedido,
@@ -188,7 +188,7 @@ export function converterPedidoTikTok(
     shipping_cost_owner: dinheiro(frete + freteDaLoja),
     // O nome do meio de pagamento vem do TikTok ("CCI", "Pix"...): ele aparece
     // na aba de taxas para alguem cadastrar quanto a plataforma retem.
-    gateway_name: `TikTok Shop ${idTikTok}`,
+    gateway_name: `${PREFIXO_GATEWAY_TIKTOK}${idTikTok}`,
     payment_details: {
       /*
        * Passa pelo mesmo normalizador da Nuvemshop (5.13.1): nome conhecido

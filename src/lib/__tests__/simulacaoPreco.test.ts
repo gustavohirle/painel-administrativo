@@ -17,6 +17,7 @@ import { filtrarPorMes, mesesDisponiveis, pedidosRecebidos } from "@/lib/metrics
 import { apurarTaxasPlataforma } from "@/lib/plataforma";
 import {
   MARGENS_DE_REFERENCIA,
+  mesDeReferenciaDoSimulador,
   montarPerfisDeCusto,
   precoComercial,
   precoParaMargem,
@@ -46,6 +47,7 @@ function perfil(parcial: Partial<PerfilDeCusto> = {}): PerfilDeCusto {
     fretePorPedido: 20,
     unidadesPorPedido: 2,
     fretePorUnidade: 10,
+    freteGratis: null,
     impostosNaoConfirmados: false,
     taxasNaoConfirmadas: false,
     ...parcial,
@@ -142,6 +144,135 @@ describe("simularPreco", () => {
     const r = simularPreco(perfil({ cargaComissao: 0.85 }), 30, 100);
     expect(r.cargaProporcional).toBeGreaterThanOrEqual(1);
     expect(r.precoMinimo).toBeNull();
+  });
+});
+
+describe("frete grátis (TikTok)", () => {
+  // A loja banca R$ 12 de frete por unidade nas vendas com frete gratis; nas
+  // outras, o cliente paga R$ 8 por fora.
+  const comFreteGratis = (parcial: Partial<PerfilDeCusto> = {}) =>
+    perfil({
+      freteGratis: { fracaoDosPedidos: 0.8, custoPorUnidade: 12, freteDoClientePorUnidade: 8 },
+      ...parcial,
+    });
+
+  it("com frete grátis o cliente não paga frete e a loja paga: vira custo", () => {
+    const r = simularPreco(comFreteGratis(), 30, 100, true);
+    expect(r.frete).toBe(0);
+    expect(r.freteDaLoja).toBe(12);
+    // Imposto e taxa so sobre o preco: nao houve frete cobrado.
+    expect(r.impostos).toBeCloseTo(10, 10);
+    expect(r.taxas).toBeCloseTo(3, 10);
+    // 100 - (10 + 2 + 3 + 35 + 30 + 12)
+    expect(r.lucro).toBeCloseTo(8, 10);
+  });
+
+  it("sem frete grátis, o frete do cliente é o das vendas em que ele pagou", () => {
+    const r = simularPreco(comFreteGratis(), 30, 100, false);
+    expect(r.frete).toBe(8);
+    expect(r.freteDaLoja).toBe(0);
+    expect(r.impostos).toBeCloseTo(10.8, 10);
+  });
+
+  it("contrato sobre o que cai na conta: o frete que a loja bancou sai da base da comissão", () => {
+    const p = comFreteGratis({ baseComissao: "liquido", taxaForaDaComissao: 0.03 });
+    const r = simularPreco(p, 30, 100, true);
+    expect(r.baseDaComissao).toBeCloseTo(100 - 3 - 12, 10);
+    expect(r.comissao).toBeCloseTo((100 - 3 - 12) * 0.35, 10);
+  });
+
+  it("o preço mínimo e o sugerido fecham com frete grátis, nas duas bases", () => {
+    for (const baseComissao of ["bruto", "liquido"] as const) {
+      const p = comFreteGratis({ baseComissao, taxaForaDaComissao: baseComissao === "liquido" ? 0.03 : 0 });
+      const { precoMinimo } = simularPreco(p, 30, 100, true);
+      expect(simularPreco(p, 30, precoMinimo!, true).lucro).toBeCloseTo(0, 8);
+      const sugerido = precoParaMargem(p, 30, 0.15, true)!;
+      expect(simularPreco(p, 30, sugerido, true).margem).toBeCloseTo(0.15, 8);
+    }
+  });
+
+  it("frete grátis sobe o preço mínimo", () => {
+    const p = comFreteGratis();
+    expect(simularPreco(p, 30, 100, true).precoMinimo!).toBeGreaterThan(
+      simularPreco(p, 30, 100, false).precoMinimo!,
+    );
+  });
+
+  it("marca sem frete grátis ignora a opção", () => {
+    const p = perfil();
+    expect(simularPreco(p, 30, 100, true)).toEqual(simularPreco(p, 30, 100, false));
+  });
+
+  it("uma marca toda em frete grátis: simular a média reproduz a DRE", () => {
+    // A marca mais vendida da demonstracao, com todo pedido virado para frete
+    // gratis: o cliente paga so o produto e a loja paga R$ 19 a transportadora.
+    const cenario = cenarioDemo();
+    const marca = cenario.perfis[0]!.marca;
+    const gratis = (pedidos: typeof cenario.pedidos) =>
+      pedidos.map((p) =>
+        p.marca !== marca
+          ? p
+          : {
+              ...p,
+              total: (Number(p.total) - Number(p.shipping_cost_customer)).toFixed(2),
+              shipping_cost_customer: "0.00",
+              shipping_cost_owner: "19.00",
+              gateway_name: `TikTok Shop ${p.id}`,
+            },
+      );
+    const pedidos = gratis(cenario.pedidos);
+    const pedidosDoMes = gratis(cenario.pedidosDoMes);
+    const influencers = cenario.influencers.map((i) => ({ ...i, baseComissao: "liquido" as const }));
+    const { produtos, impostos, aliquotas, taxas, despesas, custos } = cenario;
+
+    const [p] = montarPerfisDeCusto({
+      pedidosDoMes,
+      influencers,
+      impostos: apurarImpostos(pedidosDoMes, pedidos, produtos, impostos, influencers, aliquotas),
+      taxas,
+      despesas,
+    }).filter((x) => x.marca === marca);
+    expect(p!.freteGratis?.fracaoDosPedidos).toBe(1);
+
+    const daMarca = pedidosDoMes.filter((x) => x.marca === marca);
+    const dre = montarDemonstrativo(daMarca, custos, influencers, {
+      produtos,
+      impostos: apurarImpostos(daMarca, pedidos, produtos, impostos, influencers, aliquotas),
+      taxasPlataforma: apurarTaxasPlataforma(daMarca, taxas),
+      despesasInfluencers: despesas,
+    });
+    const r = dre.reconciliacao;
+    expect(r.freteAbsorvido).toBeGreaterThan(0);
+
+    const simulado = simularPreco(p!, dre.cmv.cmv / p!.unidadesPagas, r.receitaReal / p!.unidadesPagas, true);
+    // O frete bancado aparece inteiro como custo, e a comissao bate inteira.
+    expect(simulado.freteDaLoja * p!.unidadesPagas).toBeCloseTo(r.freteAbsorvido, 4);
+    expect(simulado.comissao * p!.unidadesPagas).toBeCloseTo(dre.totalComissoes, 4);
+    const foraDaSimulacao = dre.totalDespesasInfluencers * (1 - r.receitaReal / r.brutoSemFrete);
+    expect(
+      Math.abs(simulado.lucro * p!.unidadesPagas - dre.lucroOperacional - foraDaSimulacao),
+    ).toBeLessThan(0.01);
+  });
+});
+
+describe("mesDeReferenciaDoSimulador", () => {
+  const meses = ["2026-09", "2026-08", "2026-07", "2026-01", "2025-12"];
+
+  it("no mês corrente, usa o anterior: o aberto não tem as despesas lançadas", () => {
+    expect(mesDeReferenciaDoSimulador("2026-09", "2026-09", meses)).toBe("2026-08");
+  });
+
+  it("mês já fechado no cabeçalho vale como está", () => {
+    expect(mesDeReferenciaDoSimulador("2026-08", "2026-09", meses)).toBe("2026-08");
+    expect(mesDeReferenciaDoSimulador("2026-07", "2026-09", meses)).toBe("2026-07");
+  });
+
+  it("janeiro volta para dezembro do ano anterior", () => {
+    expect(mesDeReferenciaDoSimulador("2026-01", "2026-01", meses)).toBe("2025-12");
+  });
+
+  it("sem o mês anterior na base, fica o do cabeçalho", () => {
+    expect(mesDeReferenciaDoSimulador("2025-12", "2025-12", meses)).toBe("2025-12");
   });
 });
 
@@ -252,6 +383,31 @@ describe("montarPerfisDeCusto", () => {
 
   it("todo contrato semeado é sobre o faturamento bruto", () => {
     expect(influencersIniciais().every((i) => i.baseComissao === "bruto")).toBe(true);
+  });
+
+  it("frete grátis numa loja que NÃO é do TikTok não liga a opção", () => {
+    // Pedido do dono: o calculo novo e so do TikTok. Uma promocao de frete
+    // gratis na Nuvemshop nao pode trocar o frete medio de sempre.
+    const cenario = cenarioDemo();
+    const marca = cenario.perfis[0]!.marca;
+    const antes = cenario.perfis[0]!;
+    const pedidosDoMes = cenario.pedidosDoMes.map((p, i) =>
+      p.marca === marca && i % 3 === 0 ? { ...p, shipping_cost_customer: "0.00", shipping_cost_owner: "19.00" } : p,
+    );
+    const [depois] = montarPerfisDeCusto({
+      pedidosDoMes,
+      influencers: cenario.influencers,
+      impostos: apurarImpostos(pedidosDoMes, cenario.pedidos, cenario.produtos, cenario.impostos, cenario.influencers, cenario.aliquotas),
+      taxas: cenario.taxas,
+      despesas: cenario.despesas,
+    }).filter((p) => p.marca === marca);
+    expect(depois!.freteGratis).toBeNull();
+    expect(antes.freteGratis).toBeNull();
+  });
+
+  it("na demonstração nenhuma marca banca frete, e a opção de frete grátis não aparece", () => {
+    const { perfis } = cenarioDemo();
+    expect(perfis.every((p) => p.freteGratis === null)).toBe(true);
   });
 
   it("frete por unidade é o frete do pedido dividido pelas unidades do pedido", () => {

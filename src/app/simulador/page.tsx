@@ -11,11 +11,11 @@ import { modoDemonstracao } from "@/lib/config";
 import { ratearDespesas } from "@/lib/costing";
 import { mesAnoLongo } from "@/lib/format";
 import { apurarImpostos } from "@/lib/impostos";
-import { filtrarPorMes, mesesDisponiveis } from "@/lib/metrics";
+import { diaDeHoje, filtrarPorMes, mesesDisponiveis } from "@/lib/metrics";
 import { mesDaTela } from "@/lib/mesDaTelaServidor";
 import { exigirArea } from "@/lib/sessao";
 import { montarReferencia } from "@/lib/simulacaoInfluencer";
-import { montarPerfisDeCusto } from "@/lib/simulacaoPreco";
+import { mesDeReferenciaDoSimulador, montarPerfisDeCusto } from "@/lib/simulacaoPreco";
 
 export const dynamic = "force-dynamic";
 
@@ -71,8 +71,19 @@ export default async function PaginaSimulador({
 
   const meses = mesesDisponiveis(todosOsPedidos);
   const mesSelecionado = await mesDaTela(meses, mesPedido);
-  const pedidosDoMes = filtrarPorMes(todosOsPedidos, mesSelecionado);
-  const rotuloMes = mesAnoLongo(mesSelecionado);
+  /*
+   * As medias saem do mes do cabecalho, a menos que ele seja o mes corrente:
+   * ai, do anterior (25/09/2026, pedido do dono). O mes aberto nao tem as
+   * despesas lancadas, e a venda sairia mais lucrativa do que e. Ver
+   * `mesDeReferenciaDoSimulador`.
+   */
+  const mesDaSimulacao = mesDeReferenciaDoSimulador(
+    mesSelecionado,
+    diaDeHoje().slice(0, 7),
+    meses,
+  );
+  const pedidosDoMes = filtrarPorMes(todosOsPedidos, mesDaSimulacao);
+  const rotuloMes = mesAnoLongo(mesDaSimulacao);
 
   const impostos = apurarImpostos(
     pedidosDoMes,
@@ -84,6 +95,8 @@ export default async function PaginaSimulador({
   );
 
   const endereco = (destino: Aba) => {
+    // A URL guarda o mes do CABECALHO, e nao o da simulacao: trocar de aba nao
+    // pode mudar o mes escolhido.
     const params = new URLSearchParams();
     if (mesSelecionado) params.set("mes", mesSelecionado);
     if (destino !== "produto") params.set("aba", destino);
@@ -112,9 +125,19 @@ export default async function PaginaSimulador({
           </h1>
           <p className="mt-1 max-w-3xl text-sm text-tinta-media">
             {aba === "produto"
-              ? `Escolha o influencer, informe quanto custa fabricar e por quanto pretende vender. O painel desconta impostos, DIFAL, taxa, comissão e a participação dos sócios pelas médias de ${rotuloMes} da marca e mostra se a venda dá lucro ou prejuízo. O frete é pago pelo cliente à parte.`
+              ? `Escolha o influencer, informe quanto custa fabricar e por quanto pretende vender. O painel desconta impostos, DIFAL, taxa, comissão e a participação dos sócios pelas médias de ${rotuloMes} da marca e mostra se a venda dá lucro ou prejuízo. O frete é pago pelo cliente à parte — no TikTok, dá para simular com frete grátis.`
               : `Informe o percentual de comissão e o faturamento esperado de um influencer. O painel estima o resultado com os custos médios das marcas atuais em ${rotuloMes}.`}
           </p>
+          {/* O cabecalho diz um mes e a conta usa outro: sem esta frase, a
+              pessoa leria as medias de agosto achando que sao de setembro. */}
+          {mesDaSimulacao !== mesSelecionado && (
+            <p className="mt-2 max-w-3xl text-sm text-tinta-media">
+              <strong className="text-tinta">As médias são de {rotuloMes}, e não de {mesAnoLongo(mesSelecionado)}.</strong>{" "}
+              O mês corrente ainda está aberto: as despesas com influencers só são
+              lançadas depois que ele fecha, e as taxas do TikTok chegam dias depois de
+              cada venda. Com ele, a venda pareceria mais lucrativa do que é.
+            </p>
+          )}
         </div>
 
         <nav
@@ -171,7 +194,7 @@ export default async function PaginaSimulador({
             >
               <SimuladorInfluencer
                 referencia={montarReferencia({
-                  mes: mesSelecionado,
+                  mes: mesDaSimulacao,
                   pedidosDoMes,
                   todosOsPedidos,
                   influencers,

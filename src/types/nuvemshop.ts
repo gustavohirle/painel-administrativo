@@ -248,6 +248,18 @@ export interface ItemCatalogo {
  * Converte string decimal da API em numero.
  * Use SEMPRE na borda (ao ler o pedido), nunca no meio de um calculo.
  */
+/**
+ * Pedido do TikTok Shop guarda o id do canal no `gateway_name`: "TikTok Shop
+ * <id>" (`converterPedidoTikTok`). E a marca de origem do pedido, e o unico
+ * lugar que a define -- a conversao escreve com este prefixo, e quem precisa
+ * saber se o pedido veio do TikTok pergunta a `ehPedidoDoTikTok`.
+ */
+export const PREFIXO_GATEWAY_TIKTOK = "TikTok Shop ";
+
+export function ehPedidoDoTikTok(pedido: Pick<Pedido, "gateway_name">): boolean {
+  return pedido.gateway_name.startsWith(PREFIXO_GATEWAY_TIKTOK);
+}
+
 export function paraNumero(valor: string | number | null | undefined): number {
   if (valor === null || valor === undefined) return 0;
   const n = typeof valor === "number" ? valor : Number.parseFloat(valor);
