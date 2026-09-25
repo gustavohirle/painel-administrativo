@@ -25,6 +25,7 @@ import {
   userAgentNuvemshop,
   type LojaNuvemshop,
 } from "@/lib/config";
+import { pedidosDoTikTok } from "@/data/tiktokSource";
 import {
   LIMITE_POR_CONSULTA,
   converterCarrinho,
@@ -405,9 +406,21 @@ const dentro = (iso: string, periodo?: Periodo): boolean => {
 export class FonteNuvemshop implements FonteDePedidos {
   readonly tipo = "nuvemshop" as const;
 
+  /**
+   * Pedidos da Nuvemshop MAIS os dos marketplaces ja sincronizados (secao 15).
+   *
+   * Eles entram aqui, e nao numa fonte separada, porque nenhuma tela deve
+   * saber de que canal veio a venda: a marca ja diz isso, e e a marca que liga
+   * o pedido ao contrato do influencer. Quem busca no TikTok e o comando de
+   * sincronizacao; esta leitura so junta o que ja esta no disco.
+   */
   async listarPedidos(periodo?: Periodo): Promise<Pedido[]> {
-    const { pedidos } = await obterBaseNuvemshop();
-    return periodo ? pedidos.filter((p) => dentro(p.created_at, periodo)) : pedidos;
+    const [{ pedidos }, doTikTok] = await Promise.all([
+      obterBaseNuvemshop(),
+      pedidosDoTikTok(),
+    ]);
+    const todos = [...pedidos, ...doTikTok];
+    return periodo ? todos.filter((p) => dentro(p.created_at, periodo)) : todos;
   }
 
   async listarCarrinhosAbandonados(periodo?: Periodo): Promise<CarrinhoAbandonado[]> {

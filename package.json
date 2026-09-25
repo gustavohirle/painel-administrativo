@@ -32,7 +32,8 @@
     "db:studio": "prisma studio",
     "db:seed": "tsx prisma/seed.ts",
     "db:generate": "prisma generate",
-    "postinstall": "prisma generate"
+    "postinstall": "prisma generate",
+    "tiktok:sincronizar": "node --env-file=.env.live node_modules/tsx/dist/cli.mjs scripts/tiktok.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.2.1",

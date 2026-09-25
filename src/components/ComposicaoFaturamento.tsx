@@ -79,6 +79,17 @@ function montarFatias(dre: DemonstrativoResultado, fechado: MesFechado): Fatia[]
       cor: "var(--color-intermediario-frete)",
       opcional: true,
     },
+    /*
+     * Frete gratis: a loja pagou o frete que o cliente nao pagou. Nao esta no
+     * bruto -- entra como fatia porque sai do lucro, e a soma continua fechando.
+     * Some onde ninguem banca frete (a Nuvemshop, hoje).
+     */
+    {
+      rotulo: "Frete grátis (a loja bancou)",
+      valor: r.freteAbsorvido,
+      cor: "var(--color-frete-absorvido)",
+      opcional: true,
+    },
     {
       rotulo: "Impostos",
       valor: usado.impostos,

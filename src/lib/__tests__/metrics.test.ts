@@ -132,10 +132,28 @@ describe("reconciliar", () => {
     expect(r.freteIntermediario).toBe(0);
   });
 
-  it("loja pagando mais do que cobrou não gera intermediário negativo", () => {
+  it("loja pagando mais do que cobrou não gera intermediário negativo, e a diferença é custo", () => {
     const r = reconciliar([pedido({ shipping_cost_customer: "10.00", shipping_cost_owner: "14.00" })]);
     expect(r.freteTransportadora).toBe(10);
     expect(r.freteIntermediario).toBe(0);
+    // Frete gratis (TikTok Shop): a loja bancou R$ 4, e isso e custo.
+    expect(r.freteAbsorvido).toBe(4);
+  });
+
+  it("frete grátis inteiro: o cliente não paga nada e a loja banca tudo", () => {
+    const r = reconciliar([
+      pedido({ total: "149.00", shipping_cost_customer: "0.00", shipping_cost_owner: "73.34" }),
+      // Nao pago nao entra: o frete dele nunca foi gasto.
+      pedido({ payment_status: "pending", shipping_cost_customer: "0.00", shipping_cost_owner: "50.00" }),
+    ]);
+    expect(r.frete).toBe(0);
+    expect(r.freteAbsorvido).toBeCloseTo(73.34, 10);
+    expect(r.receitaReal).toBeCloseTo(149, 10);
+  });
+
+  it("onde o cliente paga o frete, nada é absorvido", () => {
+    const r = reconciliar([pedido({ shipping_cost_customer: "19.00", shipping_cost_owner: "19.00" })]);
+    expect(r.freteAbsorvido).toBe(0);
   });
 
   it("fecha a aritmetica da cascata", () => {

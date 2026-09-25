@@ -13,6 +13,7 @@
  */
 
 import { lerCache } from "@/data/cachePedidos";
+import { pedidosDoTikTok } from "@/data/tiktokSource";
 import { RepositorioPostgres } from "@/data/prismaCostRepository";
 import { montarDemonstrativo, ratearDespesas } from "@/lib/costing";
 import { chaveMes, filtrarPorMes, mesesDisponiveis } from "@/lib/metrics";
@@ -25,7 +26,9 @@ const pct = (n: number) => `${(n * 100).toFixed(1)}%`;
 
 async function main() {
   const repositorio = new RepositorioPostgres();
-  const { pedidos } = await lerCache();
+  // Nuvemshop + marketplaces: o resultado do mes e o da empresa inteira.
+  const [{ pedidos: daNuvemshop }, doTikTok] = await Promise.all([lerCache(), pedidosDoTikTok()]);
+  const pedidos = [...daNuvemshop, ...doTikTok];
 
   const [produtos, custos, influencers, impostosCadastrados, taxas, aliquotas, despesas] =
     await Promise.all([

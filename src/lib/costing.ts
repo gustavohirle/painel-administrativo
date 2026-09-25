@@ -573,7 +573,10 @@ export function montarDemonstrativo(
   const percentualParticipacaoSocios =
     opcoes.percentualParticipacaoSocios ?? PERCENTUAL_PARTICIPACAO_SOCIOS;
   const participacaoSocios = reconciliacao.recebido * (percentualParticipacaoSocios / 100);
-  const lucroOperacional = margemContribuicao - total - totalDespesas - participacaoSocios;
+  // Frete que a loja bancou (frete gratis do TikTok): custo, nao repasse.
+  const freteAbsorvido = reconciliacao.freteAbsorvido;
+  const lucroOperacional =
+    margemContribuicao - total - totalDespesas - participacaoSocios - freteAbsorvido;
 
   return {
     reconciliacao,

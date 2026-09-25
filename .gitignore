@@ -11,7 +11,7 @@ dist/
 .env*.local
 # Configuracao do modo com dados reais: chave da Nuvemshop, banco e senhas.
 .env.live
-# Endereco do servidor de producao
+# Endereco do servidor de producao e o acesso por SSH
 .env.servidor
 
 *.log
@@ -31,3 +31,6 @@ next-env.d.ts
 
 # Copia local dos pedidos reais da Nuvemshop (dado do cliente)
 /.live-data/
+# Copias sem ponto trazidas de outro PC: nunca versionar.
+/env.live
+/env.servidor

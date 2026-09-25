@@ -27,6 +27,7 @@
  * `prisma/seed.ts` e do `scripts/nuvemshop.ts`.
  */
 import { lerCache } from "@/data/cachePedidos";
+import { pedidosDoTikTok } from "@/data/tiktokSource";
 import { RepositorioPostgres } from "@/data/prismaCostRepository";
 import { CUSTO_PROVISORIO, fichasProvisorias, produtosParaCadastrar } from "@/lib/costing";
 
@@ -37,7 +38,10 @@ async function main() {
 
   // Da COPIA em disco, e nao da API: o cadastro se monta com o que ja foi
   // buscado, e uma busca aqui duplicaria a do timer.
-  const { pedidos } = await lerCache();
+  // Nuvemshop + marketplaces ja sincronizados: o cadastro de produto e um so,
+  // e o produto vendido no TikTok precisa de dono, imposto e custo igual.
+  const [{ pedidos: daNuvemshop }, doTikTok] = await Promise.all([lerCache(), pedidosDoTikTok()]);
+  const pedidos = [...daNuvemshop, ...doTikTok];
   const [produtos, impostos, influencers] = await Promise.all([
     repositorio.listarProdutos(),
     repositorio.listarImpostos(),

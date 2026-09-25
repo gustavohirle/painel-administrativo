@@ -325,7 +325,8 @@ frete           = soma de shipping_cost_customer dos pedidos recebidos
 receita real    = recebido − frete
 ```
 
-Exibida como **gráfico de pizza**, com treze fatias (catorze na loja real, com
+Exibida como **gráfico de pizza**, com treze fatias (quinze na loja real, com
+a Intelipost e o frete grátis do TikTok; a original dizia catorze, com
 a Intelipost). É o herói da tela.
 
 A cascata foi tentada e descartada: com a cadeia completa (ver 5.8) ela vira
@@ -337,10 +338,17 @@ A pizza só fecha porque as parcelas **somam exatamente** o bruto:
 
 ```
 bruto = não pago + cancelado + reembolsado + frete da transportadora + Intelipost
+      + frete grátis que a loja bancou
       + impostos + DIFAL + taxas (Nuvemshop, cartão e pix) + fabricação
       + comissão de influencers + marketing + outras despesas
       + sócios + lucro operacional
 ```
+
+**O frete grátis é a fatia que NÃO está no bruto** (25/09/2026, com o TikTok
+Shop). Todas as outras saem de dentro do que o cliente pagou; essa é dinheiro
+que só sai. Ela fecha assim mesmo porque sai do lucro na mesma medida:
+acrescentar a fatia e tirar o mesmo valor do lucro deixa a soma igual. Some
+onde ninguém banca frete — a Nuvemshop, hoje.
 
 **O custo dos influencers vem em TRÊS fatias**, e não em uma (23/09/2026).
 Antes era uma fatia só, "Influencers", com comissão e despesas dentro. Ela
@@ -2613,7 +2621,7 @@ em 1366×768. Isso é `npm test` e olho na tela.
 
 | Pergunta | Onde |
 |---|---|
-| A conta está certa? | `npm test` — 478 testes sobre as funções puras |
+| A conta está certa? | `npm test` — 619 testes sobre as funções puras |
 | A chave da Nuvemshop vale? Os pedidos chegam como esperado? | `npm run nuvemshop:testar` |
 | A página monta? O perfil bloqueia? | `npm run fumaca` |
 | Funciona no celular? | `npm run celular` |
@@ -3184,3 +3192,82 @@ vai acabar, o certificado vai vencer.
 Pedido e cadastro não estão no git. Cópia dos pedidos se atualiza sozinha
 (seção 12); o banco veio do backup do notebook, convertido de PostgreSQL 18
 para 16 com `pg_restore -f` (o formato custom da 18 não é lido pela 16).
+
+---
+
+## 15. TikTok Shop (primeiro marketplace ligado)
+
+Desde 25/09/2026 o painel também lê o **TikTok Shop**, e não só a Nuvemshop. É
+a Fase 4 da seção 9 começando pelo canal que o dono pediu primeiro.
+
+### O canal é uma MARCA, não um pedaço da outra
+
+O dono decidiu que o TikTok entra como contrato próprio: marca
+**"Tha Beauty TikTok"**, influencer **Thay TikTok**, **10%** sobre o que cai na
+conta. Regime, estado e CNPJ foram copiados do contrato da Tha Beauty (mesma
+empresa) e estão escritos na observação do contrato, para ninguém confundir
+premissa com informação.
+
+Foi decisão de negócio, e não de código: a loja do TikTok vende os mesmos
+produtos, e juntar tudo numa marca só esconderia quanto cada canal rende. Como
+a marca é a chave que liga pedido, produto e contrato (armadilha 9), separar
+aqui sai de graça no resto do painel.
+
+### O que muda na borda (`lib/tiktok.ts`, puro e com teste)
+
+| Achado | Decisão |
+|---|---|
+| Id de pedido, produto e SKU vêm com 18 ou 19 dígitos | não cabem no inteiro seguro do JS nem no `Int` do Postgres: cada um ganha um número próprio e **estável** (`data/idsTikTok.ts`, gravado em `.live-data/ids-tiktok.json`). O id verdadeiro fica no `sku` do item e no `gateway_name` |
+| Frete grátis: cliente paga R$ 0 e a loja banca | vira `shipping_cost_owner` maior que `shipping_cost_customer`, e a reconciliação o separa em `freteAbsorvido` — **custo, não repasse** |
+| Uma linha por unidade vendida | linhas do mesmo SKU viram um item com a quantidade somada |
+| `payment_method_name` livre ("CCI") | passa pelo mesmo `normalizarMetodoPagamento` (5.13.1) e aparece na aba de taxas como lacuna, para alguém cadastrar quanto o TikTok retém |
+| Situações próprias (`UNPAID`, `CANCELLED`, `DELIVERED`...) | `traduzirSituacao` mapeia para os status do painel; situação nova conta como recebida e aparece em `situacoesDesconhecidas` |
+| A API devolve nome, telefone e endereço | nada disso é guardado: o cliente vira um id negativo, como o pedido sem cliente da Nuvemshop |
+
+### Onde o dinheiro do TikTok ainda NÃO está
+
+**A comissão da plataforma não vem no pedido.** O TikTok cobra comissão,
+taxa de transação e afiliado, e isso mora na API de finanças (*settlements*),
+que é outra chamada e outro escopo. Enquanto ela não for lida, a margem do
+canal sai **melhor do que é**. O caminho curto até lá: cadastrar a taxa do meio
+de pagamento "cci" na aba Impostos, que já aparece ali como lacuna declarada.
+
+### Como se sincroniza
+
+```bash
+npm run tiktok:sincronizar              # NUVEMSHOP_MESES meses
+npm run tiktok:sincronizar -- --meses 3
+```
+
+Mesma divisão da Nuvemshop: o comando busca e grava
+(`.live-data/tiktok-<shop_cipher>.json`), e as páginas só leem o disco —
+`FonteNuvemshop.listarPedidos` junta os dois canais, e nenhuma tela sabe da
+diferença. `produtos:trazer` e `resultado:mensal` também passaram a enxergar
+os dois.
+
+O **token de acesso dura 7 dias** e é trocado sozinho pelo `refresh_token`
+quando falta menos de um dia — por isso ele mora em `.live-data`, e não no
+`.env.live` (`tokensCanais.ts`). O primeiro token veio da autorização manual.
+
+### O que a primeira carga mostrou (25/09/2026, 3 meses)
+
+3.152 pedidos, R$ 408,7 mil de faturamento bruto, R$ 298,6 mil recebido e
+R$ 63,0 mil de frete que a loja bancou. Em setembro: R$ 266,5 mil de bruto,
+R$ 196,9 mil de receita real e R$ 19,6 mil de comissão. 730 pedidos cancelados
+em 3.152 — um quarto do volume, que vale investigar com o dono.
+
+Entraram 39 produtos novos no cadastro (21 kits), todos com a ficha provisória
+de 35% do preço médio pago, como os demais.
+
+### Autorização, uma vez por aplicativo
+
+O aplicativo é **Personalizado**, criado no TikTok Shop Partner Center. Dois
+tropeços que custaram tempo e vale não repetir:
+
+1. **Escopo aprovado não vale para token já emitido.** O erro é `105005`
+   ("this app has not been granted any access scope"), e a saída é autorizar a
+   loja de novo depois de salvar os escopos — o token carrega as permissões que
+   existiam quando foi criado.
+2. **O `shop_cipher` não é o id da loja nem o do aplicativo.** Os três são
+   números parecidos na tela do Partner Center. O cipher só vem de
+   `GET /authorization/202309/shops`, e é ele que vai em `CANAL_1_LOJA_ID`.

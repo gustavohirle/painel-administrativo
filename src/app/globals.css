@@ -40,6 +40,8 @@
   /* Intermediario de frete (Intelipost): mesma familia do frete, mais escuro,
      porque as duas fatias sao o mesmo dinheiro dividido. */
   --color-intermediario-frete: #334155;
+  /* Frete gratis que a loja bancou (TikTok Shop): custo, nao repasse. */
+  --color-frete-absorvido: #7c2d12;
   --color-imposto: #7c3aed;
   /* Mesma familia do imposto, bem mais escuro: o DIFAL e um pedaco do ICMS,
      e as duas fatias ficam lado a lado na pizza. */

@@ -76,6 +76,17 @@ export interface Reconciliacao {
    */
   freteTransportadora: number;
   freteIntermediario: number;
+  /**
+   * Frete que a LOJA bancou: o que ela paga a transportadora alem do que
+   * cobrou do cliente (frete gratis).
+   *
+   * Na Nuvemshop isto e zero -- o cliente paga o frete por fora (5.1.1). No
+   * TikTok Shop, nao: o vendedor anuncia frete gratis e a plataforma desconta
+   * o valor dele, entao o frete vira CUSTO, e nao repasse. Nao esta em
+   * `frete` (que e o que o cliente pagou) nem no `bruto`: sai do lucro, com
+   * fatia propria na pizza.
+   */
+  freteAbsorvido: number;
   /** recebido - frete. O numero que o cliente deveria estar olhando. */
   receitaReal: number;
   /**
@@ -107,6 +118,7 @@ export function reconciliar(pedidos: Pedido[]): Reconciliacao {
   let recebido = 0;
   let frete = 0;
   let freteTransportadora = 0;
+  let freteAbsorvido = 0;
   let freteTotal = 0;
 
   const quantidade = {
@@ -143,11 +155,12 @@ export function reconciliar(pedidos: Pedido[]): Reconciliacao {
         /*
          * Sem o custo da transportadora (campo ausente vira zero na borda), o
          * frete inteiro fica com ela: jogar tudo no intermediario inventaria
-         * um custo. E a loja pagando MAIS que cobrou (frete gratis) nao e
-         * modelado aqui -- o painel so divide o que o cliente pagou.
+         * um custo. O que a loja paga ALEM do que cobrou e frete gratis, e vai
+         * para `freteAbsorvido` -- ali e custo, nao repasse.
          */
         freteTransportadora +=
           pagoATransportadora > 0 ? Math.min(cobrado, pagoATransportadora) : cobrado;
+        freteAbsorvido += Math.max(0, pagoATransportadora - cobrado);
         quantidade.recebido += 1;
         break;
       }
@@ -163,6 +176,7 @@ export function reconciliar(pedidos: Pedido[]): Reconciliacao {
     frete,
     freteTransportadora,
     freteIntermediario: frete - freteTransportadora,
+    freteAbsorvido,
     receitaReal: recebido - frete,
     freteTotal,
     brutoSemFrete: bruto - freteTotal,

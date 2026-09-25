@@ -143,6 +143,18 @@ function montarLinhas(dre: DRE, fechado: MesFechado): Linha[] {
       valor: -dre.totalDespesasOutras,
       tipo: "deducao",
     },
+    // Frete gratis: so aparece onde a loja banca frete (TikTok Shop).
+    ...(r.freteAbsorvido > 0
+      ? [
+          {
+            rotulo: "Frete grátis que a loja bancou",
+            explicacao:
+              "Frete que o cliente não pagou e a loja pagou assim mesmo — custo, e não repasse",
+            valor: -r.freteAbsorvido,
+            tipo: "deducao" as const,
+          },
+        ]
+      : []),
     {
       rotulo: "Participação dos sócios",
       explicacao: `${dre.percentualParticipacaoSocios.toLocaleString("pt-BR")}% do valor recebido`,
