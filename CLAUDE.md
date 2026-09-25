@@ -3319,6 +3319,27 @@ faturamento bruto com o canal somado.
 Entraram 39 produtos novos no cadastro (21 kits), todos com a ficha provisória
 de 35% do preço médio pago, como os demais.
 
+### Em producao (25/09/2026)
+
+O canal foi ligado no servidor no mesmo dia:
+
+| Peça | Como ficou |
+|---|---|
+| Credenciais | `CANAL_1_*` levadas por `npm run env:enviar -- --confirmar` |
+| Token | `.live-data/tokens-canais.json`, copiado pelo SSH em base64, modo 600 e dono `painel` |
+| Contrato | criado no banco do servidor (o banco de la e outro: o cadastro nao viaja com o deploy) |
+| Produtos | `produtos:trazer -- --gravar` no servidor: 45 novos (39 do TikTok e 6 da Ka Beauty, que so vendiam em meses antigos) |
+| Atualizacao | `painel-tiktok.timer`, **de hora em hora** |
+
+O timer e de hora em hora, e nao de 5 em 5 minutos como o da Nuvemshop, porque
+a busca varre os tres meses inteiros mais os extratos e leva uns dois minutos.
+E ela **precisa** repetir: o extrato de um pedido so fecha dias depois da
+venda, entao cada rodada preenche a taxa dos que liquidaram desde a anterior.
+
+O painel de producao responde em **https://lucroempresarial.com** (dominio
+proprio com certificado desde 17/09; o tunel Cloudflare ficou desligado, e por
+isso o IP direto devolve 404 -- o nginx atende pelo nome).
+
 ### Autorização, uma vez por aplicativo
 
 O aplicativo é **Personalizado**, criado no TikTok Shop Partner Center. Dois
