@@ -22,6 +22,7 @@
     "env:enviar": "node scripts/enviar-env.mjs",
     "produtos:trazer": "node --env-file=.env.live node_modules/tsx/dist/cli.mjs scripts/trazer-produtos.ts",
     "resultado:mensal": "node --env-file=.env.live node_modules/tsx/dist/cli.mjs scripts/resultado-mensal.ts",
+    "impostos:marca": "node --env-file=.env.live node_modules/tsx/dist/cli.mjs scripts/diagnostico-impostos.ts",
     "senha": "node --env-file=.env.live node_modules/tsx/dist/cli.mjs scripts/senha.ts",
     "live:preparar": "npm run db:criar:live && npm run db:push:live && npm run db:seed:live",
     "db:criar:live": "node --env-file=.env.live scripts/criar-banco.mjs",
