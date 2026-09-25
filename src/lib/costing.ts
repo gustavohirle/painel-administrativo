@@ -332,6 +332,32 @@ function valorDaBaseDaMarca(
   return r.receitaReal;
 }
 
+/**
+ * "O que cai na conta" de cada marca: a base `liquido` da comissao (5.1.2),
+ * seja qual for a base do contrato.
+ *
+ * E a medida contra a qual a aba Influencers le as despesas ("14,2% do que cai
+ * na conta", 25/09/2026, pedido do dono). Sai da mesma `valorDaBaseDaMarca`
+ * que a comissao usa, para o numero ser o mesmo que o contrato "sobre o que cai
+ * na conta" enxerga -- e nao uma segunda conta que um dia divergiria.
+ */
+export function oQueCaiNaContaPorMarca(
+  pedidos: Pedido[],
+  taxasPorMarca: Record<string, number> = {},
+): Map<string, number> {
+  const porMarca = new Map<string, Pedido[]>();
+  for (const pedido of pedidos) {
+    const lista = porMarca.get(pedido.marca);
+    if (lista) lista.push(pedido);
+    else porMarca.set(pedido.marca, [pedido]);
+  }
+  const resultado = new Map<string, number>();
+  for (const [marca, dela] of porMarca) {
+    resultado.set(marca, valorDaBaseDaMarca(reconciliar(dela), "liquido", taxasPorMarca[marca] ?? 0));
+  }
+  return resultado;
+}
+
 export function totalComissoes(linhas: ComissaoInfluencer[]): number {
   return linhas.reduce((soma, l) => soma + l.valorComissao, 0);
 }

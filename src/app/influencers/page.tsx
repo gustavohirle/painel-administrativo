@@ -10,6 +10,7 @@ import { lojasNuvemshop, modoDemonstracao } from "@/lib/config";
 import {
   calcularComissoesPorInfluencer,
   despesasQueCabem,
+  oQueCaiNaContaPorMarca,
   ratearDespesas,
   totalComissoes,
 } from "@/lib/costing";
@@ -84,6 +85,9 @@ export default async function PaginaInfluencers({
   const taxas = apurarTaxasPlataforma(pedidosDoMes, taxasCadastradas);
   const calculadas = calcularComissoesPorInfluencer(pedidosDoMes, influencers, taxas.porMarca);
   const comissaoPorId = new Map(calculadas.map((c) => [c.influencerId, c]));
+  // O denominador do "% do que cai na conta" das despesas: a base `liquido` da
+  // comissao, com as mesmas taxas, seja qual for a base de cada contrato.
+  const caiNaContaPorMarca = oQueCaiNaContaPorMarca(pedidosDoMes, taxas.porMarca);
   const total = totalComissoes(calculadas);
   const totalSeTudoSobreBruto = calculadas.reduce((soma, c) => soma + c.comissaoSeSobreBruto, 0);
 
@@ -125,6 +129,7 @@ export default async function PaginaInfluencers({
       receitaBruta: brutoPorMarca.get(i.marca) ?? 0,
       comissao: comissaoPorId.get(i.id)?.valorComissao ?? 0,
       despesas: despesasPorInfluencer.get(i.id) ?? 0,
+      caiNaConta: caiNaContaPorMarca.get(i.marca) ?? 0,
     }))
     .sort(
       (a, b) =>
@@ -194,9 +199,9 @@ export default async function PaginaInfluencers({
             const pedidosDaMarca = pedidosDoMes.filter((p) => p.marca === selecionado.marca);
             const marcaVendeu = pedidosDaMarca.length > 0;
             const receitaRealDaMarca = reconciliar(pedidosDaMarca).receitaReal;
-            // A mesma receita bruta do cartao, para o percentual das despesas
-            // ser o mesmo nos dois lugares.
-            const receitaBrutaDaMarca = brutoPorMarca.get(selecionado.marca) ?? 0;
+            // A mesma base do cartao, para o percentual das despesas ser o
+            // mesmo nos dois lugares.
+            const caiNaContaDaMarca = caiNaContaPorMarca.get(selecionado.marca) ?? 0;
 
             // A grade mostra o que foi cadastrado no mes, pela data.
             const despesasDele = despesas.filter(
@@ -226,8 +231,8 @@ export default async function PaginaInfluencers({
                     rotulo="Despesas do mês"
                     valor={moedaRedonda(totalDespesasDele)}
                     apoio={`${despesasDele.length} despesa(s) no mês, com a parte das compartilhadas${
-                      receitaBrutaDaMarca > 0
-                        ? ` · ${percentual(razaoSegura(totalDespesasDele, receitaBrutaDaMarca))} da receita bruta da marca`
+                      caiNaContaDaMarca > 0
+                        ? ` · ${percentual(razaoSegura(totalDespesasDele, caiNaContaDaMarca))} do que caiu na conta da marca`
                         : ""
                     }`}
                   />

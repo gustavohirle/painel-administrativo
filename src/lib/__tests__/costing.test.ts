@@ -7,6 +7,7 @@ import {
   calcularCMV,
   catalogoVendido,
   calcularComissoesPorInfluencer,
+  oQueCaiNaContaPorMarca,
   cruzarMarcasComContratos,
   CUSTO_PROVISORIO,
   custoUnitarioDe,
@@ -993,5 +994,48 @@ describe("base \"o que cai na conta\" com frete grátis", () => {
       {},
     );
     expect(linha!.valorBase).toBeCloseTo(80, 10);
+  });
+});
+
+describe("oQueCaiNaContaPorMarca", () => {
+  // E o denominador do "% do que cai na conta" das despesas, na aba
+  // Influencers: tem que ser a base `liquido` da comissao, e nao outra conta.
+  const pedidos = [
+    pedido({ marca: "Loja", total: "119.00", shipping_cost_customer: "19.00", shipping_cost_owner: "19.00" }),
+    pedido({ marca: "Loja", total: "50.00", payment_status: "pending", paid_at: null }),
+    pedido({
+      marca: "Canal",
+      total: "100.00",
+      shipping_cost_customer: "0.00",
+      shipping_cost_owner: "20.00",
+    }),
+  ];
+  const taxas = { Loja: 5, Canal: 6 };
+
+  it("bate com a base da comissao de um contrato sobre o que cai na conta", () => {
+    const porMarca = oQueCaiNaContaPorMarca(pedidos, taxas);
+    for (const marca of ["Loja", "Canal"]) {
+      const [linha] = calcularComissoesPorInfluencer(
+        pedidos,
+        [influencer({ marca, baseComissao: "liquido" })],
+        taxas,
+      );
+      expect(porMarca.get(marca)).toBeCloseTo(linha!.valorBase, 10);
+    }
+    // Loja: receita real 100 (o nao pago fica fora), menos 5 de taxa.
+    expect(porMarca.get("Loja")).toBeCloseTo(95, 10);
+    // Canal: 100, menos 6 de taxa e 20 de frete que a loja bancou.
+    expect(porMarca.get("Canal")).toBeCloseTo(74, 10);
+  });
+
+  it("nao depende da base do contrato: quem tem contrato sobre o bruto ve o mesmo numero", () => {
+    const porMarca = oQueCaiNaContaPorMarca(pedidos, taxas);
+    const [sobreBruto] = calcularComissoesPorInfluencer(
+      pedidos,
+      [influencer({ marca: "Loja", baseComissao: "bruto" })],
+      taxas,
+    );
+    expect(sobreBruto!.valorBase).not.toBeCloseTo(porMarca.get("Loja")!, 2);
+    expect(porMarca.get("Loja")).toBeCloseTo(95, 10);
   });
 });

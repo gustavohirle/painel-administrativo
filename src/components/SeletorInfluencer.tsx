@@ -15,6 +15,8 @@ export interface CartaoDeInfluencer {
   comissao: number;
   /** Despesas do mes, com a parte dele nas compartilhadas. */
   despesas: number;
+  /** O que caiu na conta da marca no mes -- a base `liquido` da comissao. */
+  caiNaConta: number;
 }
 
 interface SeletorInfluencerProps {
@@ -36,10 +38,13 @@ interface SeletorInfluencerProps {
  * de R$ 100 mil. E comissao e despesa somadas escondiam qual das duas mexer.
  * Por isso: receita bruta da marca, comissao e despesas, lado a lado.
  *
- * Embaixo das despesas vai quanto elas pesam na receita bruta da marca
- * (25/09/2026, pedido do dono). E a conta que ele fazia de cabeca entre os dois
- * numeros do cartao, e a divisao usa exatamente esses dois: o percentual se
- * confere olhando o proprio cartao.
+ * Embaixo das despesas vai quanto elas pesam no que CAIU NA CONTA da marca
+ * (25/09/2026, pedido do dono): recebido, sem frete, sem as taxas e sem o frete
+ * que a loja bancou -- a mesma base do contrato "sobre o que cai na conta"
+ * (`oQueCaiNaContaPorMarca`). A primeira versao dividia pela receita bruta do
+ * cartao, e o dono corrigiu no mesmo dia: despesa se paga com o dinheiro que
+ * entrou, nao com o pedido que nunca foi pago. O valor da base fica no `title`,
+ * porque o cartao nao o mostra.
  *
  * A escolha mora na URL (?influencer=), como os filtros do relatorio: o
  * detalhe de um influencer vira um link que da para mandar, e o seletor de mes
@@ -120,12 +125,19 @@ export function SeletorInfluencer({ influencers, selecionadoId, mes }: SeletorIn
                 <dd className="numerico text-sm font-semibold text-tinta-media">
                   {moeda(influencer.despesas)}
                 </dd>
-                {/* Sem venda no mes nao ha contra o que medir: um "0,0%" ali
+                {/* Sem dinheiro na conta nao ha contra o que medir: um "0,0%" ali
                     diria que a despesa nao pesa nada. */}
-                <dd className="numerico text-xs text-tinta-fraca">
-                  {influencer.receitaBruta > 0
-                    ? `${percentual(razaoSegura(influencer.despesas, influencer.receitaBruta))} da receita bruta`
-                    : "sem venda no mês"}
+                <dd
+                  className="numerico text-xs text-tinta-fraca"
+                  title={
+                    influencer.caiNaConta > 0
+                      ? `${moeda(influencer.caiNaConta)} caíram na conta da marca no mês (sem frete e sem as taxas)`
+                      : undefined
+                  }
+                >
+                  {influencer.caiNaConta > 0
+                    ? `${percentual(razaoSegura(influencer.despesas, influencer.caiNaConta))} do que cai na conta`
+                    : "nada caiu na conta no mês"}
                 </dd>
               </div>
             </dl>

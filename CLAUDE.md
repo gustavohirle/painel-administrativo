@@ -1887,12 +1887,21 @@ uma se renegocia no contrato, a outra se corta. A ordem dos cartões continua
 sendo pelo custo (comissão + despesas), que é a ordem em que a conversa
 acontece.
 
-**Embaixo das despesas vai o peso delas na receita bruta** ("16,6% da receita
-bruta", 25/09/2026, pedido do dono), e a divisão usa exatamente os dois números
-do cartão — o percentual se confere olhando o próprio cartão. Marca sem venda no
-mês diz "sem venda no mês", e não "0,0%": não há contra o que medir. O detalhe
-do influencer repete o percentual no quadro "Despesas do mês", sobre a mesma
-receita bruta (`brutoPorMarca`).
+**Embaixo das despesas vai o peso delas no que CAI NA CONTA** ("14,2% do que
+cai na conta", 25/09/2026, pedido do dono): recebido, sem frete, sem as taxas e
+sem o frete que a loja bancou — a base `liquido` da comissão (5.1.2), **seja
+qual for a base do contrato** (`oQueCaiNaContaPorMarca`, em `costing.ts`, que
+usa a mesma `valorDaBaseDaMarca` da comissão; há teste).
+
+A primeira versão dividia pela **receita bruta** do cartão, e o dono corrigiu
+no mesmo dia: o bruto inclui o pedido nunca pago, o frete e as taxas, e a
+despesa se paga com o dinheiro que entrou. Sobre a base menor, o mesmo valor
+pesa mais.
+
+O cartão não mostra o valor da base; ele fica no `title` do percentual. Marca
+sem dinheiro na conta no mês diz "nada caiu na conta no mês", e não "0,0%":
+não há contra o que medir. O detalhe do influencer repete o percentual no
+quadro "Despesas do mês", sobre a mesma base.
 
 O bruto por marca sai de uma varredura só sobre os pedidos do mês
 (`brutoPorMarca`), e não de um `reconciliar` por contrato dentro do `map` —
